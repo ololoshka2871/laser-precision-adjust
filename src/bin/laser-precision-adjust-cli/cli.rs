@@ -1,3 +1,9 @@
+
+pub enum CliCommand {
+    None,
+    TestConnection,
+}
+
 pub enum CliError {
     Parse,
     Exit,
@@ -10,7 +16,11 @@ impl From<std::io::Error> for CliError {
     }
 }
 
-pub fn process_command(line: &str, output: &mut impl std::io::Write) -> Result<(), CliError> {
+pub fn process_command(line: &str, output: &mut impl std::io::Write) -> Result<CliCommand, CliError> {
+    if line.is_empty() {
+        return Ok(CliCommand::None);
+    }
+
     if line == "exit" {
         return Err(CliError::Exit);
     }
@@ -18,10 +28,12 @@ pub fn process_command(line: &str, output: &mut impl std::io::Write) -> Result<(
     if line == "help" {
         writeln!(output, "exit - exit the program")?;
         writeln!(output, "help - print this help")?;
-        writeln!(output, "adjust - adjust the laser")?;
-        writeln!(output, "status - print the status of the laser")?;
-        writeln!(output, "config - print the config")?;
-        return Ok(());
+        writeln!(output, "test - test connections")?;
+        return Ok(CliCommand::None);
+    }
+
+    if line == "test" {
+        return Ok(CliCommand::TestConnection);
     }
 
     /*

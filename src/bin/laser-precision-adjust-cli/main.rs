@@ -4,6 +4,7 @@ use std::io::Write;
 
 use cli::{process_command, CliError};
 
+use laser_precision_adjust::PrecisionAdjust;
 use rustyline_async::ReadlineError;
 
 #[tokio::main(flavor = "current_thread")]
@@ -22,7 +23,14 @@ async fn main() -> Result<(), std::io::Error> {
 
     log::info!("{}", config);
 
-    let mut _precision_adjust = laser_precision_adjust::PrecisionAdjust::with_config(config);
+    let mut precision_adjust = PrecisionAdjust::with_config(config);
+
+    log::warn!("Testing connections...");
+    if let Err(e) = precision_adjust.test_connection().await {
+        panic!("Failed to connect to: {:?}", e);
+    } else {
+        log::info!("Connection successful!");
+    }
 
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();
 
@@ -32,7 +40,7 @@ async fn main() -> Result<(), std::io::Error> {
                 let line = line.trim();
 
                 match process_command(line, &mut stdout) {
-                    Ok(()) => {}
+                    Ok(cmd) => process_cli_command(&mut precision_adjust, cmd).await,
                     Err(CliError::Parse) => continue,
                     Err(CliError::Exit) | Err(CliError::IO(_)) => {
                         writeln!(stdout, "Exiting...")?;
@@ -53,6 +61,20 @@ async fn main() -> Result<(), std::io::Error> {
             Err(ReadlineError::IO(err)) => {
                 writeln!(stdout, "Received err: {:?}", err)?;
                 return Err(err);
+            }
+        }
+    }
+}
+
+async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: cli::CliCommand) {
+    match cmd {
+        cli::CliCommand::None => {}
+        cli::CliCommand::TestConnection => {
+            log::info!("Testing connection...");
+            if let Err(e) = pa.test_connection().await {
+                log::error!("Failed to connect to: {:?}", e);
+            } else {
+                log::info!("Connection successful!");
             }
         }
     }
