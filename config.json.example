@@ -1,0 +1,103 @@
+{
+    "LaserSetupPort": "COM1",
+    "LaserControlPort": "COM2",
+    "KosaPort": "COM3",
+    "ResonatorsPlacement": [
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        },
+        {
+            "Xcenter": 0,
+            "Ycenter": 0,
+            "Width": 0,
+            "Height": 0
+        }
+    ]
+}
