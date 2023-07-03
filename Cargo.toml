@@ -23,6 +23,8 @@ serde_json = "1.0"
 
 directories = "5"
 
+rustyline-async = { version = "=0.3.0", default-features = false } # В версии 0.3.1 двоение букв
+
 ###
 
 laser-setup-interface = { git = "https://github.com/ololoshka2871/Laser-setup-interface.git" }

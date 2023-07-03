@@ -26,6 +26,9 @@ pub struct Config {
     #[serde(rename = "KosaPort")]
     pub kosa_port: String,
 
+    #[serde(rename = "PortTimeoutMs")]
+    pub port_timeout_ms: u64,
+
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
 }
@@ -51,5 +54,22 @@ impl Config {
         } else {
             panic!("Failed to get config directory!");
         }
+    }
+}
+
+impl std::fmt::Display for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "LaserSetupPort: {}", self.laser_setup_port)?;
+        writeln!(f, "LaserControlPort: {}", self.laser_control_port)?;
+        writeln!(f, "KosaPort: {}", self.kosa_port)?;
+
+        // write resonators placement as a table
+        writeln!(f, "ResonatorsPlacement:")?;
+        writeln!(f, "  Center\t| Width\t| Height")?;
+        writeln!(f, "  ------\t| -----\t| ------")?;
+        for placement in &self.resonator_placement {
+            writeln!(f, "  X{} Y{}\t| {}\t| {}", placement.x, placement.y, placement.w, placement.h)?;
+        }
+        Ok(())
     }
 }
