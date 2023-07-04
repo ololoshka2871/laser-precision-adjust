@@ -32,35 +32,38 @@ async fn main() -> Result<(), std::io::Error> {
         log::info!("Connection successful!");
     }
 
+    precision_adjust.start_monitoring().await;
+
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();
 
     loop {
-        match rl.readline().await {
-            Ok(line) => {
-                let line = line.trim();
+        tokio::select! {
+                _ = precision_adjust.status(&mut stdout) => { /* show status */ }
+                line = rl.readline() => match line {
+                Ok(line) => {
+                    let line = line.trim();
 
-                match process_command(line, &mut stdout) {
-                    Ok(cmd) => process_cli_command(&mut precision_adjust, cmd).await,
-                    Err(CliError::Parse) => continue,
-                    Err(CliError::Exit) | Err(CliError::IO(_)) => {
-                        writeln!(stdout, "Exiting...")?;
-                        return Ok(());
+                    match process_command(line, &mut stdout) {
+                        Ok(cmd) => process_cli_command(&mut precision_adjust, cmd).await,
+                        Err(CliError::Parse) => continue,
+                        Err(CliError::Exit) | Err(CliError::IO(_)) => {
+                            writeln!(stdout, "Exiting...")?;
+                            return Ok(());
+                        }
                     }
                 }
-
-                //
-            }
-            Err(ReadlineError::Eof) | Err(ReadlineError::Closed) => {
-                writeln!(stdout, "Exiting...")?;
-                return Ok(());
-            }
-            Err(ReadlineError::Interrupted) => {
-                writeln!(stdout, "^C")?;
-                return Ok(());
-            }
-            Err(ReadlineError::IO(err)) => {
-                writeln!(stdout, "Received err: {:?}", err)?;
-                return Err(err);
+                Err(ReadlineError::Eof) | Err(ReadlineError::Closed) => {
+                    writeln!(stdout, "Exiting...")?;
+                    return Ok(());
+                }
+                Err(ReadlineError::Interrupted) => {
+                    writeln!(stdout, "^C")?;
+                    return Ok(());
+                }
+                Err(ReadlineError::IO(err)) => {
+                    writeln!(stdout, "Received err: {:?}", err)?;
+                    return Err(err);
+                }
             }
         }
     }
