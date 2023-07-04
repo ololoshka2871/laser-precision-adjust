@@ -5,6 +5,8 @@ pub enum CliCommand {
     None,
     TestConnection,
     SelectChannel(u32),
+    Open,
+    Close(bool),
 }
 
 pub enum CliError {
@@ -40,6 +42,18 @@ enum Com {
         #[clap(value_parser=clap::value_parser!(u32).range(0..=16))]
         channel: u32,
     },
+
+    /// Open camera
+    Open,
+
+    /// Close camera
+    Close,
+
+    /// Vacuum
+    Vacuum {
+        #[clap(default_value = "true")]
+        on: Option<bool>,
+    },
 }
 
 pub fn parse_cli_command(
@@ -68,9 +82,12 @@ pub fn parse_cli_command(
     let cmd = Commands::parse_from(r);
 
     match cmd.command {
-        Com::Exit => return Err(CliError::Exit),
-        Com::Test => return Ok(CliCommand::TestConnection),
-        Com::Select { channel } => return Ok(CliCommand::SelectChannel(channel)),
+        Com::Exit => Err(CliError::Exit),
+        Com::Test => Ok(CliCommand::TestConnection),
+        Com::Select { channel } => Ok(CliCommand::SelectChannel(channel)),
+        Com::Open => Ok(CliCommand::Open),
+        Com::Close => Ok(CliCommand::Close(false)),
+        Com::Vacuum { on } => Ok(CliCommand::Close(on.unwrap())),
     }
 }
 
@@ -89,8 +106,17 @@ pub async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: CliCommand) {
             log::info!("Selecting channel {}...", channel);
             if let Err(e) = pa.select_channel(channel).await {
                 log::error!("Failed to select channel: {:?}", e);
-            } else {
-                log::info!("Channel selected!");
+            }
+        }
+        CliCommand::Open => {
+            log::info!("Opening camera...");
+            if let Err(e) = pa.open_camera().await {
+                log::error!("Failed to open camera: {:?}", e);
+            }
+        }
+        CliCommand::Close(vacuum) => {
+            if let Err(e) = pa.close_camera(vacuum).await {
+                log::error!("Failed to close camera: {:?}", e);
             }
         }
     }

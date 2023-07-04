@@ -18,13 +18,7 @@ pub enum Error {
     Laser(IoError),
     LaserSetup(laser_setup_interface::Error),
     Kosa(kosa_interface::Error),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct PrivStatus {
-    current_channel: u32,
-    current_side: Side,
-    current_step: usize,
+    Logick(String),
 }
 
 #[derive(Default)]
@@ -48,6 +42,16 @@ impl ControlState for LaserCtrl {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PrivStatus {
+    current_channel: u32,
+    current_side: Side,
+    current_step: usize,
+
+    current_camera_state: CameraState,
+    current_valve_state: ValveState,
+}
+
 pub struct Status {
     current_channel: u32,
     current_side: Side,
@@ -55,6 +59,9 @@ pub struct Status {
 
     timestamp: SystemTime,
     current_frequency: f32,
+
+    camera_state: CameraState,
+    valve_state: ValveState,
 }
 
 pub struct PrecisionAdjust {
@@ -99,6 +106,9 @@ impl PrecisionAdjust {
                 current_channel: 0,
                 current_side: Side::Left,
                 current_step: 0,
+
+                current_camera_state: CameraState::Close,
+                current_valve_state: ValveState::Atmosphere,
             }),
 
             kosa_update_locker: Arc::new(Mutex::new(())),
@@ -154,13 +164,19 @@ impl PrecisionAdjust {
         match self.get_status().await {
             Ok(status) => writeln!(
                 fmt,
-                "[{:0>8.3}]: Ch: {}; Step: [{}:{}]; F: {}",
+                "[{:0>8.3}]: [{}]; Ch: {}; Step: [{}:{}]; F: {}",
                 status
                     .timestamp
                     .duration_since(self.start_time)
                     .unwrap()
                     .as_millis() as f32
                     / 1000.0,
+                match (status.camera_state, status.valve_state) {
+                    (CameraState::Close, ValveState::Atmosphere) => "Closed".green(),
+                    (CameraState::Close, ValveState::Vacuum) => "Vacuum".red(),
+                    (CameraState::Open, ValveState::Atmosphere) => "Open".blue(),
+                    (CameraState::Open, ValveState::Vacuum) => "Open+Vacuum".red().bold(),
+                },
                 format!("{:02}", status.current_channel).green().bold(),
                 format!("{:>2}", status.current_step).purple().bold(),
                 format!("{:>5?}", status.current_side).blue(),
@@ -194,6 +210,9 @@ impl PrecisionAdjust {
                     current_step: status.current_step,
                     timestamp: t,
                     current_frequency: f,
+
+                    camera_state: status.current_camera_state,
+                    valve_state: status.current_valve_state,
                 })
             } else {
                 unreachable!()
@@ -241,14 +260,11 @@ impl PrecisionAdjust {
 
     pub async fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
         if channel >= self.positions.len() as u32 {
-            log::error!(
+            return Err(Error::Logick(format!(
                 "Channel {} is out of range (0 - {})!",
                 channel,
                 self.positions.len() - 1
-            );
-            return Err(Error::LaserSetup(
-                laser_setup_interface::Error::UnexpectedEndOfStream,
-            ));
+            )));
         }
 
         {
@@ -296,5 +312,54 @@ impl PrecisionAdjust {
         }
 
         Ok(())
+    }
+
+    pub async fn open_camera(&mut self) -> Result<(), Error> {
+        {
+            let mut guard = self.status.lock().await;
+            guard.current_camera_state = CameraState::Open;
+            guard.current_valve_state = ValveState::Atmosphere;
+        }
+
+        self.write_laser_setup(LaserCtrl {
+            valve: Some(ValveState::Atmosphere),
+            camera: Some(CameraState::Open),
+            ..Default::default()
+        })
+        .await
+    }
+
+    pub async fn close_camera(&mut self, vacuum: bool) -> Result<(), Error> {
+        let valve_state = {
+            let mut guard = self.status.lock().await;
+
+            if guard.current_camera_state != CameraState::Close && vacuum {
+                return Err(Error::Logick("Close the camera before turn vacuum on!".to_string()));
+            }
+
+            guard.current_camera_state = CameraState::Close;
+            guard.current_valve_state = if vacuum {
+                ValveState::Vacuum
+            } else {
+                ValveState::Atmosphere
+            };
+
+            guard.current_valve_state
+        };
+
+        self.write_laser_setup(LaserCtrl {
+            valve: Some(valve_state),
+            camera: Some(CameraState::Close),
+            ..Default::default()
+        })
+        .await
+    }
+
+    async fn write_laser_setup(&mut self, ctrl: LaserCtrl) -> Result<(), Error> {
+        self.laser_setup
+            .write(&ctrl)
+            .await
+            .map_err(Error::LaserSetup)
+            .map(|_| ())
     }
 }
