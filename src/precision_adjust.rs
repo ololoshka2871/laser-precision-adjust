@@ -53,15 +53,15 @@ pub struct PrivStatus {
 }
 
 pub struct Status {
-    current_channel: u32,
-    current_side: Side,
-    current_step: usize,
+    pub current_channel: u32,
+    pub current_side: Side,
+    pub current_step: usize,
 
-    timestamp: SystemTime,
-    current_frequency: f32,
+    pub since_start: Duration,
+    pub current_frequency: f32,
 
-    camera_state: CameraState,
-    valve_state: ValveState,
+    pub camera_state: CameraState,
+    pub valve_state: ValveState,
 }
 
 pub struct PrecisionAdjust {
@@ -158,46 +158,6 @@ impl PrecisionAdjust {
         self.get_gcode_result().await
     }
 
-    pub async fn print_status(&mut self, fmt: &mut impl std::io::Write) -> Result<(), IoError> {
-        use colored::Colorize;
-
-        match self.get_status().await {
-            Ok(status) => writeln!(
-                fmt,
-                "[{:0>8.3}]: [{}]; Ch: {}; Step: [{}:{}]; F: {}",
-                status
-                    .timestamp
-                    .duration_since(self.start_time)
-                    .unwrap()
-                    .as_millis() as f32
-                    / 1000.0,
-                match (status.camera_state, status.valve_state) {
-                    (CameraState::Close, ValveState::Atmosphere) => "Closed".green(),
-                    (CameraState::Close, ValveState::Vacuum) => "Vacuum".red(),
-                    (CameraState::Open, ValveState::Atmosphere) => "Open".blue(),
-                    (CameraState::Open, ValveState::Vacuum) => "Open+Vacuum".red().bold(),
-                },
-                format!("{:02}", status.current_channel).green().bold(),
-                format!("{:>2}", status.current_step).purple().bold(),
-                format!("{:>5?}", status.current_side).blue(),
-                format!("{:0>7.2}", status.current_frequency).yellow()
-            ),
-            Err(Error::Kosa(kosa_interface::Error::ZeroResponce)) => {
-                log::error!(
-                    "Kosa status channel not initialized! please call start_monitoring() first!"
-                );
-                return Ok(());
-            }
-            Err(e) => {
-                log::error!("Error getting status: {:?}", e);
-                Err(IoError::new(
-                    std::io::ErrorKind::Other,
-                    "Error getting status",
-                ))
-            }
-        }
-    }
-
     pub async fn get_status(&mut self) -> Result<Status, Error> {
         let mut guard = self.kosa_status_rx.lock().await;
         if let Some(rx) = guard.as_mut() {
@@ -208,7 +168,7 @@ impl PrecisionAdjust {
                     current_channel: status.current_channel,
                     current_side: status.current_side,
                     current_step: status.current_step,
-                    timestamp: t,
+                    since_start: t.duration_since(self.start_time).unwrap(),
                     current_frequency: f,
 
                     camera_state: status.current_camera_state,
@@ -334,7 +294,9 @@ impl PrecisionAdjust {
             let mut guard = self.status.lock().await;
 
             if guard.current_camera_state != CameraState::Close && vacuum {
-                return Err(Error::Logick("Close the camera before turn vacuum on!".to_string()));
+                return Err(Error::Logick(
+                    "Close the camera before turn vacuum on!".to_string(),
+                ));
             }
 
             guard.current_camera_state = CameraState::Close;

@@ -10,7 +10,7 @@ pub enum CliCommand {
 }
 
 pub enum CliError {
-    Parse,
+    Parse(String),
     Exit,
     IO(std::io::Error),
 }
@@ -21,6 +21,7 @@ impl From<std::io::Error> for CliError {
     }
 }
 
+/// Control commands
 #[derive(Parser)]
 struct Commands {
     #[command(subcommand)]
@@ -39,6 +40,7 @@ enum Com {
 
     /// Select channel to process
     Select {
+        /// Channel number [0..15]
         #[clap(value_parser=clap::value_parser!(u32).range(0..=16))]
         channel: u32,
     },
@@ -51,18 +53,15 @@ enum Com {
 
     /// Vacuum
     Vacuum {
+        /// Enable vacuum [true/false]
         #[clap(default_value = "true")]
         on: Option<bool>,
     },
 }
 
-pub fn parse_cli_command(
-    line: &str,
-    output: &mut impl std::io::Write,
-) -> Result<CliCommand, CliError> {
+pub fn parse_cli_command(line: &str) -> Result<CliCommand, CliError> {
     let Ok(mut r) = shellwords::split(line) else {
-        log::error!("error during process");
-        return Err(CliError::Parse);
+        return Err(CliError::Parse("Error during process".to_owned()));
     };
 
     r.insert(0, "CLI".to_string());
@@ -71,23 +70,18 @@ pub fn parse_cli_command(
         return Ok(CliCommand::None);
     }
 
-    if r[1] == "help" {
-        writeln!(output, "exit - exit the program")?;
-        writeln!(output, "help - print this help")?;
-        writeln!(output, "test - test connections")?;
-        writeln!(output, "select <channel> - select channel to process")?;
-        return Ok(CliCommand::None);
-    }
+    let cmd = Commands::try_parse_from(r);
 
-    let cmd = Commands::parse_from(r);
-
-    match cmd.command {
-        Com::Exit => Err(CliError::Exit),
-        Com::Test => Ok(CliCommand::TestConnection),
-        Com::Select { channel } => Ok(CliCommand::SelectChannel(channel)),
-        Com::Open => Ok(CliCommand::Open),
-        Com::Close => Ok(CliCommand::Close(false)),
-        Com::Vacuum { on } => Ok(CliCommand::Close(on.unwrap())),
+    match cmd {
+        Ok(cmd) => match cmd.command {
+            Com::Exit => Err(CliError::Exit),
+            Com::Test => Ok(CliCommand::TestConnection),
+            Com::Select { channel } => Ok(CliCommand::SelectChannel(channel)),
+            Com::Open => Ok(CliCommand::Open),
+            Com::Close => Ok(CliCommand::Close(false)),
+            Com::Vacuum { on } => Ok(CliCommand::Close(on.unwrap())),
+        },
+        Err(e) => Err(CliError::Parse(format!("{}", e))),
     }
 }
 

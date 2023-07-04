@@ -6,4 +6,4 @@ pub(crate) mod gcode_ctrl;
 pub mod coordinates;
 
 pub use config::Config;
-pub use precision_adjust::PrecisionAdjust;
+pub use precision_adjust::{PrecisionAdjust, Error, Status};
