@@ -26,6 +26,7 @@ directories = "5"
 rustyline-async = { version = "=0.3.0", default-features = false } # В версии 0.3.1 двоение букв
 
 colored = "2.0"
+shellwords = "1.1"
 
 ###
 

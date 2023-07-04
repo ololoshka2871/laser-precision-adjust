@@ -84,10 +84,11 @@ impl PrecisionAdjust {
     pub async fn test_connection(&mut self) -> Result<(), Error> {
         {
             let mut kosa = self.kosa.lock().await;
-            let kosa = kosa.as_mut().unwrap();
-            kosa.get_measurement(self.timeout)
+            if let Some(kosa) = kosa.as_mut() {
+                kosa.get_measurement(self.timeout)
                 .await
                 .map_err(Error::Kosa)?;
+            }
         }
 
         self.laser_setup.read().await.map_err(Error::LaserSetup)?;

@@ -2,7 +2,7 @@ mod cli;
 
 use std::io::Write;
 
-use cli::{process_command, CliError};
+use cli::{parse_cli_command, process_cli_command, CliError};
 
 use laser_precision_adjust::PrecisionAdjust;
 use rustyline_async::ReadlineError;
@@ -43,7 +43,7 @@ async fn main() -> Result<(), std::io::Error> {
                 Ok(line) => {
                     let line = line.trim();
 
-                    match process_command(line, &mut stdout) {
+                    match parse_cli_command(line, &mut stdout) {
                         Ok(cmd) => process_cli_command(&mut precision_adjust, cmd).await,
                         Err(CliError::Parse) => continue,
                         Err(CliError::Exit) | Err(CliError::IO(_)) => {
@@ -69,16 +69,4 @@ async fn main() -> Result<(), std::io::Error> {
     }
 }
 
-async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: cli::CliCommand) {
-    match cmd {
-        cli::CliCommand::None => {}
-        cli::CliCommand::TestConnection => {
-            log::info!("Testing connection...");
-            if let Err(e) = pa.test_connection().await {
-                log::error!("Failed to connect to: {:?}", e);
-            } else {
-                log::info!("Connection successful!");
-            }
-        }
-    }
-}
+
