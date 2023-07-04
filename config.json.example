@@ -3,7 +3,11 @@
     "LaserControlPort": "COM2",
     "KosaPort": "COM3",
     "PortTimeoutMs": 100,
+    "GCodeTimeoutMs": 1000,
     "VerticalStep": 100,
+    "BurnLaserS": 255.0,
+    "BurnLaserA": 35.0,
+    "BurnLaserF": 1000.0,
     "ResonatorsPlacement": [
         { "Xcenter": 0, "Ycenter": 0, "Width": 10, "Height": 10 },
         { "Xcenter": 0, "Ycenter": 0, "Width": 10, "Height": 10 },

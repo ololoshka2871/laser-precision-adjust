@@ -1,8 +1,7 @@
 use std::fmt::Write;
 
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::{Buf, BytesMut};
 
-use tokio::io::AsyncBufReadExt;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::gcode_ctrl::GCodeCtrl;

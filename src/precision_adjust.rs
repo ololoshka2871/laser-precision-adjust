@@ -46,7 +46,7 @@ impl ControlState for LaserCtrl {
 pub struct PrivStatus {
     current_channel: u32,
     current_side: Side,
-    current_step: usize,
+    current_step: u32,
 
     current_camera_state: CameraState,
     current_valve_state: ValveState,
@@ -55,7 +55,7 @@ pub struct PrivStatus {
 pub struct Status {
     pub current_channel: u32,
     pub current_side: Side,
-    pub current_step: usize,
+    pub current_step: u32,
 
     pub since_start: Duration,
     pub current_frequency: f32,
@@ -66,12 +66,13 @@ pub struct Status {
 
 pub struct PrecisionAdjust {
     positions: Vec<crate::config::ResonatroPlacement>,
-    total_vertical_steps: usize,
+    total_vertical_steps: u32,
 
     laser_setup: LaserSetup,
     laser_control: tokio_util::codec::Framed<tokio_serial::SerialStream, gcode_codec::LineCodec>,
     kosa: Mutex<Option<Kosa>>,
     timeout: Duration,
+    gcode_timeout: Duration,
 
     kosa_status_rx: Mutex<Option<tokio::sync::mpsc::Receiver<(SystemTime, f32)>>>,
 
@@ -80,11 +81,16 @@ pub struct PrecisionAdjust {
     kosa_update_locker: Arc<Mutex<()>>,
 
     start_time: SystemTime,
+
+    burn_laser_power: f32,
+    burn_laser_pump_power: f32,
+    burn_laser_feedrate: f32,
 }
 
 impl PrecisionAdjust {
     pub fn with_config(config: crate::Config) -> Self {
         let timeout = Duration::from_millis(config.port_timeout_ms);
+        let gcode_timeout = Duration::from_millis(config.gcode_timeout_ms);
         let laser_port = tokio_serial::new(config.laser_control_port, 1500000)
             .open_native_async()
             .unwrap();
@@ -99,6 +105,7 @@ impl PrecisionAdjust {
             kosa: Mutex::new(Some(kosa)),
             positions: config.resonator_placement,
             timeout,
+            gcode_timeout,
 
             kosa_status_rx: Mutex::new(None),
 
@@ -114,6 +121,10 @@ impl PrecisionAdjust {
             kosa_update_locker: Arc::new(Mutex::new(())),
 
             start_time: SystemTime::now(),
+
+            burn_laser_power: config.burn_laser_power,
+            burn_laser_pump_power: config.burn_laser_pump_power,
+            burn_laser_feedrate: config.burn_laser_feedrate,
         }
     }
 
@@ -134,7 +145,7 @@ impl PrecisionAdjust {
 
     async fn get_gcode_result(&mut self) -> Result<(), IoError> {
         use std::io::ErrorKind;
-        match tokio::time::timeout(self.timeout, self.laser_control.next()).await {
+        match tokio::time::timeout(self.gcode_timeout, self.laser_control.next()).await {
             Ok(Some(r)) => match r {
                 Ok(gcode_codec::CmdResp::Ok) => Ok(()),
                 Ok(gcode_codec::CmdResp::Err) => {
@@ -218,6 +229,20 @@ impl PrecisionAdjust {
         })
     }
 
+    pub async fn reset_laser(&mut self) -> Result<(), Error> {
+        let a = self.burn_laser_pump_power;
+
+        self.execute_gcode(move |status, _| {
+            let mut commands = vec![];
+
+            commands.push(GCodeCtrl::Reset);
+            commands.push(GCodeCtrl::Setup { a });
+
+            (status, commands)
+        })
+        .await
+    }
+
     pub async fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
         if channel >= self.positions.len() as u32 {
             return Err(Error::Logick(format!(
@@ -243,25 +268,19 @@ impl PrecisionAdjust {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
-        let new_pos = &self.positions[channel as usize];
+        let total_vertical_steps = self.total_vertical_steps;
+        self.execute_gcode(move |mut status, workspace| {
+            status.current_step += 1;
 
-        let new_abs_coordinates = new_pos.to_abs(0, Side::Left, self.total_vertical_steps);
-        let cmd = GCodeCtrl::G0 {
-            x: new_abs_coordinates.0,
-            y: new_abs_coordinates.1,
-        };
+            let new_abs_coordinates = workspace.to_abs(0, Side::Left, total_vertical_steps);
+            let cmd = GCodeCtrl::G0 {
+                x: new_abs_coordinates.0,
+                y: new_abs_coordinates.1,
+            };
 
-        log::trace!("Sending G0 command: {:?}", cmd);
-        self.laser_control
-            .send(cmd)
-            .await
-            .map_err(|e| Error::Laser(e))?;
-
-        log::trace!("Waiting conformation");
-        self.get_gcode_result().await.map_err(|e| {
-            log::error!("Can't setup initial position: {:?}", e);
-            Error::Laser(e)
-        })?;
+            (status, vec![cmd])
+        })
+        .await?;
 
         {
             // update status
@@ -323,5 +342,91 @@ impl PrecisionAdjust {
             .await
             .map_err(Error::LaserSetup)
             .map(|_| ())
+    }
+
+    async fn execute_gcode(
+        &mut self,
+        f: impl Fn(PrivStatus, &crate::config::ResonatroPlacement) -> (PrivStatus, Vec<GCodeCtrl>),
+    ) -> Result<(), Error> {
+        let prev_status = self.status.lock().await.clone();
+
+        let workspace = &self.positions[prev_status.current_channel as usize];
+
+        let (new_status, cmds) = f(prev_status, workspace);
+
+        for cmd in cmds {
+            log::trace!("Sending {:?}...", cmd);
+            self.laser_control
+                .send(cmd)
+                .await
+                .map_err(|e| Error::Laser(e))?;
+
+            log::trace!("Waiting conformation");
+            self.get_gcode_result().await.map_err(|e| {
+                log::error!("Can't setup initial position: {:?}", e);
+                Error::Laser(e)
+            })?;
+        }
+
+        {
+            let mut guard = self.status.lock().await;
+            *guard = new_status;
+        }
+
+        Ok(())
+    }
+
+    pub async fn step(&mut self) -> Result<(), Error> {
+        let total_vertical_steps = self.total_vertical_steps;
+
+        self.execute_gcode(move |mut status, workspace| {
+            status.current_step += 1;
+
+            let new_abs_coordinates = workspace.to_abs(
+                status.current_step,
+                status.current_side,
+                total_vertical_steps,
+            );
+            let cmd = GCodeCtrl::G0 {
+                x: new_abs_coordinates.0,
+                y: new_abs_coordinates.1,
+            };
+
+            (status, vec![cmd])
+        })
+        .await
+    }
+
+    pub async fn burn(&mut self) -> Result<(), Error> {
+        let total_vertical_steps = self.total_vertical_steps;
+        let burn_laser_power = self.burn_laser_power;
+        let f = self.burn_laser_feedrate;
+
+        self.execute_gcode(move |mut status, workspace| {
+            let mut commands = vec![];
+
+            status.current_side = status.current_side.morrored();
+
+            let new_abs_coordinates = workspace.to_abs(
+                status.current_step,
+                status.current_side,
+                total_vertical_steps,
+            );
+
+            let cmd = GCodeCtrl::G1 {
+                x: new_abs_coordinates.0,
+                y: new_abs_coordinates.1,
+                f,
+            };
+
+            commands.push(GCodeCtrl::M3 {
+                s: burn_laser_power,
+            });
+            commands.push(cmd);
+            commands.push(GCodeCtrl::M5);
+
+            (status, commands)
+        })
+        .await
     }
 }

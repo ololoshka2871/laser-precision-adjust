@@ -28,9 +28,21 @@ pub struct Config {
 
     #[serde(rename = "PortTimeoutMs")]
     pub port_timeout_ms: u64,
+
+    #[serde(rename = "GCodeTimeoutMs")]
+    pub gcode_timeout_ms: u64,
+
+    #[serde(rename = "BurnLaserS")]
+    pub burn_laser_power: f32,
+
+    #[serde(rename = "BurnLaserA")]
+    pub burn_laser_pump_power: f32,
+
+    #[serde(rename = "BurnLaserF")]
+    pub burn_laser_feedrate: f32,
     
     #[serde(rename = "VerticalStep")]
-    pub total_vertical_steps: usize,
+    pub total_vertical_steps: u32,
 
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,

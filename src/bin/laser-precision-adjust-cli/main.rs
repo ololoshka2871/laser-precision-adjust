@@ -33,6 +33,10 @@ async fn main() -> Result<(), std::io::Error> {
     }
 
     let _monitoring = precision_adjust.start_monitoring().await;
+    precision_adjust
+        .reset_laser()
+        .await
+        .expect("Can't reset laser!");
 
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();
 
