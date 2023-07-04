@@ -4,7 +4,7 @@ use laser_precision_adjust::PrecisionAdjust;
 pub enum CliCommand {
     None,
     TestConnection,
-    SelectChannel(usize),
+    SelectChannel(u32),
 }
 
 pub enum CliError {
@@ -37,8 +37,8 @@ enum Com {
 
     /// Select channel to process
     Select {
-        #[clap(value_parser=clap::value_parser!(u8).range(0..=16))]
-        channel: usize,
+        #[clap(value_parser=clap::value_parser!(u32).range(0..=16))]
+        channel: u32,
     },
 }
 
@@ -57,10 +57,11 @@ pub fn parse_cli_command(
         return Ok(CliCommand::None);
     }
 
-    if r[0] == "help" {
+    if r[1] == "help" {
         writeln!(output, "exit - exit the program")?;
         writeln!(output, "help - print this help")?;
         writeln!(output, "test - test connections")?;
+        writeln!(output, "select <channel> - select channel to process")?;
         return Ok(CliCommand::None);
     }
 
@@ -86,12 +87,11 @@ pub async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: CliCommand) {
         }
         CliCommand::SelectChannel(channel) => {
             log::info!("Selecting channel {}...", channel);
-            /*
             if let Err(e) = pa.select_channel(channel).await {
                 log::error!("Failed to select channel: {:?}", e);
             } else {
                 log::info!("Channel selected!");
-            }*/
+            }
         }
     }
 }

@@ -3,16 +3,16 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct ResonatroPlacement {
     #[serde(rename = "Xcenter")]
-    pub x: f64,
+    pub x: f32,
 
     #[serde(rename = "Ycenter")]
-    pub y: f64,
+    pub y: f32,
 
     #[serde(rename = "Width")]
-    pub w: f64,
+    pub w: f32,
 
     #[serde(rename = "Height")]
-    pub h: f64,
+    pub h: f32,
 }
 
 #[derive(Deserialize)]
@@ -28,6 +28,9 @@ pub struct Config {
 
     #[serde(rename = "PortTimeoutMs")]
     pub port_timeout_ms: u64,
+    
+    #[serde(rename = "VerticalStep")]
+    pub total_vertical_steps: usize,
 
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
