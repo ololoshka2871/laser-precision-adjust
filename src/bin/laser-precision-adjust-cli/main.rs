@@ -32,13 +32,13 @@ async fn main() -> Result<(), std::io::Error> {
         log::info!("Connection successful!");
     }
 
-    precision_adjust.start_monitoring().await;
+    let _monitoring = precision_adjust.start_monitoring().await;
 
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();
 
     loop {
         tokio::select! {
-                _ = precision_adjust.status(&mut stdout) => { /* show status */ }
+                _ = precision_adjust.print_status(&mut stdout) => { /* show status */ }
                 line = rl.readline() => match line {
                 Ok(line) => {
                     let line = line.trim();

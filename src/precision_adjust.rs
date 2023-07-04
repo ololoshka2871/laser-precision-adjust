@@ -18,8 +18,25 @@ pub enum Error {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Status {
+pub enum Side {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PrivStatus {
     current_channel: usize,
+    current_side: Side,
+    current_step: usize,
+}
+
+pub struct Status {
+    current_channel: usize,
+    current_side: Side,
+    current_step: usize,
+
+    timestamp: SystemTime,
+    current_frequency: f32,
 }
 
 pub struct PrecisionAdjust {
@@ -31,7 +48,7 @@ pub struct PrecisionAdjust {
 
     kosa_status_rx: Mutex<Option<tokio::sync::mpsc::Receiver<(SystemTime, f32)>>>,
 
-    status: Mutex<Status>,
+    status: Mutex<PrivStatus>,
 
     start_time: SystemTime,
 }
@@ -54,7 +71,11 @@ impl PrecisionAdjust {
 
             kosa_status_rx: Mutex::new(None),
 
-            status: Mutex::new(Status { current_channel: 0 }),
+            status: Mutex::new(PrivStatus {
+                current_channel: 0,
+                current_side: Side::Left,
+                current_step: 0,
+            }),
 
             start_time: SystemTime::now(),
         }
@@ -100,20 +121,53 @@ impl PrecisionAdjust {
         self.get_gcode_result().await
     }
 
-    pub async fn status(&mut self, fmt: &mut impl std::io::Write) -> Result<(), IoError> {
+    pub async fn print_status(&mut self, fmt: &mut impl std::io::Write) -> Result<(), IoError> {
+        use colored::Colorize;
+
+        match self.get_status().await {
+            Ok(status) => writeln!(
+                fmt,
+                "[{:0>8.3}]: Ch: {}; Step: [{}:{}]; F: {}",
+                status
+                    .timestamp
+                    .duration_since(self.start_time)
+                    .unwrap()
+                    .as_millis() as f32
+                    / 1000.0,
+                format!("{:02}", status.current_channel).green().bold(),
+                format!("{:>2}", status.current_step).purple().bold(),
+                format!("{:>5?}", status.current_side).blue(),
+                format!("{:0>7.2}", status.current_frequency).yellow()
+            ),
+            Err(Error::Kosa(kosa_interface::Error::ZeroResponce)) => {
+                log::error!(
+                    "Kosa status channel not initialized! please call start_monitoring() first!"
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                log::error!("Error getting status: {:?}", e);
+                Err(IoError::new(
+                    std::io::ErrorKind::Other,
+                    "Error getting status",
+                ))
+            }
+        }
+    }
+
+    pub async fn get_status(&mut self) -> Result<Status, Error> {
         let mut guard = self.kosa_status_rx.lock().await;
         if let Some(rx) = guard.as_mut() {
             if let Some((t, f)) = rx.recv().await {
                 let status = self.status.lock().await;
-                writeln!(
-                    fmt,
-                    "Ch: {}; [{:0.3}] F = {:.2}",
-                    status.current_channel,
-                    t.duration_since(self.start_time)
-                        .unwrap()
-                        .as_millis() as f32 / 1000.0,
-                    f
-                )
+
+                Ok(Status {
+                    current_channel: status.current_channel,
+                    current_side: status.current_side,
+                    current_step: status.current_step,
+                    timestamp: t,
+                    current_frequency: f,
+                })
             } else {
                 unreachable!()
             }
@@ -121,11 +175,11 @@ impl PrecisionAdjust {
             log::error!(
                 "Kosa status channel not initialized! please call start_monitoring() first!"
             );
-            return Ok(());
+            return Err(Error::Kosa(kosa_interface::Error::ZeroResponce));
         }
     }
 
-    pub async fn start_monitoring(&mut self) {
+    pub async fn start_monitoring(&mut self) -> tokio::task::JoinHandle<()> {
         let mut kosa = self.kosa.lock().await.take().expect("Kosa already taken!");
         let (tx, rx) = tokio::sync::mpsc::channel(1);
         self.kosa_status_rx.lock().await.replace(rx);
@@ -145,6 +199,6 @@ impl PrecisionAdjust {
                     Err(e) => log::debug!("Kosa error: {:?}", e),
                 }
             }
-        });
+        })
     }
 }
