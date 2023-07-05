@@ -34,7 +34,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let _monitoring = precision_adjust.start_monitoring().await;
     precision_adjust
-        .reset_laser()
+        .reset()
         .await
         .expect("Can't reset laser!");
 
@@ -83,7 +83,7 @@ fn print_status(
     match status {
         Ok(status) => writeln!(
             stdout,
-            "[{:0>8.3}]: [{}]; Ch: {}; Step: [{}:{}]; F: {}",
+            "[{:0>8.3}]: [{}]; Ch: {}; Step: [{}:{}]; F: {} Hz",
             status.since_start.as_millis() as f32 / 1000.0,
             match (status.camera_state, status.valve_state) {
                 (CameraState::Close, ValveState::Atmosphere) => "Closed".green(),
@@ -94,7 +94,7 @@ fn print_status(
             format!("{:02}", status.current_channel).green().bold(),
             format!("{:>2}", status.current_step).purple().bold(),
             format!("{:>5?}", status.current_side).blue(),
-            format!("{:0>7.2}", status.current_frequency).yellow()
+            format!("{:0>8.3}", status.current_frequency).yellow()
         ),
         Err(Error::Kosa(kosa_interface::Error::ZeroResponce)) => {
             log::error!(

@@ -229,7 +229,7 @@ impl PrecisionAdjust {
         })
     }
 
-    pub async fn reset_laser(&mut self) -> Result<(), Error> {
+    pub async fn reset(&mut self) -> Result<(), Error> {
         let a = self.burn_laser_pump_power;
 
         self.execute_gcode(move |status, _| {
@@ -240,7 +240,22 @@ impl PrecisionAdjust {
 
             (status, commands)
         })
-        .await
+        .await?;
+
+        // read current laser setup state
+        let state = self
+            .laser_setup
+            .write(&LaserCtrl::default())
+            .await
+            .map_err(Error::LaserSetup)?;
+        {
+            let mut status = self.status.lock().await;
+            status.current_channel = state.channel;
+            status.current_valve_state = state.valve;
+            status.current_camera_state = state.camera;
+        }
+
+        Ok(())
     }
 
     pub async fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
