@@ -232,23 +232,27 @@ impl PrecisionAdjust {
     pub async fn reset(&mut self) -> Result<(), Error> {
         let a = self.burn_laser_pump_power;
 
-        self.execute_gcode(move |status, _| {
-            let mut commands = vec![];
+        let status = self.status.lock().await.clone();
 
-            commands.push(GCodeCtrl::Reset);
-            commands.push(GCodeCtrl::Setup { a });
+        let mut new_status = self
+            .execute_gcode(status, move |status, _| {
+                let mut commands = vec![];
 
-            (status, commands)
-        })
-        .await?;
+                commands.push(GCodeCtrl::Reset);
+                commands.push(GCodeCtrl::Setup { a });
+
+                (status, commands)
+            })
+            .await?;
 
         // read current laser setup state
         let state = self.laser_setup.read().await.map_err(Error::LaserSetup)?;
         {
-            let mut status = self.status.lock().await;
-            status.current_channel = state.channel;
-            status.current_valve_state = state.valve;
-            status.current_camera_state = state.camera;
+            let mut guard = self.status.lock().await;
+            new_status.current_channel = state.channel;
+            new_status.current_valve_state = state.valve;
+            new_status.current_camera_state = state.camera;
+            *guard = new_status;
         }
 
         Ok(())
@@ -280,26 +284,24 @@ impl PrecisionAdjust {
         }
 
         let total_vertical_steps = self.total_vertical_steps;
-        self.execute_gcode(move |mut status, workspace| {
-            status.current_step += 1;
+        let mut status = self.status.lock().await.clone();
+        status.current_channel = channel;
+        let new_status = self
+            .execute_gcode(status, move |mut status, workspace| {
+                status.current_step = 0;
+                status.current_side = Side::Left;
 
-            let new_abs_coordinates = workspace.to_abs(0, Side::Left, total_vertical_steps);
-            let cmd = GCodeCtrl::G0 {
-                x: new_abs_coordinates.0,
-                y: new_abs_coordinates.1,
-            };
+                let new_abs_coordinates = workspace.to_abs(0, Side::Left, total_vertical_steps);
+                let cmd = GCodeCtrl::G0 {
+                    x: new_abs_coordinates.0,
+                    y: new_abs_coordinates.1,
+                };
 
-            (status, vec![cmd])
-        })
-        .await?;
+                (status, vec![cmd])
+            })
+            .await?;
 
-        {
-            // update status
-            let mut status = self.status.lock().await;
-            status.current_channel = channel;
-            status.current_side = Side::Left;
-            status.current_step = 0;
-        }
+        self.update_status(new_status).await;
 
         Ok(())
     }
@@ -357,13 +359,12 @@ impl PrecisionAdjust {
 
     async fn execute_gcode(
         &mut self,
+        status: PrivStatus,
         f: impl Fn(PrivStatus, &crate::config::ResonatroPlacement) -> (PrivStatus, Vec<GCodeCtrl>),
-    ) -> Result<(), Error> {
-        let prev_status = self.status.lock().await.clone();
+    ) -> Result<PrivStatus, Error> {
+        let workspace = &self.positions[status.current_channel as usize];
 
-        let workspace = &self.positions[prev_status.current_channel as usize];
-
-        let (new_status, cmds) = f(prev_status, workspace);
+        let (new_status, cmds) = f(status, workspace);
 
         for cmd in cmds {
             log::trace!("Sending {:?}...", cmd);
@@ -379,66 +380,73 @@ impl PrecisionAdjust {
             })?;
         }
 
-        {
-            let mut guard = self.status.lock().await;
-            *guard = new_status;
-        }
-
-        Ok(())
+        Ok(new_status)
     }
 
     pub async fn step(&mut self) -> Result<(), Error> {
         let total_vertical_steps = self.total_vertical_steps;
+        let status = self.status.lock().await.clone();
 
-        self.execute_gcode(move |mut status, workspace| {
-            status.current_step += 1;
+        let new_status = self
+            .execute_gcode(status, move |mut status, workspace| {
+                status.current_step += 1;
 
-            let new_abs_coordinates = workspace.to_abs(
-                status.current_step,
-                status.current_side,
-                total_vertical_steps,
-            );
-            let cmd = GCodeCtrl::G0 {
-                x: new_abs_coordinates.0,
-                y: new_abs_coordinates.1,
-            };
+                let new_abs_coordinates = workspace.to_abs(
+                    status.current_step,
+                    status.current_side,
+                    total_vertical_steps,
+                );
+                let cmd = GCodeCtrl::G0 {
+                    x: new_abs_coordinates.0,
+                    y: new_abs_coordinates.1,
+                };
 
-            (status, vec![cmd])
-        })
-        .await
+                (status, vec![cmd])
+            })
+            .await?;
+
+        self.update_status(new_status).await;
+
+        Ok(())
     }
 
     pub async fn burn(&mut self) -> Result<(), Error> {
         let total_vertical_steps = self.total_vertical_steps;
         let burn_laser_power = self.burn_laser_power;
         let f = self.burn_laser_feedrate;
+        let status = self.status.lock().await.clone();
 
-        self.execute_gcode(move |mut status, workspace| {
-            let mut commands = vec![];
+        let new_status = self
+            .execute_gcode(status, move |mut status, workspace| {
+                let mut commands = vec![];
 
-            status.current_side = status.current_side.morrored();
+                status.current_side = status.current_side.morrored();
 
-            let new_abs_coordinates = workspace.to_abs(
-                status.current_step,
-                status.current_side,
-                total_vertical_steps,
-            );
+                let new_abs_coordinates = workspace.to_abs(
+                    status.current_step,
+                    status.current_side,
+                    total_vertical_steps,
+                );
 
-            let cmd = GCodeCtrl::G1 {
-                x: new_abs_coordinates.0,
-                y: new_abs_coordinates.1,
-                f,
-            };
+                let cmd = GCodeCtrl::G1 {
+                    x: new_abs_coordinates.0,
+                    y: new_abs_coordinates.1,
+                    f,
+                };
 
-            commands.push(GCodeCtrl::M3 {
-                s: burn_laser_power,
-            });
-            commands.push(cmd);
-            commands.push(GCodeCtrl::M5);
+                commands.push(GCodeCtrl::M3 {
+                    s: burn_laser_power,
+                });
+                commands.push(cmd);
+                commands.push(GCodeCtrl::M5);
 
-            (status, commands)
-        })
-        .await
+                (status, commands)
+            })
+            .await?;
+
+        self.update_status(new_status).await;
+
+        Ok(())
     }
 
     pub async fn show(
@@ -455,45 +463,56 @@ impl PrecisionAdjust {
         let a = override_pump.unwrap_or(self.burn_laser_pump_power);
         let default_a = self.burn_laser_pump_power;
         let total_vertical_steps = self.total_vertical_steps;
+        let status = self.status.lock().await.clone();
 
-        self.execute_gcode(move |mut status, workspace| {
-            let pos2g1 = |step: u32, side: Side| -> GCodeCtrl {
-                let new_abs_coordinates = workspace.to_abs(step, side, total_vertical_steps);
+        let new_status = self
+            .execute_gcode(status, move |mut status, workspace| {
+                let pos2g1 = |step: u32, side: Side| -> GCodeCtrl {
+                    let new_abs_coordinates = workspace.to_abs(step, side, total_vertical_steps);
 
-                GCodeCtrl::G1 {
-                    x: new_abs_coordinates.0,
-                    y: new_abs_coordinates.1,
-                    f,
+                    GCodeCtrl::G1 {
+                        x: new_abs_coordinates.0,
+                        y: new_abs_coordinates.1,
+                        f,
+                    }
+                };
+
+                let mut commands = vec![];
+
+                if burn {
+                    commands.push(GCodeCtrl::Raw(format!("G0 A{a}")));
+                    commands.push(GCodeCtrl::M3 { s });
                 }
-            };
 
-            let mut commands = vec![];
+                let init_cmd = pos2g1(0, Side::Left);
+                commands.push(init_cmd.clone());
 
-            if burn {
-                commands.push(GCodeCtrl::Raw(format!("G0 A{a}")));
-                commands.push(GCodeCtrl::M3 { s });
-            }
+                for _ in 0..SHOW_COUNT {
+                    commands.push(pos2g1(0, Side::Right));
+                    commands.push(pos2g1(total_vertical_steps - 1, Side::Right));
+                    commands.push(pos2g1(total_vertical_steps - 1, Side::Left));
 
-            let init_cmd = pos2g1(0, Side::Left);
-            commands.push(init_cmd.clone());
+                    commands.push(init_cmd.clone()); // to init possition
+                }
+                status.current_side = Side::Left;
+                status.current_step = 0;
 
-            for _ in 0..SHOW_COUNT {
-                commands.push(pos2g1(0, Side::Right));
-                commands.push(pos2g1(total_vertical_steps - 1, Side::Right));
-                commands.push(pos2g1(total_vertical_steps - 1, Side::Left));
+                if burn {
+                    commands.push(GCodeCtrl::M5);
+                    commands.push(GCodeCtrl::Raw(format!("G0 A{default_a}")));
+                }
 
-                commands.push(init_cmd.clone()); // to init possition
-            }
-            status.current_side = Side::Left;
-            status.current_step = 0;
+                (status, commands)
+            })
+            .await?;
 
-            if burn {
-                commands.push(GCodeCtrl::M5);
-                commands.push(GCodeCtrl::Raw(format!("G0 A{default_a}")));
-            }
+        self.update_status(new_status).await;
 
-            (status, commands)
-        })
-        .await
+        Ok(())
+    }
+
+    async fn update_status(&mut self, new_status: PrivStatus) {
+        let mut guard = self.status.lock().await;
+        *guard = new_status;
     }
 }
