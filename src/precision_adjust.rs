@@ -85,6 +85,8 @@ pub struct PrecisionAdjust {
     burn_laser_power: f32,
     burn_laser_pump_power: f32,
     burn_laser_feedrate: f32,
+
+    axis_config: crate::config::AxisConfig,
 }
 
 impl PrecisionAdjust {
@@ -125,6 +127,8 @@ impl PrecisionAdjust {
             burn_laser_power: config.burn_laser_power,
             burn_laser_pump_power: config.burn_laser_pump_power,
             burn_laser_feedrate: config.burn_laser_feedrate,
+
+            axis_config: config.axis_config,
         }
     }
 
@@ -232,7 +236,7 @@ impl PrecisionAdjust {
     pub async fn reset(&mut self) -> Result<(), Error> {
         let a = self.burn_laser_pump_power;
 
-        let status = self.status.lock().await.clone();
+        let status = self.current_status().await;
 
         let mut new_status = self
             .execute_gcode(status, move |status, _| {
@@ -283,15 +287,17 @@ impl PrecisionAdjust {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
+        let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
-        let mut status = self.status.lock().await.clone();
+        let mut status = self.current_status().await;
         status.current_channel = channel;
         let new_status = self
             .execute_gcode(status, move |mut status, workspace| {
                 status.current_step = 0;
                 status.current_side = Side::Left;
 
-                let new_abs_coordinates = workspace.to_abs(0, Side::Left, total_vertical_steps);
+                let new_abs_coordinates =
+                    workspace.to_abs(&ax_conf, 0, Side::Left, total_vertical_steps);
                 let cmd = GCodeCtrl::G0 {
                     x: new_abs_coordinates.0,
                     y: new_abs_coordinates.1,
@@ -384,14 +390,16 @@ impl PrecisionAdjust {
     }
 
     pub async fn step(&mut self) -> Result<(), Error> {
+        let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
-        let status = self.status.lock().await.clone();
+        let status = self.current_status().await;
 
         let new_status = self
             .execute_gcode(status, move |mut status, workspace| {
                 status.current_step += 1;
 
                 let new_abs_coordinates = workspace.to_abs(
+                    &ax_conf,
                     status.current_step,
                     status.current_side,
                     total_vertical_steps,
@@ -411,10 +419,11 @@ impl PrecisionAdjust {
     }
 
     pub async fn burn(&mut self) -> Result<(), Error> {
+        let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
         let burn_laser_power = self.burn_laser_power;
         let f = self.burn_laser_feedrate;
-        let status = self.status.lock().await.clone();
+        let status = self.current_status().await;
 
         let new_status = self
             .execute_gcode(status, move |mut status, workspace| {
@@ -423,6 +432,7 @@ impl PrecisionAdjust {
                 status.current_side = status.current_side.morrored();
 
                 let new_abs_coordinates = workspace.to_abs(
+                    &ax_conf,
                     status.current_step,
                     status.current_side,
                     total_vertical_steps,
@@ -463,12 +473,14 @@ impl PrecisionAdjust {
         let a = override_pump.unwrap_or(self.burn_laser_pump_power);
         let default_a = self.burn_laser_pump_power;
         let total_vertical_steps = self.total_vertical_steps;
-        let status = self.status.lock().await.clone();
+        let status = self.current_status().await;
+        let ax_conf = self.axis_config;
 
         let new_status = self
             .execute_gcode(status, move |mut status, workspace| {
                 let pos2g1 = |step: u32, side: Side| -> GCodeCtrl {
-                    let new_abs_coordinates = workspace.to_abs(step, side, total_vertical_steps);
+                    let new_abs_coordinates =
+                        workspace.to_abs(&ax_conf, step, side, total_vertical_steps);
 
                     GCodeCtrl::G1 {
                         x: new_abs_coordinates.0,
@@ -509,6 +521,10 @@ impl PrecisionAdjust {
         self.update_status(new_status).await;
 
         Ok(())
+    }
+
+    async fn current_status(&mut self) -> PrivStatus {
+        self.status.lock().await.clone()
     }
 
     async fn update_status(&mut self, new_status: PrivStatus) {

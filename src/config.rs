@@ -15,6 +15,18 @@ pub struct ResonatroPlacement {
     pub h: f32,
 }
 
+#[derive(Deserialize, Clone, Copy)]
+pub struct AxisConfig {
+    #[serde(rename = "SwapXY")]
+    pub swap_xy: bool,
+
+    #[serde(rename = "ReverseX")]
+    pub reverse_x: bool,
+
+    #[serde(rename = "ReverseY")]
+    pub reverse_y: bool,
+}
+
 #[derive(Deserialize)]
 pub struct Config {
     #[serde(rename = "LaserSetupPort")]
@@ -32,6 +44,9 @@ pub struct Config {
     #[serde(rename = "GCodeTimeoutMs")]
     pub gcode_timeout_ms: u64,
 
+    #[serde(rename = "AxisConfig")]
+    pub axis_config: AxisConfig,
+
     #[serde(rename = "BurnLaserS")]
     pub burn_laser_power: f32,
 
@@ -40,7 +55,7 @@ pub struct Config {
 
     #[serde(rename = "BurnLaserF")]
     pub burn_laser_feedrate: f32,
-    
+
     #[serde(rename = "VerticalStep")]
     pub total_vertical_steps: u32,
 
@@ -77,13 +92,29 @@ impl std::fmt::Display for Config {
         writeln!(f, "LaserSetupPort: {}", self.laser_setup_port)?;
         writeln!(f, "LaserControlPort: {}", self.laser_control_port)?;
         writeln!(f, "KosaPort: {}", self.kosa_port)?;
+        writeln!(f, "PortTimeoutMs: {}", self.port_timeout_ms)?;
+        writeln!(f, "GCodeTimeoutMs: {}", self.gcode_timeout_ms)?;
+
+        writeln!(f, "AxisConfig:")?;
+        writeln!(f, "  SwapXY: {}", self.axis_config.swap_xy)?;
+        writeln!(f, "  ReverseX: {}", self.axis_config.reverse_x)?;
+        writeln!(f, "  ReverseY: {}", self.axis_config.reverse_y)?;
+
+        writeln!(f, "BurnLaserS: {}", self.burn_laser_power)?;
+        writeln!(f, "BurnLaserA: {}", self.burn_laser_pump_power)?;
+        writeln!(f, "BurnLaserF: {}", self.burn_laser_feedrate)?;
+        writeln!(f, "VerticalStep: {}", self.total_vertical_steps)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;
         writeln!(f, "  Center\t| Width\t| Height")?;
         writeln!(f, "  ------\t| -----\t| ------")?;
         for placement in &self.resonator_placement {
-            writeln!(f, "  X{} Y{}\t| {}\t| {}", placement.x, placement.y, placement.w, placement.h)?;
+            writeln!(
+                f,
+                "  X{} Y{}\t| {}\t| {}",
+                placement.x, placement.y, placement.w, placement.h
+            )?;
         }
         Ok(())
     }
