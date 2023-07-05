@@ -48,7 +48,10 @@ async fn main() -> Result<(), std::io::Error> {
                     let line = line.trim();
 
                     match parse_cli_command(line) {
-                        Ok(cmd) => process_cli_command(&mut precision_adjust, cmd).await,
+                        Ok(cmd) => {
+                            process_cli_command(&mut precision_adjust, cmd).await;
+                            rl.add_history_entry(line.to_owned());
+                        },
                         Err(CliError::Parse(e)) => write!(stdout, "\n{}", e)?,
                         Err(CliError::Exit) | Err(CliError::IO(_)) => {
                             writeln!(stdout, "Exiting...")?;

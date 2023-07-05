@@ -245,7 +245,7 @@ impl PrecisionAdjust {
         // read current laser setup state
         let state = self
             .laser_setup
-            .write(&LaserCtrl::default())
+            .read()
             .await
             .map_err(Error::LaserSetup)?;
         {
