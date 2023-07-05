@@ -243,11 +243,7 @@ impl PrecisionAdjust {
         .await?;
 
         // read current laser setup state
-        let state = self
-            .laser_setup
-            .read()
-            .await
-            .map_err(Error::LaserSetup)?;
+        let state = self.laser_setup.read().await.map_err(Error::LaserSetup)?;
         {
             let mut status = self.status.lock().await;
             status.current_channel = state.channel;
@@ -439,6 +435,62 @@ impl PrecisionAdjust {
             });
             commands.push(cmd);
             commands.push(GCodeCtrl::M5);
+
+            (status, commands)
+        })
+        .await
+    }
+
+    pub async fn show(
+        &mut self,
+        burn: bool,
+        override_pump: Option<f32>,
+        override_s: Option<f32>,
+        override_f: Option<f32>,
+    ) -> Result<(), Error> {
+        const SHOW_COUNT: u32 = 2;
+
+        let s = override_s.unwrap_or(self.burn_laser_power);
+        let f = override_f.unwrap_or(self.burn_laser_feedrate);
+        let a = override_pump.unwrap_or(self.burn_laser_pump_power);
+        let default_a = self.burn_laser_pump_power;
+        let total_vertical_steps = self.total_vertical_steps;
+
+        self.execute_gcode(move |mut status, workspace| {
+            let pos2g1 = |step: u32, side: Side| -> GCodeCtrl {
+                let new_abs_coordinates = workspace.to_abs(step, side, total_vertical_steps);
+
+                GCodeCtrl::G1 {
+                    x: new_abs_coordinates.0,
+                    y: new_abs_coordinates.1,
+                    f,
+                }
+            };
+
+            let mut commands = vec![];
+
+            if burn {
+                commands.push(GCodeCtrl::Raw(format!("G0 A{a}")));
+                commands.push(GCodeCtrl::M3 { s });
+            }
+
+            let init_cmd = pos2g1(0, Side::Left);
+            commands.push(init_cmd.clone());
+
+            for _ in 0..SHOW_COUNT {
+                commands.push(pos2g1(0, Side::Right));
+                commands.push(pos2g1(total_vertical_steps - 1, Side::Right));
+                commands.push(pos2g1(total_vertical_steps - 1, Side::Left));
+
+                commands.push(init_cmd.clone()); // to init possition
+            }
+            status.current_side = Side::Left;
+            status.current_step = 0;
+
+            if burn {
+                commands.push(GCodeCtrl::M5);
+                commands.push(GCodeCtrl::Raw(format!("G0 A{default_a}")));
+            }
 
             (status, commands)
         })

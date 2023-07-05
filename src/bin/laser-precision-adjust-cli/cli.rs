@@ -10,6 +10,12 @@ pub enum CliCommand {
     Close(bool),
     Step,
     Burn,
+    Show {
+        burn: bool,
+        pump: Option<f32>,
+        s: Option<f32>,
+        f: Option<f32>,
+    },
 }
 
 pub enum CliError {
@@ -73,6 +79,25 @@ enum Com {
     /// Perform horisontal burn step
     #[clap(alias = "b")]
     Burn,
+
+    /// Show current working area
+    Show {
+        /// enable burning
+        #[clap(short, long)]
+        burn: bool,
+
+        /// Override pump power
+        #[clap(short, long)]
+        pump: Option<f32>,
+
+        /// Override laser power
+        #[clap(short, long)]
+        s: Option<f32>,
+
+        /// Override feedrate
+        #[clap(short, long)]
+        f: Option<f32>,
+    },
 }
 
 pub fn parse_cli_command(line: &str) -> Result<CliCommand, CliError> {
@@ -102,6 +127,7 @@ pub fn parse_cli_command(line: &str) -> Result<CliCommand, CliError> {
                 Com::Vacuum { on } => Ok(CliCommand::Close(on.unwrap())),
                 Com::Step => Ok(CliCommand::Step),
                 Com::Burn => Ok(CliCommand::Burn),
+                Com::Show { burn, pump, s, f } => Ok(CliCommand::Show { burn, pump, s, f }),
             };
             unsafe {
                 LAST_CMD = new_cmd.as_ref().unwrap_or(&CliCommand::None).clone();
@@ -148,6 +174,11 @@ pub async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: CliCommand) {
         CliCommand::Burn => {
             if let Err(e) = pa.burn().await {
                 log::error!("Failed to perform burn: {:?}", e);
+            }
+        }
+        CliCommand::Show { burn, pump, s, f } => {
+            if let Err(e) = pa.show(burn, pump, s, f).await {
+                log::error!("Failed to show: {:?}", e);
             }
         }
     }
