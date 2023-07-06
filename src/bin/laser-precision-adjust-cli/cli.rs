@@ -8,7 +8,7 @@ pub enum CliCommand {
     SelectChannel(u32),
     Open,
     Close(bool),
-    Step,
+    Step(i8),
     Burn,
     Show {
         burn: bool,
@@ -74,7 +74,10 @@ enum Com {
 
     /// Perform vertical step
     #[clap(alias = "s")]
-    Step,
+    Step {
+        #[clap(default_value = "1")]
+        count: Option<i8>,
+    },
 
     /// Perform horisontal burn step
     #[clap(alias = "b")]
@@ -125,7 +128,7 @@ pub fn parse_cli_command(line: &str) -> Result<CliCommand, CliError> {
                 Com::Open => Ok(CliCommand::Open),
                 Com::Close => Ok(CliCommand::Close(false)),
                 Com::Vacuum { on } => Ok(CliCommand::Close(on.unwrap())),
-                Com::Step => Ok(CliCommand::Step),
+                Com::Step { count } => Ok(CliCommand::Step(count.unwrap())),
                 Com::Burn => Ok(CliCommand::Burn),
                 Com::Show { burn, pump, s, f } => Ok(CliCommand::Show { burn, pump, s, f }),
             };
@@ -166,8 +169,8 @@ pub async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: CliCommand) {
                 log::error!("Failed to close camera: {:?}", e);
             }
         }
-        CliCommand::Step => {
-            if let Err(e) = pa.step().await {
+        CliCommand::Step(count) => {
+            if let Err(e) = pa.step(count).await {
                 log::error!("Failed to perform step: {:?}", e);
             }
         }

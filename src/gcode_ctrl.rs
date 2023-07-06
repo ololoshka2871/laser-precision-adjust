@@ -27,8 +27,8 @@ pub enum GCodeCtrl {
 impl Display for GCodeCtrl {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GCodeCtrl::Reset => writeln!(fmt, "M5 G90 G0 X0Y0"),
-            GCodeCtrl::Setup { a } => writeln!(fmt, "G90 M5 G0 A{}", a),
+            GCodeCtrl::Reset => writeln!(fmt, "M5\nG90\nG0 X0Y0"),
+            GCodeCtrl::Setup { a } => writeln!(fmt, "G90\nM5\nG1 A{}", a),
             GCodeCtrl::Raw(s) => writeln!(fmt, "{}", s),
             GCodeCtrl::G0 { x, y } => writeln!(fmt, "G0 X{}Y{}", x, y),
             GCodeCtrl::M3 { s } => writeln!(fmt, "M3 S{}", s),
