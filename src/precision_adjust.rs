@@ -138,7 +138,8 @@ impl PrecisionAdjust {
                     Some(freq_fifo) => {
                         let file = tokio::fs::OpenOptions::new()
                             .write(true)
-                            .create(false)
+                            .create(true)
+                            .truncate(true)
                             .open(freq_fifo)
                             .await
                             .unwrap();
