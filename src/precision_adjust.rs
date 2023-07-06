@@ -389,14 +389,18 @@ impl PrecisionAdjust {
         Ok(new_status)
     }
 
-    pub async fn step(&mut self) -> Result<(), Error> {
+    pub async fn step(&mut self, count: i8) -> Result<(), Error> {
         let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
         let status = self.current_status().await;
 
+        if status.current_step >= self.total_vertical_steps {
+            return Err(Error::Logick("Maximum steps wriched!".to_owned()));
+        }
+
         let new_status = self
             .execute_gcode(status, move |mut status, workspace| {
-                status.current_step += 1;
+                status.current_step += count as u32;
 
                 let new_abs_coordinates = workspace.to_abs(
                     &ax_conf,

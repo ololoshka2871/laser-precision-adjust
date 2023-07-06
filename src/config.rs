@@ -56,7 +56,7 @@ pub struct Config {
     #[serde(rename = "BurnLaserF")]
     pub burn_laser_feedrate: f32,
 
-    #[serde(rename = "VerticalStep")]
+    #[serde(rename = "TotalVerticalSteps")]
     pub total_vertical_steps: u32,
 
     #[serde(rename = "ResonatorsPlacement")]

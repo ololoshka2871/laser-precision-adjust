@@ -32,10 +32,15 @@ impl Decoder for LineCodec {
             src.clear();
             match line == "ok" {
                 true => Ok(Some(CmdResp::Ok)),
-                false => Ok(Some(CmdResp::Err)),
+                false => {
+                    log::warn!("Got unknown result: {}", line);
+                    Ok(Some(CmdResp::Err))
+                }
             }
         } else {
-            log::trace!("No newline found in buffer: [{}]", line);
+            if !line.is_empty() {
+                log::trace!("No newline found in buffer: [{}]", line);
+            }
             Ok(None)
         }
     }

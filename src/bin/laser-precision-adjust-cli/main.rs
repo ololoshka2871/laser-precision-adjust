@@ -86,7 +86,7 @@ fn print_status(
     match status {
         Ok(status) => writeln!(
             stdout,
-            "[{:0>8.3}]: [{}]; Ch: {}; Step: [{}:{}]; F: {} Hz",
+            "[{:0>8.3}]: [{}]; Ch: {}; Step: [{}:{:5}]; F: {} Hz",
             status.since_start.as_millis() as f32 / 1000.0,
             match (status.camera_state, status.valve_state) {
                 (CameraState::Close, ValveState::Atmosphere) => "Closed".green(),
@@ -96,7 +96,7 @@ fn print_status(
             },
             format!("{:02}", status.current_channel).green().bold(),
             format!("{:>2}", status.current_step).purple().bold(),
-            format!("{:>5?}", status.current_side).blue(),
+            format!("{:?}", status.current_side).blue(),
             format!("{:0>8.3}", status.current_frequency).yellow()
         ),
         Err(Error::Kosa(kosa_interface::Error::ZeroResponce)) => {
