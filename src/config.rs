@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -37,6 +39,9 @@ pub struct Config {
 
     #[serde(rename = "KosaPort")]
     pub kosa_port: String,
+
+    #[serde(rename = "FreqFifo")]
+    pub freq_fifo: Option<PathBuf>,
 
     #[serde(rename = "PortTimeoutMs")]
     pub port_timeout_ms: u64,

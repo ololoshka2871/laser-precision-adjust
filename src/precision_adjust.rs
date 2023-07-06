@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 use futures::{SinkExt, StreamExt};
 use kosa_interface::Kosa;
 use laser_setup_interface::{CameraState, ControlState, LaserSetup, ValveState};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use tokio_serial::SerialPortBuilderExt;
 use tokio_util::codec::Decoder;
@@ -87,10 +88,12 @@ pub struct PrecisionAdjust {
     burn_laser_feedrate: f32,
 
     axis_config: crate::config::AxisConfig,
+
+    freq_fifo: Option<tokio::fs::File>,
 }
 
 impl PrecisionAdjust {
-    pub fn with_config(config: crate::Config) -> Self {
+    pub async fn with_config(config: crate::Config) -> Self {
         let timeout = Duration::from_millis(config.port_timeout_ms);
         let gcode_timeout = Duration::from_millis(config.gcode_timeout_ms);
         let laser_port = tokio_serial::new(config.laser_control_port, 1500000)
@@ -129,6 +132,21 @@ impl PrecisionAdjust {
             burn_laser_feedrate: config.burn_laser_feedrate,
 
             axis_config: config.axis_config,
+
+            freq_fifo: {
+                match config.freq_fifo.as_ref() {
+                    Some(freq_fifo) => {
+                        let file = tokio::fs::OpenOptions::new()
+                            .write(true)
+                            .create(false)
+                            .open(freq_fifo)
+                            .await
+                            .unwrap();
+                        Some(file)
+                    }
+                    None => None,
+                }
+            },
         }
     }
 
@@ -178,6 +196,12 @@ impl PrecisionAdjust {
         if let Some(rx) = guard.as_mut() {
             if let Some((t, f)) = rx.recv().await {
                 let status = self.status.lock().await;
+
+                if let Some(fifo) = self.freq_fifo.as_mut() {
+                    fifo.write_all(format!("{{ \"f\": {}}}\n", f).as_bytes())
+                        .await
+                        .unwrap();
+                }
 
                 Ok(Status {
                     current_channel: status.current_channel,

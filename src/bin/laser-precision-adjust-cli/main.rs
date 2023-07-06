@@ -23,7 +23,12 @@ async fn main() -> Result<(), std::io::Error> {
 
     log::info!("{}", config);
 
-    let mut precision_adjust = PrecisionAdjust::with_config(config);
+    if let Some(fifo_name) = config.freq_fifo.as_ref() {
+        let s = fifo_name.as_os_str();
+        writeln!(stdout, "Using external fifo to export frequency: {s:?}, connect it to livechart!")?;
+    }
+
+    let mut precision_adjust = PrecisionAdjust::with_config(config).await;
 
     log::warn!("Testing connections...");
     if let Err(e) = precision_adjust.test_connection().await {
