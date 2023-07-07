@@ -307,8 +307,8 @@ impl PrecisionAdjust {
                 .await
                 .map_err(Error::LaserSetup)?;
 
-            // sleep 100 ms to let laser setup to change channel
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            // sleep 250 ms to let laser setup to change channel
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
 
         let ax_conf = self.axis_config;
