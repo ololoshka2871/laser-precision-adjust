@@ -446,7 +446,7 @@ impl PrecisionAdjust {
         Ok(new_status)
     }
 
-    pub async fn step(&mut self, count: i8) -> Result<(), Error> {
+    pub async fn step(&mut self, count: u8) -> Result<(), Error> {
         let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
         let status = self.current_status().await;

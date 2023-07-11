@@ -8,8 +8,8 @@ pub enum CliCommand {
     SelectChannel(u32),
     Open,
     Close(bool),
-    Step(i8),
-    Burn,
+    Step(u8),
+    Burn(Option<u8>),
     Show {
         burn: bool,
         pump: Option<f32>,
@@ -76,12 +76,16 @@ enum Com {
     #[clap(alias = "s")]
     Step {
         #[clap(default_value = "1")]
-        count: Option<i8>,
+        count: Option<u8>,
     },
 
     /// Perform horisontal burn step
     #[clap(alias = "b")]
-    Burn,
+    Burn {
+        /// Autostep
+        #[clap(default_value = "0")]
+        autostep: Option<u8>,
+    },
 
     /// Show current working area
     Show {
@@ -129,7 +133,7 @@ pub fn parse_cli_command(line: &str) -> Result<CliCommand, CliError> {
                 Com::Close => Ok(CliCommand::Close(false)),
                 Com::Vacuum { on } => Ok(CliCommand::Close(on.unwrap())),
                 Com::Step { count } => Ok(CliCommand::Step(count.unwrap())),
-                Com::Burn => Ok(CliCommand::Burn),
+                Com::Burn { autostep } => Ok(CliCommand::Burn(autostep)),
                 Com::Show { burn, pump, s, f } => Ok(CliCommand::Show { burn, pump, s, f }),
             };
             unsafe {
@@ -174,9 +178,14 @@ pub async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: CliCommand) {
                 log::error!("Failed to perform step: {:?}", e);
             }
         }
-        CliCommand::Burn => {
+        CliCommand::Burn(autostep) => {
             if let Err(e) = pa.burn().await {
                 log::error!("Failed to perform burn: {:?}", e);
+            }
+            if let Some(autostep) = autostep {
+                if let Err(e) = pa.step(autostep).await {
+                    log::error!("Failed to perform step: {:?}", e);
+                }
             }
         }
         CliCommand::Show { burn, pump, s, f } => {
