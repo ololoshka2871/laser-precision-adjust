@@ -5,8 +5,8 @@ pub enum GCodeCtrl {
     /// Reset to initial state
     Reset,
 
-    /// Stop moving and turn off laser, set laser pump power to a
-    Setup { a: f32 },
+    /// setup laser power to a and frequency to b
+    Setup { a: f32, b: u32 },
 
     /// Send raw GCode command
     Raw(String),
@@ -14,7 +14,7 @@ pub enum GCodeCtrl {
     /// Simple Move to x, y
     G0 { x: f32, y: f32 },
 
-    /// Turn on laser with power s
+    /// Turn on laser with pump power s
     M3 { s: f32 },
 
     /// Turn off laser
@@ -28,7 +28,7 @@ impl Display for GCodeCtrl {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GCodeCtrl::Reset => writeln!(fmt, "M5\nG90\nG0 X0Y0"),
-            GCodeCtrl::Setup { a } => writeln!(fmt, "G90\nM5\nG1 A{}", a),
+            GCodeCtrl::Setup { a, b } => writeln!(fmt, "G90\nM5\nG1 A{} B{}", a, b),
             GCodeCtrl::Raw(s) => writeln!(fmt, "{}", s),
             GCodeCtrl::G0 { x, y } => writeln!(fmt, "G0 X{}Y{}", x, y),
             GCodeCtrl::M3 { s } => writeln!(fmt, "M3 S{}", s),

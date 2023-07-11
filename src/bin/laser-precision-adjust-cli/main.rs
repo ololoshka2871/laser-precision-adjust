@@ -25,7 +25,10 @@ async fn main() -> Result<(), std::io::Error> {
 
     if let Some(fifo_name) = config.freq_fifo.as_ref() {
         let s = fifo_name.as_os_str();
-        writeln!(stdout, "Using external fifo to export frequency: {s:?}, connect it to livechart!")?;
+        writeln!(
+            stdout,
+            "Using external fifo to export frequency: {s:?}, connect it to livechart!"
+        )?;
     }
 
     let mut precision_adjust = PrecisionAdjust::with_config(config).await;
@@ -38,10 +41,7 @@ async fn main() -> Result<(), std::io::Error> {
     }
 
     let _monitoring = precision_adjust.start_monitoring().await;
-    precision_adjust
-        .reset()
-        .await
-        .expect("Can't reset laser!");
+    precision_adjust.reset().await.expect("Can't reset laser!");
 
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();
 
@@ -108,6 +108,10 @@ fn print_status(
             log::error!(
                 "Kosa status channel not initialized! please call start_monitoring() first!"
             );
+            Ok(())
+        }
+        Err(Error::Logick(e)) => {
+            log::error!("Status error: {:?}", e);
             Ok(())
         }
         Err(e) => {

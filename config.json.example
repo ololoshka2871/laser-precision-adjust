@@ -13,6 +13,7 @@
     "TotalVerticalSteps": 100,
     "BurnLaserS": 255.0,
     "BurnLaserA": 35.0,
+    "BurnLaserB": 50000,
     "BurnLaserF": 1000.0,
     "ResonatorsPlacement": [
         { "Xcenter": 50, "Ycenter": -16, "Width": 5, "Height": 3 },

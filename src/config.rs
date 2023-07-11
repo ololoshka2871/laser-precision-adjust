@@ -53,10 +53,13 @@ pub struct Config {
     pub axis_config: AxisConfig,
 
     #[serde(rename = "BurnLaserS")]
-    pub burn_laser_power: f32,
+    pub burn_laser_pump_power: f32,
 
     #[serde(rename = "BurnLaserA")]
-    pub burn_laser_pump_power: f32,
+    pub burn_laser_power: f32,
+
+    #[serde(rename = "BurnLaserB")]
+    pub burn_laser_frequency: u32,
 
     #[serde(rename = "BurnLaserF")]
     pub burn_laser_feedrate: f32,
@@ -105,8 +108,9 @@ impl std::fmt::Display for Config {
         writeln!(f, "  ReverseX: {}", self.axis_config.reverse_x)?;
         writeln!(f, "  ReverseY: {}", self.axis_config.reverse_y)?;
 
-        writeln!(f, "BurnLaserS: {}", self.burn_laser_power)?;
-        writeln!(f, "BurnLaserA: {}", self.burn_laser_pump_power)?;
+        writeln!(f, "BurnLaserS: {}", self.burn_laser_pump_power)?;
+        writeln!(f, "BurnLaserA: {}", self.burn_laser_power)?;
+        writeln!(f, "BurnLaserB: {}", self.burn_laser_frequency)?;
         writeln!(f, "BurnLaserF: {}", self.burn_laser_feedrate)?;
         writeln!(f, "VerticalStep: {}", self.total_vertical_steps)?;
 

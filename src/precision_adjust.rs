@@ -51,6 +51,8 @@ pub struct PrivStatus {
 
     current_camera_state: CameraState,
     current_valve_state: ValveState,
+
+    prev_freq: Option<f32>,
 }
 
 pub struct Status {
@@ -83,8 +85,9 @@ pub struct PrecisionAdjust {
 
     start_time: SystemTime,
 
-    burn_laser_power: f32,
     burn_laser_pump_power: f32,
+    burn_laser_power: f32,
+    burn_laser_frequency: u32,
     burn_laser_feedrate: f32,
 
     axis_config: crate::config::AxisConfig,
@@ -121,14 +124,17 @@ impl PrecisionAdjust {
 
                 current_camera_state: CameraState::Close,
                 current_valve_state: ValveState::Atmosphere,
+
+                prev_freq: None,
             }),
 
             kosa_update_locker: Arc::new(Mutex::new(())),
 
             start_time: SystemTime::now(),
 
-            burn_laser_power: config.burn_laser_power,
             burn_laser_pump_power: config.burn_laser_pump_power,
+            burn_laser_power: config.burn_laser_power,
+            burn_laser_frequency: config.burn_laser_frequency,
             burn_laser_feedrate: config.burn_laser_feedrate,
 
             axis_config: config.axis_config,
@@ -197,6 +203,15 @@ impl PrecisionAdjust {
             if let Some((t, f)) = rx.recv().await {
                 let status = self.status.lock().await;
 
+                if let Some(prev_f) = status.prev_freq {
+                    if f > prev_f + 500.0 {
+                        return Err(Error::Logick(format!(
+                            "Random frequency jump detected! {} -> {}",
+                            prev_f, f
+                        )));
+                    }
+                }
+
                 if let Some(fifo) = self.freq_fifo.as_mut() {
                     fifo.write_all(format!("{{ \"f\": {}}}\n", f).as_bytes())
                         .await
@@ -245,10 +260,10 @@ impl PrecisionAdjust {
                 match res {
                     Ok(r) => {
                         let f = r.freq();
-                        if f != 0.0 {
-                            tx.send((SystemTime::now(), r.freq())).await.ok();
-                        } else {
+                        if f == 0.0 {
                             log::debug!("Kosa returned F=0.0, skipping...");
+                        } else {
+                            tx.send((SystemTime::now(), r.freq())).await.ok();
                         }
                     }
                     Err(e) => log::debug!("Kosa error: {:?}", e),
@@ -258,7 +273,8 @@ impl PrecisionAdjust {
     }
 
     pub async fn reset(&mut self) -> Result<(), Error> {
-        let a = self.burn_laser_pump_power;
+        let a = self.burn_laser_power;
+        let b = self.burn_laser_frequency;
 
         let status = self.current_status().await;
 
@@ -267,7 +283,7 @@ impl PrecisionAdjust {
                 let mut commands = vec![];
 
                 commands.push(GCodeCtrl::Reset);
-                commands.push(GCodeCtrl::Setup { a });
+                commands.push(GCodeCtrl::Setup { a, b });
 
                 (status, commands)
             })
@@ -449,7 +465,7 @@ impl PrecisionAdjust {
     pub async fn burn(&mut self) -> Result<(), Error> {
         let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
-        let burn_laser_power = self.burn_laser_power;
+        let burn_laser_power = self.burn_laser_pump_power;
         let f = self.burn_laser_feedrate;
         let status = self.current_status().await;
 
@@ -496,10 +512,10 @@ impl PrecisionAdjust {
     ) -> Result<(), Error> {
         const SHOW_COUNT: u32 = 2;
 
-        let s = override_s.unwrap_or(self.burn_laser_power);
+        let s = override_s.unwrap_or(self.burn_laser_pump_power);
         let f = override_f.unwrap_or(self.burn_laser_feedrate);
-        let a = override_pump.unwrap_or(self.burn_laser_pump_power);
-        let default_a = self.burn_laser_pump_power;
+        let a = override_pump.unwrap_or(self.burn_laser_power);
+        let default_a = self.burn_laser_power;
         let total_vertical_steps = self.total_vertical_steps;
         let status = self.current_status().await;
         let ax_conf = self.axis_config;
