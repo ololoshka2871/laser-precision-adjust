@@ -1,10 +1,11 @@
 use std::default::Default;
+use std::fmt::Debug;
 use std::io::Error as IoError;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use futures::{SinkExt, StreamExt};
-use kosa_interface::Kosa;
 use laser_setup_interface::{CameraState, ControlState, LaserSetup, ValveState};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
@@ -18,7 +19,6 @@ use crate::{gcode_codec, gcode_ctrl::GCodeCtrl};
 pub enum Error {
     Laser(IoError),
     LaserSetup(laser_setup_interface::Error),
-    Kosa(kosa_interface::Error),
     Logick(String),
 }
 
@@ -71,17 +71,13 @@ pub struct PrecisionAdjust {
     positions: Vec<crate::config::ResonatroPlacement>,
     total_vertical_steps: u32,
 
-    laser_setup: LaserSetup,
+    laser_setup: Arc<Mutex<LaserSetup>>,
     laser_control: tokio_util::codec::Framed<tokio_serial::SerialStream, gcode_codec::LineCodec>,
-    kosa: Mutex<Option<Kosa>>,
-    timeout: Duration,
     gcode_timeout: Duration,
 
-    kosa_status_rx: Mutex<Option<tokio::sync::mpsc::Receiver<(SystemTime, f32)>>>,
+    freqmeter_status_rx: Mutex<Option<tokio::sync::mpsc::Receiver<(SystemTime, f32)>>>,
 
     status: Mutex<PrivStatus>,
-
-    kosa_update_locker: Arc<Mutex<()>>,
 
     start_time: SystemTime,
 
@@ -93,29 +89,26 @@ pub struct PrecisionAdjust {
     axis_config: crate::config::AxisConfig,
 
     freq_fifo: Option<tokio::fs::File>,
+
+    freq_meter_i2c_addr: u8,
 }
 
 impl PrecisionAdjust {
     pub async fn with_config(config: crate::Config) -> Self {
-        let timeout = Duration::from_millis(config.port_timeout_ms);
-        let gcode_timeout = Duration::from_millis(config.gcode_timeout_ms);
         let laser_port = tokio_serial::new(config.laser_control_port, 1500000)
             .open_native_async()
             .unwrap();
-        let laser_setup = LaserSetup::new(&config.laser_setup_port, timeout);
-        let kosa = Kosa::new(&config.kosa_port);
+        let laser_setup = LaserSetup::new(&config.laser_setup_port, Duration::from_millis(config.port_timeout_ms));
 
         Self {
-            laser_setup,
+            laser_setup: Arc::new(Mutex::new(laser_setup)),
             total_vertical_steps: config.total_vertical_steps,
 
             laser_control: gcode_codec::LineCodec.framed(laser_port),
-            kosa: Mutex::new(Some(kosa)),
             positions: config.resonator_placement,
-            timeout,
-            gcode_timeout,
+            gcode_timeout: Duration::from_millis(config.gcode_timeout_ms),
 
-            kosa_status_rx: Mutex::new(None),
+            freqmeter_status_rx: Mutex::new(None),
 
             status: Mutex::new(PrivStatus {
                 current_channel: 0,
@@ -127,8 +120,6 @@ impl PrecisionAdjust {
 
                 prev_freq: None,
             }),
-
-            kosa_update_locker: Arc::new(Mutex::new(())),
 
             start_time: SystemTime::now(),
 
@@ -153,20 +144,18 @@ impl PrecisionAdjust {
                     None => None,
                 }
             },
+
+            freq_meter_i2c_addr: config.freq_meter_i2c_addr,
         }
     }
 
     pub async fn test_connection(&mut self) -> Result<(), Error> {
-        {
-            let mut kosa = self.kosa.lock().await;
-            if let Some(kosa) = kosa.as_mut() {
-                kosa.get_measurement(self.timeout)
-                    .await
-                    .map_err(Error::Kosa)?;
-            }
-        }
-
-        self.laser_setup.read().await.map_err(Error::LaserSetup)?;
+        self.laser_setup
+            .lock()
+            .await
+            .read()
+            .await
+            .map_err(Error::LaserSetup)?;
         self.raw_gcode("\n").await.map_err(Error::Laser)?;
         Ok(())
     }
@@ -198,7 +187,7 @@ impl PrecisionAdjust {
     }
 
     pub async fn get_status(&mut self) -> Result<Status, Error> {
-        let mut guard = self.kosa_status_rx.lock().await;
+        let mut guard = self.freqmeter_status_rx.lock().await;
         if let Some(rx) = guard.as_mut() {
             if let Some((t, f)) = rx.recv().await {
                 let status = self.status.lock().await;
@@ -235,39 +224,38 @@ impl PrecisionAdjust {
             log::error!(
                 "Kosa status channel not initialized! please call start_monitoring() first!"
             );
-            return Err(Error::Kosa(kosa_interface::Error::ZeroResponce));
+            return Err(Error::LaserSetup(laser_setup_interface::Error::Timeout));
         }
     }
 
     pub async fn start_monitoring(&mut self) -> tokio::task::JoinHandle<()> {
-        let mut kosa = self.kosa.lock().await.take().expect("Kosa already taken!");
         let (tx, rx) = tokio::sync::mpsc::channel(1);
-        self.kosa_status_rx.lock().await.replace(rx);
+        self.freqmeter_status_rx.lock().await.replace(rx);
 
-        let kosa_update_locker = Arc::<tokio::sync::Mutex<()>>::downgrade(&self.kosa_update_locker);
+        let dev = self.laser_setup.clone();
+        let freq_meter_i2c_addr = self.freq_meter_i2c_addr;
 
         tokio::spawn(async move {
             loop {
                 let res = {
-                    match kosa_update_locker.upgrade() {
-                        Some(guard) => {
-                            let _guard = guard.lock().await;
-                            kosa.get_measurement(Duration::from_secs(1)).await
-                        }
-                        None => break,
-                    }
+                    let mut guard = dev.lock().await;
+                    Self::i2c_read(guard.deref_mut(), freq_meter_i2c_addr, 0x00, 4).await
                 };
+
                 match res {
                     Ok(r) => {
-                        let f = r.freq();
-                        if f == 0.0 {
-                            log::debug!("Kosa returned F=0.0, skipping...");
+                        if r.len() == std::mem::size_of::<f32>() {
+                            let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
+                            let f = f32::from_le_bytes(byte_array);
+                            tx.send((SystemTime::now(), f)).await.ok();
                         } else {
-                            tx.send((SystemTime::now(), r.freq())).await.ok();
+                            log::debug!("Frreqmeter returned invalid data, skipping...");
                         }
                     }
-                    Err(e) => log::debug!("Kosa error: {:?}", e),
+                    Err(e) => log::debug!("Freqmeter error: {:?}", e),
                 }
+
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })
     }
@@ -290,7 +278,13 @@ impl PrecisionAdjust {
             .await?;
 
         // read current laser setup state
-        let state = self.laser_setup.read().await.map_err(Error::LaserSetup)?;
+        let state = self
+            .laser_setup
+            .lock()
+            .await
+            .read()
+            .await
+            .map_err(Error::LaserSetup)?;
         {
             let mut guard = self.status.lock().await;
             new_status.current_channel = state.channel;
@@ -313,9 +307,9 @@ impl PrecisionAdjust {
 
         {
             // disable kosa update while changing channel
-            let _kosa_guard = self.kosa.lock().await;
+            let mut guard = self.laser_setup.lock().await;
 
-            self.laser_setup
+            guard
                 .write(&LaserCtrl {
                     channel: Some(channel),
                     ..Default::default()
@@ -397,6 +391,8 @@ impl PrecisionAdjust {
 
     async fn write_laser_setup(&mut self, ctrl: LaserCtrl) -> Result<(), Error> {
         self.laser_setup
+            .lock()
+            .await
             .write(&ctrl)
             .await
             .map_err(Error::LaserSetup)
@@ -574,5 +570,24 @@ impl PrecisionAdjust {
     async fn update_status(&mut self, new_status: PrivStatus) {
         let mut guard = self.status.lock().await;
         *guard = new_status;
+    }
+
+    async fn i2c_read<'a, E: Debug, I: laser_setup_interface::I2c<Error = E>>(
+        d: &'a mut I,
+        dev_addr: u8,
+        start_addr: u8,
+        data_len: usize,
+    ) -> Result<Vec<u8>, E> {
+        let addr = [start_addr; 1];
+        let mut buf = vec![0; data_len];
+
+        let mut ops = vec![
+            laser_setup_interface::Operation::Write(&addr),
+            laser_setup_interface::Operation::Read(&mut buf),
+        ];
+
+        d.transaction(dev_addr, &mut ops).await?;
+
+        Ok(buf)
     }
 }

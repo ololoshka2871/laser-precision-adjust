@@ -8,11 +8,19 @@
             "type": "lldb",
             "request": "launch",
             "name": "cli",
-            "program": "${workspaceFolder}/target/debug/laser-precision-adjust-cli",
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_LOG": "trace"
+            },
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=laser-precision-adjust-cli"
+                ],
+                "filter": {
+                    "kind": "bin"
+                }
             }
         },
     ]

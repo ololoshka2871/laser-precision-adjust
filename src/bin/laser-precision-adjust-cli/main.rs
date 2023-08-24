@@ -104,12 +104,6 @@ fn print_status(
             format!("{:?}", status.current_side).blue(),
             format!("{:0>8.3}", status.current_frequency).yellow()
         ),
-        Err(Error::Kosa(kosa_interface::Error::ZeroResponce)) => {
-            log::error!(
-                "Kosa status channel not initialized! please call start_monitoring() first!"
-            );
-            Ok(())
-        }
         Err(Error::Logick(e)) => {
             log::error!("Status error: {:?}", e);
             Ok(())

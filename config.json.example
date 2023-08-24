@@ -1,8 +1,8 @@
 {
     "LaserSetupPort": "COM1",
     "LaserControlPort": "COM2",
-    "KosaPort": "COM3",
     "FreqFifo": "/tmp/freq",
+    "FreqMeterI2CAddr": 11,
     "PortTimeoutMs": 100,
     "GCodeTimeoutMs": 1000,
     "AxisConfig": {

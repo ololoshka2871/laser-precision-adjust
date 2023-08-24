@@ -31,7 +31,6 @@ shellwords = "1.1"
 ###
 
 laser-setup-interface = { git = "https://github.com/ololoshka2871/Laser-setup-interface.git" }
-kosa-interface = { git = "https://github.com/ololoshka2871/kosa-interface.git" }
 
 [lib]
 name = "laser_precision_adjust"
