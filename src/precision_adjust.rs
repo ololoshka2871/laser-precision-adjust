@@ -98,7 +98,10 @@ impl PrecisionAdjust {
         let laser_port = tokio_serial::new(config.laser_control_port, 1500000)
             .open_native_async()
             .unwrap();
-        let laser_setup = LaserSetup::new(&config.laser_setup_port, Duration::from_millis(config.port_timeout_ms));
+        let laser_setup = LaserSetup::new(
+            &config.laser_setup_port,
+            Duration::from_millis(config.port_timeout_ms),
+        );
 
         Self {
             laser_setup: Arc::new(Mutex::new(laser_setup)),
@@ -190,15 +193,32 @@ impl PrecisionAdjust {
         let mut guard = self.freqmeter_status_rx.lock().await;
         if let Some(rx) = guard.as_mut() {
             if let Some((t, f)) = rx.recv().await {
-                let status = self.status.lock().await;
+                let mut status = self.status.lock().await;
 
-                if let Some(prev_f) = status.prev_freq {
-                    if f > prev_f + 500.0 {
-                        return Err(Error::Logick(format!(
+                let e = if let Some(prev_f) = &mut status.prev_freq {
+                    let v_prev_f = *prev_f;
+                    if f > v_prev_f + 500.0 {
+                        Err(Error::Logick(format!(
                             "Random frequency jump detected! {} -> {}",
                             prev_f, f
-                        )));
+                        )))
                     }
+                    else if (f.is_nan() || f < 1.0) && !v_prev_f.is_nan() {
+                        Err(Error::Logick("Empty result".to_owned()))
+                    }
+                    else {
+                        Ok(())
+                    }
+                } else {
+                    status.prev_freq.replace(f);
+                    Ok(())
+                };
+
+                if e.is_err() {
+                    status.prev_freq = None;
+                    e?;
+                } else {
+                    status.prev_freq = Some(f);
                 }
 
                 if let Some(fifo) = self.freq_fifo.as_mut() {
@@ -222,7 +242,7 @@ impl PrecisionAdjust {
             }
         } else {
             log::error!(
-                "Kosa status channel not initialized! please call start_monitoring() first!"
+                "Freqmeter status channel not initialized! please call start_monitoring() first!"
             );
             return Err(Error::LaserSetup(laser_setup_interface::Error::Timeout));
         }
@@ -249,7 +269,7 @@ impl PrecisionAdjust {
                             let f = f32::from_le_bytes(byte_array);
                             tx.send((SystemTime::now(), f)).await.ok();
                         } else {
-                            log::debug!("Frreqmeter returned invalid data, skipping...");
+                            log::debug!("Freqmeter returned invalid data, skipping...");
                         }
                     }
                     Err(e) => log::debug!("Freqmeter error: {:?}", e),
@@ -317,8 +337,8 @@ impl PrecisionAdjust {
                 .await
                 .map_err(Error::LaserSetup)?;
 
-            // sleep 250 ms to let laser setup to change channel
-            tokio::time::sleep(Duration::from_millis(250)).await;
+            // sleep 200 ms to let laser setup to change channel
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
 
         let ax_conf = self.axis_config;
