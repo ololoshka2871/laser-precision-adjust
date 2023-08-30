@@ -4,6 +4,8 @@ version = "0.4.0"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"
+build = "build.rs"
+
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -32,8 +34,29 @@ shellwords = "1.1"
 
 laser-setup-interface = { git = "https://github.com/ololoshka2871/Laser-setup-interface.git" }
 
+### server
+axum = { version = "0.6", features = ["matched-path", "macros", "tokio"], default-features = false }
+axum-server = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.4", features = ["fs", "add-extension", "trace"] }
+axum-template = "1"
+minijinja = { version = "1", default-features = false }
+
+[build-dependencies]
+swc = { version = "0.265", features = ["node"] }   # Компиляция TypeScript в JavaScript, Сборка бандла
+swc_common = "0.32"
+swc_ecma_ast = "0.109"
+swc_ecma_parser = "0.139"
+swc_ecma_transforms_typescript = "0.182"
+swc_ecma_visit = "0.95"
+
 [lib]
 name = "laser_precision_adjust"
 
 [[bin]]
 name = "laser-precision-adjust-cli"
+
+[[bin]]
+name = "laser-precision-adjust-server"
