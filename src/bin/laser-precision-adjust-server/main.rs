@@ -1,4 +1,4 @@
-//mod static_files;
+mod static_files;
 
 use std::net::SocketAddr;
 
@@ -44,7 +44,7 @@ async fn main() -> Result<(), std::io::Error> {
     let app = Router::new()
         // Here we setup the routes. Note: No macros
         .route("/", get(handle_index))
-        //.route("/static/:path/:file", get(static_files::handle_static))
+        .route("/static/:path/:file", get(static_files::handle_static))
         .with_state(AppState {
             engine: Engine::from(minijinja),
         })
