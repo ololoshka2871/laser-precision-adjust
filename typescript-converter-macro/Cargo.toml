@@ -11,7 +11,7 @@ proc-macro = true
 syn = "1.0"
 quote = "1.0"
 
-swc = { version = "0.265", features = ["node"] }   # Компиляция TypeScript в JavaScript, Сборка бандла
+swc = { version = "0.265", default_features = false, features = ["debug"] }   # Компиляция TypeScript в JavaScript, Сборка бандла
 swc_common = "0.32"
 swc_ecma_ast = "0.109"
 swc_ecma_parser = "0.139"

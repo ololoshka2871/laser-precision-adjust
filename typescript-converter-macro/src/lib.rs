@@ -7,6 +7,7 @@ use swc::{
     config::{IsModule, SourceMapsConfig},
     Compiler,
 };
+
 use swc_common::{errors::Handler, source_map::SourceMap, sync::Lrc, Mark, GLOBALS};
 use swc_ecma_ast::EsVersion;
 use swc_ecma_parser::Syntax;
@@ -17,12 +18,10 @@ use proc_macro::Span;
 use quote::quote;
 use syn::{parse_macro_input, LitStr};
 
-
 // https://stackoverflow.com/a/76828821
 /// Transforms typescript to javascript. Returns tuple (js string, source map)
 fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
     let cm = Lrc::new(SourceMap::new(swc_common::FilePathMapping::empty()));
-
     let compiler = Compiler::new(cm.clone());
 
     let source = cm.new_source_file(
