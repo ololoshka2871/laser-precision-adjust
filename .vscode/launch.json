@@ -23,5 +23,24 @@
                 }
             }
         },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "web",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "laser-precision-adjust-server=debug"
+            },
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=laser-precision-adjust-server"
+                ],
+                "filter": {
+                    "kind": "bin"
+                }
+            }
+        },
     ]
 }

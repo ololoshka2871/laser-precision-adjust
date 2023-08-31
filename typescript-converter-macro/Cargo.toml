@@ -1,0 +1,19 @@
+[package]
+name = "typescript-converter-macro"
+version = "0.1.0"
+edition = "2021"
+authors = ["ololoshka2871"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "1.0"
+quote = "1.0"
+
+swc = { version = "0.265", features = ["node"] }   # Компиляция TypeScript в JavaScript, Сборка бандла
+swc_common = "0.32"
+swc_ecma_ast = "0.109"
+swc_ecma_parser = "0.139"
+swc_ecma_transforms_typescript = "0.182"
+swc_ecma_visit = "0.95"

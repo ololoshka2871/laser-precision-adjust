@@ -1,13 +1,16 @@
 [package]
 name = "laser-precision-adjust"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"
-build = "build.rs"
 
 
 [dependencies]
+maplit = "1"
+lazy_static = "1"
+regex = "1"
+
 tokio = { version = "1", features = ["full"] }
 tokio-serial = "5.4"
 tokio-util = { version = "0.7", default-features = false, features = ["codec"] }
@@ -34,6 +37,8 @@ shellwords = "1.1"
 
 laser-setup-interface = { git = "https://github.com/ololoshka2871/Laser-setup-interface.git" }
 
+typescript-converter-macro = { path = "./typescript-converter-macro" }
+
 ### server
 axum = { version = "0.6", features = ["matched-path", "macros", "tokio"], default-features = false }
 axum-server = "0.5"
@@ -41,16 +46,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower = { version = "0.4", features = ["util", "timeout"] }
 tower-http = { version = "0.4", features = ["fs", "add-extension", "trace"] }
-axum-template = "1"
+axum-template = { version = "1", features = ["minijinja"] }
 minijinja = { version = "1", default-features = false }
-
-[build-dependencies]
-swc = { version = "0.265", features = ["node"] }   # Компиляция TypeScript в JavaScript, Сборка бандла
-swc_common = "0.32"
-swc_ecma_ast = "0.109"
-swc_ecma_parser = "0.139"
-swc_ecma_transforms_typescript = "0.182"
-swc_ecma_visit = "0.95"
 
 [lib]
 name = "laser_precision_adjust"
