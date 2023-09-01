@@ -42,5 +42,11 @@
                 }
             }
         },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "open chrome",
+            "url": "http://localhost:3000"
+          }
     ]
 }

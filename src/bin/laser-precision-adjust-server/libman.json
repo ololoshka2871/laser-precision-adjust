@@ -45,6 +45,24 @@
         "jquery.min.js",
         "jquery.min.map"
       ]
+    },
+    {
+      "provider": "jsdelivr",
+      "library": "@types/jquery@3.5.1",
+      "destination": "wwwroot/lib/@types/jquery/"
+    },
+    {
+      "library": "FileSaver.js@2.0.5",
+      "destination": "wwwroot/lib/FileSaver.js",
+      "files": [
+        "FileSaver.min.js",
+        "FileSaver.min.js.map"
+      ]
+    },
+    {
+      "provider": "jsdelivr",
+      "library": "@types/file-saver@2.0.5",
+      "destination": "wwwroot/lib/@types/FileSaver.js"
     }
   ]
 }

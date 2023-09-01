@@ -1,0 +1,19 @@
+{
+    // Этот файл не используется напрямую, но необходим для VSCode чтобы понимать, что это TypeScript проект
+    "compileOnSave": true,
+    "compilerOptions": {
+        "noImplicitAny": false,
+        "noEmitOnError": true,
+        "removeComments": false,
+        "sourceMap": true,
+        "target": "ES2020",
+        "outDir": "ts",
+        "typeRoots": [
+            "src/bin/laser-precision-adjust-server/wwwroot/lib/@types"
+        ]
+    },
+    "include": [
+        "src/bin/laser-precision-adjust-server/wwwroot/lib/**/.js",
+        "src/bin/laser-precision-adjust-server/wwwroot/ts"
+    ]
+}

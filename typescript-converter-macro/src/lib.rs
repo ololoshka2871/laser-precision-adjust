@@ -1,4 +1,5 @@
 #![feature(proc_macro_span)]
+#![feature(track_path)]
 
 use std::io;
 use std::path::PathBuf;
@@ -8,7 +9,9 @@ use swc::{
     Compiler,
 };
 
-use swc_common::{errors::Handler, source_map::SourceMap, sync::Lrc, Mark, GLOBALS};
+use swc_common::{
+    errors::Handler, source_map::SourceMap, sync::Lrc, FilePathMapping, Mark, GLOBALS,
+};
 use swc_ecma_ast::EsVersion;
 use swc_ecma_parser::Syntax;
 use swc_ecma_transforms_typescript::strip;
@@ -20,8 +23,8 @@ use syn::{parse_macro_input, LitStr};
 
 // https://stackoverflow.com/a/76828821
 /// Transforms typescript to javascript. Returns tuple (js string, source map)
-fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
-    let cm = Lrc::new(SourceMap::new(swc_common::FilePathMapping::empty()));
+fn ts_to_js(filename: &str, ts_code: &str) -> String {
+    let cm = Lrc::new(SourceMap::new(FilePathMapping::empty()));
     let compiler = Compiler::new(cm.clone());
 
     let source = cm.new_source_file(
@@ -36,7 +39,7 @@ fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
             .parse_js(
                 source,
                 &handler,
-                EsVersion::Es5,
+                EsVersion::Es2020,
                 Syntax::Typescript(Default::default()),
                 IsModule::Bool(true),
                 Some(compiler.comments()),
@@ -57,18 +60,18 @@ fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
                 None,                         // output path
                 false,                        // inline sources content
                 EsVersion::EsNext,            // target ES version
-                SourceMapsConfig::Bool(true), // source map config
+                SourceMapsConfig::Str("inline".to_owned()), // source map config
                 &Default::default(),          // source map names
                 None,                         // original source map
                 false,                        // minify
                 Some(compiler.comments()),    // comments
-                false,                        // emit source map columns
+                false,                         // emit source map columns
                 false,                        // ascii only
-                "",                           // preable
+                "//Ts -> JS via SWC\n\n",                           // preable
             )
             .expect("print failed");
 
-        return (ret.code, ret.map.expect("no source map"));
+        return ret.code;
     });
 }
 
@@ -83,10 +86,10 @@ fn include_ts(ts_file_name: PathBuf) -> proc_macro::TokenStream {
 
     let ts_file_name_str = ts_file_name.to_str().unwrap().to_owned();
     let ts_code = std::fs::read_to_string(ts_file_name).expect("Failed to read file");
-    let (js_code, source_map) = ts_to_js(&ts_file_name_str, &ts_code);
+    let js_code = ts_to_js(&ts_file_name_str, &ts_code);
 
     quote! {
-        (#js_code, #source_map)
+        #js_code
     }
     .into()
 }
@@ -103,11 +106,18 @@ pub fn include_ts_relative(file: proc_macro::TokenStream) -> proc_macro::TokenSt
         .expect("Invalid path")
         .join(PathBuf::from(infile));
 
+    // Следим за файлом, если он изменится, то перекомпилируемся
+    proc_macro::tracked_path::path(ts_file_name.to_str().unwrap());
+
     include_ts(ts_file_name)
 }
 
 #[proc_macro]
 pub fn include_ts_proj(file: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let infits_file_namele = parse_macro_input!(file as LitStr).value();
-    include_ts(PathBuf::from(infits_file_namele))
+    let ts_file_name = parse_macro_input!(file as LitStr).value();
+
+    // Следим за файлом, если он изменится, то перекомпилируемся
+    proc_macro::tracked_path::path(ts_file_name.as_str());
+
+    include_ts(PathBuf::from(ts_file_name))
 }

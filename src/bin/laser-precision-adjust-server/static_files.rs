@@ -10,7 +10,6 @@ use axum::{
 use maplit::hashmap;
 
 use mime_guess::mime;
-use regex::Regex;
 use tokio_util::io::ReaderStream;
 use typescript_converter_macro::include_ts_relative;
 
@@ -35,11 +34,9 @@ impl IntoBody<&'static [u8]> for &'static [u8] {
 }
 
 lazy_static::lazy_static! {
-    static ref JS_REMOVE_EXT: Regex = Regex::new(r"\..+").unwrap();
-
     // js with map
-    static ref JS_DATA: HashMap<&'static str, (&'static str, &'static str)> = hashmap! {
-        "common" => include_ts_relative!("wwwroot/ts/common.ts"),
+    static ref JS_DATA: HashMap<&'static str, &'static str> = hashmap! {
+        "common.js" => include_ts_relative!("wwwroot/ts/common.ts"),
     };
 
     // css
@@ -69,28 +66,19 @@ pub(crate) async fn handle_static(Path((path, file)): Path<(String, String)>) ->
     let not_found = StatusCode::NOT_FOUND.into_response();
 
     match path.as_str() {
-        "js" => {
-            let name = JS_REMOVE_EXT.replace_all(&file, "");
-            match JS_DATA.get(name.as_ref()) {
-                Some((js, map)) => {
-                    if file.ends_with(".map") {
-                        let headers = [(header::CONTENT_TYPE, mime::TEXT_PLAIN_UTF_8.as_ref())];
-                        (headers, map.into_body()).into_response()
-                    } else {
-                        let headers = [(header::CONTENT_TYPE, mime::APPLICATION_JAVASCRIPT_UTF_8.as_ref())];
-                        (headers, js.into_body()).into_response()
-                    }
-                }
-                None => not_found,
-            }
-        }
+        "js" => JS_DATA.get(file.as_str()).map_or(not_found, |js| {
+            let headers = [(
+                header::CONTENT_TYPE,
+                mime::APPLICATION_JAVASCRIPT_UTF_8.as_ref(),
+            )];
+            (headers, js.into_body()).into_response()
+        }),
         "css" => CSS_DATA.get(file.as_str()).map_or(not_found, |css| {
             let headers = [(header::CONTENT_TYPE, mime::TEXT_CSS_UTF_8.as_ref())];
-            (headers,  css.into_body()).into_response()
+            (headers, css.into_body()).into_response()
         }),
         "images" => IMAGE_DATA.get(file.as_str()).map_or(not_found, |image| {
             let headers = [(header::CONTENT_TYPE, image.1)];
-
             (headers, image.0.into_body()).into_response()
         }),
         _ => not_found,
@@ -109,4 +97,3 @@ pub(crate) async fn handle_lib(Path(path): Path<String>) -> impl IntoResponse {
             (headers, asset.contents_bytes.into_body()).into_response()
         })
 }
-    
