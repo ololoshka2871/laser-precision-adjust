@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "defaultProvider": "cdnjs",
+  "libraries": [
+    {
+      "library": "bootstrap@4.6.2",
+      "destination": "wwwroot/lib/bootstrap",
+      "files": [
+        "css/bootstrap.css",
+        "css/bootstrap.css.map",
+        "js/bootstrap.bundle.min.js",
+        "js/bootstrap.bundle.min.js.map"
+      ]
+    },
+    {
+      "library": "font-awesome@5.14.0",
+      "destination": "wwwroot/lib/font-awesome/",
+      "files": [
+        "css/all.min.css",
+        "js/all.min.js",
+        "sprites/regular.svg",
+        "sprites/solid.svg",
+        "sprites/brands.svg",
+        "webfonts/fa-brands-400.eot",
+        "webfonts/fa-brands-400.svg",
+        "webfonts/fa-brands-400.ttf",
+        "webfonts/fa-brands-400.woff",
+        "webfonts/fa-brands-400.woff2",
+        "webfonts/fa-regular-400.eot",
+        "webfonts/fa-regular-400.svg",
+        "webfonts/fa-regular-400.ttf",
+        "webfonts/fa-regular-400.woff",
+        "webfonts/fa-regular-400.woff2",
+        "webfonts/fa-solid-900.eot",
+        "webfonts/fa-solid-900.svg",
+        "webfonts/fa-solid-900.ttf",
+        "webfonts/fa-solid-900.woff",
+        "webfonts/fa-solid-900.woff2"
+      ]
+    },
+    {
+      "library": "jquery@3.5.1",
+      "destination": "wwwroot/lib/jquery",
+      "files": [
+        "jquery.min.js",
+        "jquery.min.map"
+      ]
+    }
+  ]
+}

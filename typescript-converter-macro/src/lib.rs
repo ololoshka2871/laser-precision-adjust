@@ -72,18 +72,7 @@ fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
     });
 }
 
-#[proc_macro]
-pub fn include_ts(file: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let span = Span::call_site();
-    let source = span.source_file();
-
-    let infile = parse_macro_input!(file as LitStr).value();
-    let ts_file_name = source
-        .path()
-        .parent()
-        .expect("Invalid path")
-        .join(PathBuf::from(infile));
-
+fn include_ts(ts_file_name: PathBuf) -> proc_macro::TokenStream {
     if !ts_file_name.exists() {
         panic!(
             "file '{:?}' in '{:?}' not found",
@@ -100,4 +89,25 @@ pub fn include_ts(file: proc_macro::TokenStream) -> proc_macro::TokenStream {
         (#js_code, #source_map)
     }
     .into()
+}
+
+#[proc_macro]
+pub fn include_ts_relative(file: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let span = Span::call_site();
+    let source = span.source_file();
+
+    let infile = parse_macro_input!(file as LitStr).value();
+    let ts_file_name = source
+        .path()
+        .parent()
+        .expect("Invalid path")
+        .join(PathBuf::from(infile));
+
+    include_ts(ts_file_name)
+}
+
+#[proc_macro]
+pub fn include_ts_proj(file: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let infits_file_namele = parse_macro_input!(file as LitStr).value();
+    include_ts(PathBuf::from(infits_file_namele))
 }

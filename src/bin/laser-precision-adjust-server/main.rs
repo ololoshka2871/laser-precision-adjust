@@ -38,13 +38,14 @@ async fn main() -> Result<(), std::io::Error> {
     // State for our application
     let mut minijinja = Environment::new();
     minijinja
-        .add_template("index", include_str!("www/html/index.html"))
+        .add_template("index", include_str!("wwwroot/html/index.html"))
         .unwrap();
 
     let app = Router::new()
         // Here we setup the routes. Note: No macros
         .route("/", get(handle_index))
         .route("/static/:path/:file", get(static_files::handle_static))
+        .route("/lib/*path", get(static_files::handle_lib))
         .with_state(AppState {
             engine: Engine::from(minijinja),
         })

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Точная настройка кварцевых резонаторов</title>
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.css" />
+    <link rel="stylesheet" href="static/css/site.css" />
+    <link rel="stylesheet" href="lib/font-awesome/css/all.min.css" asp-append-version="true" />
+    <!--@RenderSection("styles", required: false)-->
+</head>
+
+<body>
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
+            <div class="container">
+                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">
+                    <!--<img src="~/images/CANopen.png" height="40" width="120" style="margin-top:0px;">-->
+                    <img src="data:image/png;base64,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" style="margin-top:0px;">
+                </a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item" id="nav-bar-connection">
+                            <a class="nav-link" href="/">Подключение</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-overview">
+                            <a class="nav-link" href="/">Обзор</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-lss">
+                            <a class="nav-link" href="/">LSS</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-sync">
+                            <a class="nav-link" href="/">SYNC</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-emergency">
+                            <a class="nav-link" href="/">Emergency</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            <!--@RenderBody()-->
+            <p>Hello HTML</p>
+        </main>
+    </div>
+
+    <script src="lib/jquery/jquery.min.js"></script>
+    <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="lib/font-awesome/js/all.min.js"></script>
+    <!--
+    <script src="~/lib/jquery-noty/packaged/jquery.noty.packaged.min.js" asp-append-version="true"></script>
+    -->
+    <script src="static/js/common.js"></script>
+    <!--@RenderSection("Scripts", required: false)-->
+</body>
+
+</html>
