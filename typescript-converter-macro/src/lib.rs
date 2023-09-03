@@ -21,9 +21,13 @@ use proc_macro::Span;
 use quote::quote;
 use syn::{parse_macro_input, LitStr};
 
+lazy_static::lazy_static! {
+    static ref REPLACER: regex::Regex = regex::Regex::new(r"<.+\.ts>").unwrap();
+}
+
 // https://stackoverflow.com/a/76828821
 /// Transforms typescript to javascript. Returns tuple (js string, source map)
-fn ts_to_js(filename: &str, ts_code: &str) -> String {
+fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
     let cm = Lrc::new(SourceMap::new(FilePathMapping::empty()));
     let compiler = Compiler::new(cm.clone());
 
@@ -60,22 +64,25 @@ fn ts_to_js(filename: &str, ts_code: &str) -> String {
                 None,                         // output path
                 false,                        // inline sources content
                 EsVersion::EsNext,            // target ES version
-                SourceMapsConfig::Str("inline".to_owned()), // source map config
+                SourceMapsConfig::Bool(true), // source map config
                 &Default::default(),          // source map names
                 None,                         // original source map
-                false,                        // minify
+                true,                         // minify
                 Some(compiler.comments()),    // comments
-                false,                         // emit source map columns
+                false,                        // emit source map columns
                 false,                        // ascii only
-                "//Ts -> JS via SWC\n\n",                           // preable
+                "//Ts -> JS via SWC\n\n",     // preable
             )
             .expect("print failed");
 
-        return ret.code;
+        return (ret.code, ret.map.expect("No map generated"));
     });
 }
 
-fn include_ts(ts_file_name: PathBuf) -> proc_macro::TokenStream {
+fn include_ts<R: regex::Replacer>(
+    ts_file_name: PathBuf,
+    dest_file_nname: R,
+) -> proc_macro::TokenStream {
     if !ts_file_name.exists() {
         panic!(
             "file '{:?}' in '{:?}' not found",
@@ -86,10 +93,12 @@ fn include_ts(ts_file_name: PathBuf) -> proc_macro::TokenStream {
 
     let ts_file_name_str = ts_file_name.to_str().unwrap().to_owned();
     let ts_code = std::fs::read_to_string(ts_file_name).expect("Failed to read file");
-    let js_code = ts_to_js(&ts_file_name_str, &ts_code);
+    let (js_code, map) = ts_to_js(&ts_file_name_str, &ts_code);
+
+    let map = REPLACER.replace_all(&map, dest_file_nname);
 
     quote! {
-        #js_code
+        (#js_code, #map, #ts_code)
     }
     .into()
 }
@@ -104,20 +113,37 @@ pub fn include_ts_relative(file: proc_macro::TokenStream) -> proc_macro::TokenSt
         .path()
         .parent()
         .expect("Invalid path")
-        .join(PathBuf::from(infile));
+        .join(PathBuf::from(&infile));
+
+    let ts_file_name = ts_file_name.canonicalize().unwrap();
 
     // Следим за файлом, если он изменится, то перекомпилируемся
     proc_macro::tracked_path::path(ts_file_name.to_str().unwrap());
 
-    include_ts(ts_file_name)
+    let in_file_name_only = PathBuf::from(&infile)
+        .file_name()
+        .expect("Invalid path")
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    include_ts(ts_file_name, in_file_name_only)
 }
 
 #[proc_macro]
 pub fn include_ts_proj(file: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ts_file_name = parse_macro_input!(file as LitStr).value();
+    let ts_file_path = PathBuf::from(&ts_file_name).canonicalize().unwrap();
 
     // Следим за файлом, если он изменится, то перекомпилируемся
-    proc_macro::tracked_path::path(ts_file_name.as_str());
+    proc_macro::tracked_path::path(ts_file_path.to_str().unwrap());
 
-    include_ts(PathBuf::from(ts_file_name))
+    let in_file_name_only = PathBuf::from(&ts_file_name)
+        .file_name()
+        .expect("Invalid path")
+        .to_str()
+        .unwrap()
+        .to_owned();
+
+    include_ts(ts_file_path, in_file_name_only)
 }

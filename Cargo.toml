@@ -10,7 +10,6 @@ build = "build.rs"
 [dependencies]
 maplit = "1"
 lazy_static = "1"
-#regex = "1"
 bytes = { version = "1", default-features = false }
 futures = "0.3"
 clap = { version = "4.2", features = ["derive"] }

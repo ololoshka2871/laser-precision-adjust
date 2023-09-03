@@ -33,10 +33,18 @@ impl IntoBody<&'static [u8]> for &'static [u8] {
     }
 }
 
+impl IntoBody<String> for String {
+    fn into_body(self) -> StreamBody<ReaderStream<Cursor<String>>> {
+        let stream = Cursor::new(self);
+        let stream = ReaderStream::new(stream);
+        StreamBody::new(stream)
+    }
+}
+
 lazy_static::lazy_static! {
     // js with map
-    static ref JS_DATA: HashMap<&'static str, &'static str> = hashmap! {
-        "common.js" => include_ts_relative!("wwwroot/ts/common.ts"),
+    static ref JS_DATA: HashMap<&'static str, (&'static str, &'static str, &'static str)> = hashmap! {
+        "common" => include_ts_relative!("wwwroot/ts/common.ts"),
     };
 
     // css
@@ -63,16 +71,38 @@ pub struct LibraryAsset {
 
 /// Handle static files: js, css, images, etc.
 pub(crate) async fn handle_static(Path((path, file)): Path<(String, String)>) -> impl IntoResponse {
+    let plan_text_header = [(header::CONTENT_TYPE, mime::TEXT_PLAIN_UTF_8.as_ref())];
     let not_found = StatusCode::NOT_FOUND.into_response();
 
     match path.as_str() {
-        "js" => JS_DATA.get(file.as_str()).map_or(not_found, |js| {
-            let headers = [(
-                header::CONTENT_TYPE,
-                mime::APPLICATION_JAVASCRIPT_UTF_8.as_ref(),
-            )];
-            (headers, js.into_body()).into_response()
-        }),
+        "js" => {
+            let (filename, is_map, is_ts) = if file.ends_with(".map") {
+                (file.trim_end_matches(".js.map"), true, false)
+            } else if file.ends_with(".ts") {
+                (file.trim_end_matches(".ts"), false, true)
+            } else if file.ends_with(".js") {
+                (file.trim_end_matches(".js"), false, false)
+            } else {
+                return not_found;
+            };
+            JS_DATA
+                .get(&filename)
+                .map_or(not_found, |(js, map, ts_code)| {
+                    if is_map {
+                        (plan_text_header, map.into_body()).into_response()
+                    } else if is_ts {
+                        (plan_text_header, ts_code.into_body()).into_response()
+                    } else {
+                        let headers = [(
+                            header::CONTENT_TYPE,
+                            mime::APPLICATION_JAVASCRIPT_UTF_8.as_ref(),
+                        )];
+                        let full_js =
+                            format!("{}\n//# sourceMappingURL=/static/{}/{}.map", js, path, file);
+                        (headers, full_js.into_body()).into_response()
+                    }
+                })
+        }
         "css" => CSS_DATA.get(file.as_str()).map_or(not_found, |css| {
             let headers = [(header::CONTENT_TYPE, mime::TEXT_CSS_UTF_8.as_ref())];
             (headers, css.into_body()).into_response()

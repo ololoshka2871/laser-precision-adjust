@@ -17,3 +17,6 @@ swc_ecma_ast = "0.109"
 swc_ecma_parser = "0.139"
 swc_ecma_transforms_typescript = "0.182"
 swc_ecma_visit = "0.95"
+
+regex = "1"
+lazy_static = "1"

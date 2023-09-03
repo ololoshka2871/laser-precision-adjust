@@ -46,7 +46,12 @@
             "type": "chrome",
             "request": "launch",
             "name": "open chrome",
-            "url": "http://localhost:3000"
-          }
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/src/bin/laser-precision-adjust-server/wwwroot",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "*.ts": "${webRoot}/ts/*.ts",
+            }
+        }
     ]
 }
