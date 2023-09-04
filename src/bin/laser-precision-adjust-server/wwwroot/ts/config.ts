@@ -1,4 +1,0 @@
-
-// on page loaded jquery
-$(() => {
-});

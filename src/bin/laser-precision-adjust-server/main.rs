@@ -55,13 +55,13 @@ async fn main() -> Result<(), std::io::Error> {
     // State for our application
     let mut minijinja = Environment::new();
     minijinja
-        .add_template("work", include_str!("wwwroot/html/work.html"))
+        .add_template("work", include_str!("wwwroot/html/work.jinja"))
         .unwrap();
     minijinja
-        .add_template("stat", include_str!("wwwroot/html/stat.html"))
+        .add_template("stat", include_str!("wwwroot/html/stat.jinja"))
         .unwrap();
     minijinja
-        .add_template("config", include_str!("wwwroot/html/config.html"))
+        .add_template("config", include_str!("wwwroot/html/config.jinja"))
         .unwrap();
 
     let app_state = AppState {

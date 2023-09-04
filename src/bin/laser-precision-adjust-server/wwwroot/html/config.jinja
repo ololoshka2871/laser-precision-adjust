@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Точная настройка - конфигурация</title>
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+
+    <!-- Common styles -->
+    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.css" />
+    <link rel="stylesheet" href="static/css/site.css" />
+    <link rel="stylesheet" href="lib/font-awesome/css/all.min.css" />
+
+    <!-- specific styles -->
+    <link rel="stylesheet" href="static/css/docs.min.css" />
+</head>
+
+<body>
+    <header>
+        <nav
+            class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 navbar-custom">
+            <div class="container">
+                <a class="navbar-brand" href="/">
+                    <img src="/static/images/rez.png" height="40" width="160" style="margin-top:0px;">
+                </a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse"
+                    aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item" id="nav-bar-work">
+                            <a class="nav-link" href="/work"><i class="fas fa-ruler-horizontal"></i>Работа</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-stat">
+                            <a class="nav-link" href="/stat"><i class="fas fa-chart-bar"></i>Статистика</a>
+                        </li>
+                        <li class="nav-item active" id="nav-bar-config">
+                            <a class="nav-link" href="/config"><i class="fas fa-cogs"></i>Настройка</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            <!--@RenderBody()-->
+            <h4>Текущая конфигурация установки</h4>
+            <p>Файл: <code class="highlighter-rouge">{{ config_file }}</code></p>
+            <hr />
+            <div class="bd-callout bd-callout-info">
+                <h4>Общее</h4>
+                <table class="table table-sm table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col">Обозначение</th>
+                            <th scope="col">Параметр</th>
+                            <th scope="col">Значение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% macro table_row_simple(name, param, value, mu='') -%}
+                        <tr>
+                            <th scope="row"><code class="text-muted">{{ param }}</code></th>
+                            <td>{{name}}</td>
+                            <td>{{value}} {{mu}}</td>
+                        </tr>
+                        {% endmacro -%}
+                        {% macro table_row_checkbox(name, param, value) -%}
+                        <tr>
+                            <th scope="row"><code class="text-muted">{{ param }}</code></th>
+                            <td>{{name}}</td>
+                            <td>
+                                {% if value %}
+                                <i class="fas fa-check text-success"></i> Да
+                                {% else %}
+                                <i class="fas fa-times text-danger"></i> Нет
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endmacro -%}
+                        {{ table_row_simple('Порт управления вакумной камерой', 'LaserSetupPort',
+                        config.LaserSetupPort ) }}
+                        {{ table_row_simple('Порт управления лазером', 'LaserControlPort', config.LaserControlPort )
+                        }}
+                        {{ table_row_simple('I2C Адрес частотомера', 'FreqMeterI2CAddr', config.FreqMeterI2CAddr) }}
+                        {{ table_row_simple('Таймаут порта', 'PortTimeoutMs', config.PortTimeoutMs, 'мс.') }}
+                        {{ table_row_simple('Таймаут выполнения G-кода', 'GCodeTimeoutMs', config.GCodeTimeoutMs,
+                        'мс.') }}
+                        {{ table_row_checkbox('Поменять оси X и Y местами', 'AxisConfig.SwapXY',
+                        config.AxisConfig.SwapXY) }}
+                        {{ table_row_checkbox('Развернуть направление оси X', 'AxisConfig.ReverseX',
+                        config.AxisConfig.ReverseX) }}
+                        {{ table_row_checkbox('Развернуть направление оси Y', 'AxisConfig.ReverseY',
+                        config.AxisConfig.ReverseY) }}
+                        {{ table_row_simple('Мощность накачки лазера (0-255)', 'BurnLaserS', config.BurnLaserS) }}
+                        {{ table_row_simple('ШИМ лазера (0-100)', 'BurnLaserA', config.BurnLaserA, '%') }}
+                        {{ table_row_simple('Частота следования импульсов лазера', 'BurnLaserB', config.BurnLaserB,
+                        'Гц') }}
+                        {{ table_row_simple('Подача при рабочем проходе', 'BurnLaserF', config.BurnLaserF,
+                        'уе./мин') }}
+                        {{ table_row_simple('Максимальное количество рабочих проходов', 'TotalVerticalSteps',
+                        config.TotalVerticalSteps, 'шт.') }}
+                    </tbody>
+                </table>
+            </div>
+            <hr />
+            <div class="bd-callout bd-callout-warning">
+                <h4>Конфигурация резонаторов (<code class="text-muted">ResonatorsPlacement</code>)</h4>
+                <h6>Все координаты в условных единицах лазера</h6>
+                <table class="table table-sm table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col">#</th>
+                            <th scope="col">Центр X</th>
+                            <th scope="col">Центр Y</th>
+                            <th scope="col">Ширина</th>
+                            <th scope="col">Высота</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rez in config.ResonatorsPlacement -%}
+                        <tr>
+                            <th scope="row">{{loop.index}}</th>
+                            <td><code class="text-dark">{{rez.Xcenter}}</code></td>
+                            <td><code class="text-dark">{{rez.Ycenter}}</code></td>
+                            <td><code class="text-dark">{{rez.Width}}</code></td>
+                            <td><code class="text-dark">{{rez.Height}}</code></td>
+                        </tr>
+                        {% endfor -%}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Common scripts -->
+    <script src="lib/jquery/jquery.min.js"></script>
+    <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="lib/font-awesome/js/all.min.js"></script>
+    <script src="static/js/common.js"></script>
+</body>
+</html>
