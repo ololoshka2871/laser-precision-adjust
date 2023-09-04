@@ -51,9 +51,9 @@
                     <div class="col-3 bg-primary"><span class="seven-segment-font freq-display">32768.53<span></div>
                     <div class="col-2 bg-secondary">
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq_input"
-                            placeholder="Цель" /> Гц
+                            placeholder="Цель" value="32764.0" /> Гц
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq_adj"
-                            placeholder="Поправка" /> Гц
+                            placeholder="Поправка" value="+2" /> Гц
                     </div>
                     <div class="col-2 align-middle">
                         <button class="btn btn-secondary float-left"><i class="fa fa-lock"></i> Закрыть</button>
@@ -65,7 +65,6 @@
                         <button class="btn btn-danger float-right"><i class="fa fa-unlock"></i> Открыть</button>
                     </div>
                 </div>
-                <hr/>
                 <div class="row">
                     <div class="col-5 bd-callout bd-callout-danger">
                         <h6>Каналы</h6>
@@ -78,12 +77,19 @@
                                 </tr>
                             </thead>
                             <tbody>
-
+                            {% for rez in resonators -%}
+                                <tr>
+                                    <th scope="row">{{ loop.index }}</th>
+                                    <td id="rez-freq-{{ loop.index }}-target">{{ rez.f_start }}</td>
+                                    <td id="rez-freq-{{ loop.index }}-current">{{ rez.f_end }}</td>
+                                </tr>
+                            {% endfor -%}
                             </tbody>
                         </table>
                     </div>
-                    <div class="col-7 bd-callout bd-callout-info">
+                    <div class="col-7 bd-callout bd-callout-info" style="margin-top:20px;">
                         <h6>История настройки</h6>
+                        <div id="uv-div"></div>
                     </div>
                 </div>
             </div>
