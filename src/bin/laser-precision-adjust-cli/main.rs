@@ -19,7 +19,7 @@ async fn main() -> Result<(), std::io::Error> {
         .init();
 
     log::info!("Loading config...");
-    let config = laser_precision_adjust::Config::load();
+    let (config, _) = laser_precision_adjust::Config::load();
 
     log::info!("{}", config);
 

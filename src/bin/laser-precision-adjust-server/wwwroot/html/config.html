@@ -13,12 +13,13 @@
     <link rel="stylesheet" href="lib/font-awesome/css/all.min.css" />
 
     <!-- specific styles -->
-
+    <link rel="stylesheet" href="static/css/docs.min.css" />
 </head>
 
 <body>
     <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 navbar-custom">
+        <nav
+            class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 navbar-custom">
             <div class="container">
                 <a class="navbar-brand" href="/">
                     <img src="/static/images/rez.png" height="40" width="160" style="margin-top:0px;">
@@ -46,7 +47,34 @@
     <div class="container">
         <main role="main" class="pb-3">
             <!--@RenderBody()-->
-            <p>Config</p>
+            <div class="bd-callout bd-callout-info">
+                <h4>Текущая конфигурация установки</h1>
+                <p>Файл: <code class="highlighter-rouge">{{ config_file }}</code></p>
+
+                <table class="table table-sm table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col">Параметр</th>
+                            <th scope="col">Значение</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row">Порт управления вакумной камерой</th>
+                            <td>{{ config.LaserSetupPort }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">Порт управления лазером</th>
+                            <td>{{ config.LaserControlPort }}</td>
+                        </tr>
+                        <tr>
+                            <th scope="row">выалываы</th>
+                            <td>Larry</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
         </main>
     </div>
 

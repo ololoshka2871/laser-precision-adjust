@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct ResonatroPlacement {
     #[serde(rename = "Xcenter")]
     pub x: f32,
@@ -17,7 +17,7 @@ pub struct ResonatroPlacement {
     pub h: f32,
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct AxisConfig {
     #[serde(rename = "SwapXY")]
     pub swap_xy: bool,
@@ -29,7 +29,7 @@ pub struct AxisConfig {
     pub reverse_y: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Serialize)]
 pub struct Config {
     #[serde(rename = "LaserSetupPort")]
     pub laser_setup_port: String,
@@ -72,7 +72,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load() -> Self {
+    pub fn load() -> (Self, PathBuf) {
         use std::path;
 
         if let Some(base_dirs) = directories::BaseDirs::new() {
@@ -82,7 +82,7 @@ impl Config {
                 .join(path::Path::new("config.json"));
 
             if let Ok(contents) = std::fs::read_to_string(path.clone()) {
-                serde_json::from_str::<Config>(&contents).unwrap()
+                (serde_json::from_str::<Config>(&contents).unwrap(), path)
             } else {
                 panic!(
                     "Failed to read {:?} file! Please copy config.json.example and fill it!",

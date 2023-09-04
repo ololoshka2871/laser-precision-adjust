@@ -53,6 +53,7 @@ lazy_static::lazy_static! {
     // css
     static ref CSS_DATA: HashMap<&'static str, &'static str> = hashmap! {
         "site.css" => include_str!("wwwroot/css/site.css"),
+        "docs.min.css" => include_str!("wwwroot/css/docs.min.css"),
     };
 
     // images
