@@ -82,3 +82,28 @@ body {
     background: rgba(128, 128, 128, 0.15);
     border-radius: 0em;
 }
+
+/* 7-segment-font
+    -------------------------------------------------- */
+
+@font-face {
+    font-family: "seven_segment";
+    src: url("/static/fonts/7Segment.ttf");
+}
+
+.seven-segment-font {
+    font-family: "seven_segment";
+}
+
+.freq-display {
+    font-size: 4em;
+    font-weight: bold;
+}
+
+.freq-config {
+    font-size: 1em;
+    width: 5.5em;
+    height: 2em;
+    margin-top: 0.5em;
+    display: inline-block;
+}

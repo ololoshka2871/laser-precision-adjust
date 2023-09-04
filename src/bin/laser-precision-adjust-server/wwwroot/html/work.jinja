@@ -13,12 +13,13 @@
     <link rel="stylesheet" href="lib/font-awesome/css/all.min.css" />
 
     <!-- specific styles -->
-
+    <link rel="stylesheet" href="static/css/docs.min.css" />
 </head>
 
 <body>
     <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 navbar-custom">
+        <nav
+            class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 navbar-custom">
             <div class="container">
                 <a class="navbar-brand" href="/">
                     <img src="/static/images/rez.png" height="40" width="160" style="margin-top:0px;">
@@ -30,13 +31,13 @@
                 <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item active" id="nav-bar-work">
-                            <a class="nav-link" href="/work"><i class="fas fa-ruler-horizontal"></i>Работа</a>
+                            <a class="nav-link" href="/work"><i class="fas fa-ruler-horizontal"></i> Работа</a>
                         </li>
                         <li class="nav-item" id="nav-bar-stat">
-                            <a class="nav-link" href="/stat"><i class="fas fa-chart-bar"></i>Статистика</a>
+                            <a class="nav-link" href="/stat"><i class="fas fa-chart-bar"></i> Статистика</a>
                         </li>
                         <li class="nav-item" id="nav-bar-config">
-                            <a class="nav-link" href="/config"><i class="fas fa-cogs"></i>Настройка</a>
+                            <a class="nav-link" href="/config"><i class="fas fa-cogs"></i> Настройка</a>
                         </li>
                     </ul>
                 </div>
@@ -45,8 +46,47 @@
     </header>
     <div class="container">
         <main role="main" class="pb-3">
-            <!--@RenderBody()-->
-            <p>Работа</p>
+            <div class="container">
+                <div class="row">
+                    <div class="col-3 bg-primary"><span class="seven-segment-font freq-display">32768.53<span></div>
+                    <div class="col-2 bg-secondary">
+                        <input type="text" class="form-control seven-segment-font freq-config" id="freq_input"
+                            placeholder="Цель" /> Гц
+                        <input type="text" class="form-control seven-segment-font freq-config" id="freq_adj"
+                            placeholder="Поправка" /> Гц
+                    </div>
+                    <div class="col-2 align-middle">
+                        <button class="btn btn-secondary float-left"><i class="fa fa-lock"></i> Закрыть</button>
+                    </div>
+                    <div class="col-2 align-middle">
+                        <button class="btn btn-info"><i class="fa fa-soap"></i> Вакуум</button>
+                    </div>
+                    <div class="col-2 align-middle">
+                        <button class="btn btn-danger float-right"><i class="fa fa-unlock"></i> Открыть</button>
+                    </div>
+                </div>
+                <hr/>
+                <div class="row">
+                    <div class="col-5 bd-callout bd-callout-danger">
+                        <h6>Каналы</h6>
+                        <table class="table table-sm table-bordered table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#</th>
+                                    <th scope="col">F исх.</th>
+                                    <th scope="col">F тек.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-7 bd-callout bd-callout-info">
+                        <h6>История настройки</h6>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -54,13 +94,12 @@
     <script src="lib/jquery/jquery.min.js"></script>
     <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="lib/font-awesome/js/all.min.js"></script>
-    <!--
-    <script src="~/lib/jquery-noty/packaged/jquery.noty.packaged.min.js" asp-append-version="true"></script>
-    -->
     <script src="static/js/common.js"></script>
 
     <!-- Specific scripts -->
     <script src="static/js/work.js"></script>
+    <script src="lib/d3/d3.min.js"></script>
+    <script src="lib/uvCharts/uvcharts.min.js"></script>
 </body>
 
 </html>

@@ -60,6 +60,11 @@ lazy_static::lazy_static! {
         "favicon.ico" => (include_bytes!("wwwroot/images/favicon.ico").as_ref(), mime::IMAGE.as_ref()),
         "rez.png" => (include_bytes!("wwwroot/images/rez.png").as_ref(), mime::IMAGE_PNG.as_ref()),
     };
+
+    // fonts
+    static ref FONTS_DATA: HashMap<&'static str, &'static [u8]> = hashmap! {
+        "7Segment.ttf" => include_bytes!("wwwroot/fonts/7Segment.ttf").as_ref(),
+    };
 }
 
 #[iftree::include_file_tree(
@@ -114,6 +119,10 @@ pub(crate) async fn handle_static(Path((path, file)): Path<(String, String)>) ->
         "images" => IMAGE_DATA.get(file.as_str()).map_or(not_found, |image| {
             let headers = [(header::CONTENT_TYPE, image.1)];
             (headers, image.0.into_body()).into_response()
+        }),
+        "fonts" => FONTS_DATA.get(file.as_str()).map_or(not_found, |font| {
+            let headers = [(header::CONTENT_TYPE, mime::FONT.as_ref())];
+            (headers, font.into_body()).into_response()
         }),
         _ => not_found,
     }

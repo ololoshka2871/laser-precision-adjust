@@ -63,6 +63,20 @@
       "provider": "jsdelivr",
       "library": "@types/file-saver@2.0.5",
       "destination": "wwwroot/lib/@types/FileSaver.js"
+    },
+    {
+      "library": "d3@3.2.2",
+      "destination": "wwwroot/lib/d3",
+      "files": [
+        "d3.min.js"
+      ]
+    },
+    {
+      "library": "uvCharts@1.1.6",
+      "destination": "wwwroot/lib/uvCharts/",
+      "files": [
+        "uvcharts.min.js"
+      ]
     }
   ]
 }

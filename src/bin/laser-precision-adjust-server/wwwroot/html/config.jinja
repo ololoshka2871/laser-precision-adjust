@@ -31,13 +31,13 @@
                 <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item" id="nav-bar-work">
-                            <a class="nav-link" href="/work"><i class="fas fa-ruler-horizontal"></i>Работа</a>
+                            <a class="nav-link" href="/work"><i class="fas fa-ruler-horizontal"></i> Работа</a>
                         </li>
                         <li class="nav-item" id="nav-bar-stat">
-                            <a class="nav-link" href="/stat"><i class="fas fa-chart-bar"></i>Статистика</a>
+                            <a class="nav-link" href="/stat"><i class="fas fa-chart-bar"></i> Статистика</a>
                         </li>
                         <li class="nav-item active" id="nav-bar-config">
-                            <a class="nav-link" href="/config"><i class="fas fa-cogs"></i>Настройка</a>
+                            <a class="nav-link" href="/config"><i class="fas fa-cogs"></i> Настройка</a>
                         </li>
                     </ul>
                 </div>
@@ -103,6 +103,8 @@
                         'уе./мин') }}
                         {{ table_row_simple('Максимальное количество рабочих проходов', 'TotalVerticalSteps',
                         config.TotalVerticalSteps, 'шт.') }}
+                        {{ table_row_simple('Смещенние показания частотомера', 'FreqmeterOffset',
+                        config.FreqmeterOffset, 'Гц') }}
                     </tbody>
                 </table>
             </div>
@@ -142,4 +144,5 @@
     <script src="lib/font-awesome/js/all.min.js"></script>
     <script src="static/js/common.js"></script>
 </body>
+
 </html>
