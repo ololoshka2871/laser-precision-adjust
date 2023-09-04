@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 
 use axum::{
     extract::{FromRef, State},
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
     routing::get,
     Router,
 };
@@ -38,12 +38,20 @@ async fn main() -> Result<(), std::io::Error> {
     // State for our application
     let mut minijinja = Environment::new();
     minijinja
-        .add_template("index", include_str!("wwwroot/html/index.html"))
+        .add_template("work", include_str!("wwwroot/html/work.html"))
+        .unwrap();
+    minijinja
+        .add_template("stat", include_str!("wwwroot/html/stat.html"))
+        .unwrap();
+    minijinja
+        .add_template("config", include_str!("wwwroot/html/config.html"))
         .unwrap();
 
     let app = Router::new()
-        // Here we setup the routes. Note: No macros
-        .route("/", get(handle_index))
+        .route("/", get(|| async { Redirect::permanent("/work") }))
+        .route("/work", get(handle_work))
+        .route("/stat", get(handle_stat))
+        .route("/config", get(handle_config))
         .route("/static/:path/:file", get(static_files::handle_static))
         .route("/lib/*path", get(static_files::handle_lib))
         .with_state(AppState {
@@ -65,6 +73,14 @@ pub struct Person {
     name: String,
 }
 
-async fn handle_index(State(engine): State<AppEngine>) -> impl IntoResponse {
-    RenderHtml(Key("index".to_owned()), engine, ())
+async fn handle_work(State(engine): State<AppEngine>) -> impl IntoResponse {
+    RenderHtml(Key("work".to_owned()), engine, ())
+}
+
+async fn handle_stat(State(engine): State<AppEngine>) -> impl IntoResponse {
+    RenderHtml(Key("stat".to_owned()), engine, ())
+}
+
+async fn handle_config(State(engine): State<AppEngine>) -> impl IntoResponse {
+    RenderHtml(Key("config".to_owned()), engine, ())
 }

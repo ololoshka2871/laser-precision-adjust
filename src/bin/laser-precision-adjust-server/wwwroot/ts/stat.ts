@@ -1,0 +1,4 @@
+
+// on page loaded jquery
+$(() => {
+});

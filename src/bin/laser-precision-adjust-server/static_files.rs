@@ -45,6 +45,9 @@ lazy_static::lazy_static! {
     // js with map
     static ref JS_DATA: HashMap<&'static str, (&'static str, &'static str, &'static str)> = hashmap! {
         "common" => include_ts_relative!("wwwroot/ts/common.ts"),
+        "work" => include_ts_relative!("wwwroot/ts/work.ts"),
+        "stat" => include_ts_relative!("wwwroot/ts/stat.ts"),
+        "config" => include_ts_relative!("wwwroot/ts/config.ts"),
     };
 
     // css
@@ -55,6 +58,7 @@ lazy_static::lazy_static! {
     // images
     static ref IMAGE_DATA: HashMap<&'static str, (&'static [u8], &'static str)> = hashmap! {
         "favicon.ico" => (include_bytes!("wwwroot/images/favicon.ico").as_ref(), mime::IMAGE.as_ref()),
+        "rez.png" => (include_bytes!("wwwroot/images/rez.png").as_ref(), mime::IMAGE_PNG.as_ref()),
     };
 }
 
