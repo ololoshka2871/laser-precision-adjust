@@ -67,7 +67,7 @@ fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
                 SourceMapsConfig::Bool(true), // source map config
                 &Default::default(),          // source map names
                 None,                         // original source map
-                true,                         // minify
+                false,                         // minify
                 Some(compiler.comments()),    // comments
                 false,                        // emit source map columns
                 false,                        // ascii only

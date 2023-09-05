@@ -9,6 +9,7 @@ use crate::AppEngine;
 pub(super) async fn handle_work(State(engine): State<AppEngine>) -> impl IntoResponse {
     #[derive(Serialize)]
     struct Rezonator {
+        pub step: u32,
         pub f_start: f32,
         pub f_end: f32,
     }
@@ -21,6 +22,7 @@ pub(super) async fn handle_work(State(engine): State<AppEngine>) -> impl IntoRes
     let mut resonators = vec![];
     for i in 0..16 {
         resonators.push(Rezonator {
+            step: i,
             f_start: i as f32 * 100.0,
             f_end: (i + 1) as f32 * 100.0,
         });

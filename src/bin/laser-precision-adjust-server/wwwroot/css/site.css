@@ -107,3 +107,8 @@ body {
     margin-top: 0.5em;
     display: inline-block;
 }
+
+hr.thin-hr {
+    margin-top: 1px;
+    margin-bottom: 1px;
+}
