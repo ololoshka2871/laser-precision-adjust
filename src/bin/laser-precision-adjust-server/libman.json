@@ -77,6 +77,13 @@
       "files": [
         "uvcharts.min.js"
       ]
+    },
+    {
+      "library": "oboe.js@2.1.5",
+      "destination": "wwwroot/lib/oboe.js/",
+      "files": [
+        "oboe-browser.min.js"
+      ]
     }
   ]
 }

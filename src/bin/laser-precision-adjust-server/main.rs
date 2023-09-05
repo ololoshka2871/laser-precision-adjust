@@ -3,7 +3,7 @@ mod static_files;
 
 use std::net::SocketAddr;
 
-use axum::{extract::FromRef, response::Redirect, routing::get, Router};
+use axum::{extract::FromRef, response::Redirect, routing::{get, post}, Router};
 use laser_precision_adjust::PrecisionAdjust;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -13,7 +13,7 @@ use axum_template::engine::Engine;
 
 use minijinja::Environment;
 
-use crate::handle_routes::{handle_config, handle_stat, handle_work};
+use crate::handle_routes::{handle_config, handle_stat, handle_work, handle_control, handle_state};
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
@@ -73,6 +73,8 @@ async fn main() -> Result<(), std::io::Error> {
     // Build our application with some routes
     let app = Router::new()
         .route("/", get(|| async { Redirect::permanent("/work") }))
+        .route("/control", post(handle_control))
+        .route("/state", get(handle_state))
         .route("/work", get(handle_work))
         .route("/stat", get(handle_stat))
         .route("/config", get(handle_config))
@@ -86,6 +88,6 @@ async fn main() -> Result<(), std::io::Error> {
     // Note that Axum has great examples for a log of practical scenarios,
     // including graceful shutdown (https://github.com/tokio-rs/axum/tree/main/examples)
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    println!("Listening on {}", addr);
+    tracing::info!("Listening on {}", addr);
     axum_server::bind(addr).serve(app.into_make_service()).await
 }

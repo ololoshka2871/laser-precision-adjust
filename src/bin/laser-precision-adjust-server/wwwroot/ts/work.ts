@@ -6,6 +6,11 @@ interface JQuery<TElement extends Element = HTMLElement> extends Iterable<TEleme
     tooltip(options?: any): JQuery<TElement>;
 }
 
+// declare oboe as defined global function
+declare function oboe(url: string): any;
+
+// ---------------------------------------------------------------------------------------------
+
 // on page loaded jquery
 $(() => {
     // https://getbootstrap.com/docs/4.0/components/tooltips/
@@ -14,6 +19,12 @@ $(() => {
     $('#rezonators').on('click', 'tbody tr', (ev) => {
         $(ev.target).parent().addClass('bg-primary').siblings().removeClass('bg-primary');
     });
+
+    oboe('/state')
+        .node('!.', (state: any) => { 
+            // state - это весь JSON объект, который пришел с сервера
+            console.log(state); 
+        })
 
     const graphdef = {
         categories: ['uvCharts', 'Matisse', 'SocialByWay'],

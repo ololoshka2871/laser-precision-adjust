@@ -1,10 +1,24 @@
-use axum::{extract::State, response::IntoResponse};
+use axum::{extract::State, response::IntoResponse, Json};
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::Config;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::AppEngine;
+
+#[derive(Deserialize, Debug)]
+pub struct ControlRequest {}
+
+#[derive(Serialize, Debug)]
+pub struct ControlResult {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StateResult {
+    some_test_field: String,
+}
 
 pub(super) async fn handle_work(State(engine): State<AppEngine>) -> impl IntoResponse {
     #[derive(Serialize)]
@@ -52,4 +66,40 @@ pub(super) async fn handle_config(
     };
 
     RenderHtml(Key("config".to_owned()), engine, model)
+}
+
+// Сюда будут поступать команды от веб-интерфейса
+pub(super) async fn handle_control(
+    State(config): State<Config>,
+    State(config_file): State<std::path::PathBuf>,
+    Json(payload): Json<ControlRequest>,
+) -> Json<ControlResult> {
+    tracing::trace!("handle_control: {:?}", payload);
+
+    Json(ControlResult {
+        success: true,
+        error: None,
+    })
+}
+
+// Сюда будут поступать запросы на состояние от веб-интерфейса
+pub(super) async fn handle_state(
+    State(config): State<Config>,
+    State(config_file): State<std::path::PathBuf>,
+) -> impl IntoResponse {
+    use futures::stream;
+
+    tracing::trace!("handle_state");
+
+    let mut curr = 1;
+    let stream = stream::repeat_with(move || {
+        let tmp = curr;
+        curr += 1;
+
+        StateResult {
+            some_test_field: format!("test {}", tmp),
+        }
+    });
+
+    axum_streams::StreamBodyAs::json_nl(stream)
 }
