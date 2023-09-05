@@ -4,7 +4,7 @@
   "libraries": [
     {
       "library": "bootstrap@4.6.2",
-      "destination": "wwwroot/lib/bootstrap",
+      "destination": "wwwroot/lib/bootstrap/",
       "files": [
         "css/bootstrap.css",
         "css/bootstrap.css.map",
@@ -40,7 +40,7 @@
     },
     {
       "library": "jquery@3.5.1",
-      "destination": "wwwroot/lib/jquery",
+      "destination": "wwwroot/lib/jquery/",
       "files": [
         "jquery.min.js",
         "jquery.min.map"
@@ -53,7 +53,7 @@
     },
     {
       "library": "FileSaver.js@2.0.5",
-      "destination": "wwwroot/lib/FileSaver.js",
+      "destination": "wwwroot/lib/FileSaver.js/",
       "files": [
         "FileSaver.min.js",
         "FileSaver.min.js.map"
@@ -65,25 +65,24 @@
       "destination": "wwwroot/lib/@types/FileSaver.js"
     },
     {
-      "library": "d3@3.2.2",
-      "destination": "wwwroot/lib/d3",
-      "files": [
-        "d3.min.js"
-      ]
-    },
-    {
-      "library": "uvCharts@1.1.6",
-      "destination": "wwwroot/lib/uvCharts/",
-      "files": [
-        "uvcharts.min.js"
-      ]
-    },
-    {
       "library": "oboe.js@2.1.5",
       "destination": "wwwroot/lib/oboe.js/",
       "files": [
         "oboe-browser.min.js"
       ]
+    }, 
+    {
+      "library": "Chart.js@2.9.4",
+      "destination": "wwwroot/lib/chart.js/",
+      "files": [
+        "Chart.bundle.min.js",
+        "Chart.min.css"
+      ]
+    },
+    {
+      "provider": "jsdelivr",
+      "library": "@types/chart.js@2.9.38",
+      "destination": "wwwroot/lib/@types/chart.js/"
     }
   ]
 }

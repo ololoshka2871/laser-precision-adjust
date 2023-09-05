@@ -43,7 +43,7 @@ fn ts_to_js(filename: &str, ts_code: &str) -> (String, String) {
             .parse_js(
                 source,
                 &handler,
-                EsVersion::Es2020,
+                EsVersion::Es5,
                 Syntax::Typescript(Default::default()),
                 IsModule::Bool(true),
                 Some(compiler.comments()),

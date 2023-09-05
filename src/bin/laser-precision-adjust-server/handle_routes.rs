@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use axum::{extract::State, response::IntoResponse, Json};
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::Config;
@@ -17,7 +19,8 @@ pub struct ControlResult {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct StateResult {
-    some_test_field: String,
+    angle: f64,
+    value: f64,
 }
 
 pub(super) async fn handle_work(State(engine): State<AppEngine>) -> impl IntoResponse {
@@ -87,19 +90,25 @@ pub(super) async fn handle_state(
     State(config): State<Config>,
     State(config_file): State<std::path::PathBuf>,
 ) -> impl IntoResponse {
-    use futures::stream;
-
     tracing::trace!("handle_state");
 
-    let mut curr = 1;
-    let stream = stream::repeat_with(move || {
-        let tmp = curr;
-        curr += 1;
+    let mut angle = 0.0;
+    let offset = 32764.1;
+    let a = 1.5;
+    let stream = async_stream::stream! {
+        loop {
+            let tmp = angle;
+            angle += PI / 180.0 * 5.0;
 
-        StateResult {
-            some_test_field: format!("test {}", tmp),
+            yield  StateResult {
+                angle: tmp,
+                value: offset + a * tmp.sin(),
+            };
+
+            // sleep for 50 milliseconds
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
-    });
+    };
 
     axum_streams::StreamBodyAs::json_nl(stream)
 }

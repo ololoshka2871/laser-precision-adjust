@@ -1,6 +1,3 @@
-// заглушки
-declare var uv: any;
-
 // define interface for jquery JQuery<HTMLElement> where method tooltip is defined
 interface JQuery<TElement extends Element = HTMLElement> extends Iterable<TElement> {
     tooltip(options?: any): JQuery<TElement>;
@@ -13,6 +10,9 @@ declare function oboe(url: string): any;
 
 // on page loaded jquery
 $(() => {
+    // https://www.chartjs.org/docs/2.9.4/getting-started/integration.html#content-security-policy
+    Chart.platform.disableCSSInjection = true;
+
     // https://getbootstrap.com/docs/4.0/components/tooltips/
     $('[data-toggle="tooltip"]').tooltip()
 
@@ -20,87 +20,114 @@ $(() => {
         $(ev.target).parent().addClass('bg-primary').siblings().removeClass('bg-primary');
     });
 
+    let chart = new Chart(
+        $('#adj-plot').get()[0] as HTMLCanvasElement,
+        {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Upper Limit',
+                        data: [],
+                        pointRadius: 0,
+                        fill: 'top',
+                        backgroundColor: 'rgba(240, 81, 81, 0.5)',
+                        borderColor: 'rgb(240, 81, 81)',
+                    },
+                    {
+                        label: 'Lower Limit',
+                        data: [],
+                        pointRadius: 0,
+                        fill: 'bottom', // заполнить область до графика 1
+                        backgroundColor: 'rgba(204, 167, 80, 0.5)',
+                        borderColor: 'rgb(204, 167, 80)',
+                    },
+                    {
+                        label: 'Actual',
+                        data: [],
+                        pointRadius: 0,
+                        fill: false,
+                        borderColor: 'rgb(75, 148, 204)',
+                    },
+                    {
+                        label: 'Target',
+                        data: [],
+                        pointRadius: 0,
+                        fill: false,
+                        borderColor: 'rgb(8, 150, 38)',
+                    }
+                ]
+            },
+            options: {
+                animation: {
+                    duration: 0
+                },
+                tooltips: {
+                    enabled: false // <-- this option disables tooltips
+                },
+                responsive: true,
+                aspectRatio: 1,
+                legend: {
+                    display: false,
+                },
+                scales: {
+                    xAxes: [{
+                        display: false, //this will remove all the x-axis grid lines
+                        ticks: {
+                            display: false //this will remove only the label
+                        }
+                    }],
+                }
+            }
+        });
+
     oboe('/state')
-        .node('!.', (state: any) => { 
+        .node('!.', (state: any) => {
             // state - это весь JSON объект, который пришел с сервера
-            console.log(state); 
+            let angle = state.angle;
+            let value = state.value;
+
+            // get target value from #freq-target input element if value is emty then use 0
+            let v = $('#freq-target').val();
+            let target: number = v ? parseFloat(v.toString()) : 0;
+
+            let offset = 30 * 1e-6; // 30 ppm
+            let upperLimit = target + target * offset;
+            let lowerLimit = target - target * offset;
+
+            // если длина массива больше 100, то удаляем первый элемент
+            if (chart.data.labels.length > 100) {
+                chart.data.labels.shift();
+                chart.data.datasets.forEach(ds => ds.data.shift());
+            }
+
+            // добавляем новые значения в график
+            chart.data.labels.push(angle);
+            chart.data.datasets[0].data.push(upperLimit);
+            chart.data.datasets[1].data.push(lowerLimit);
+            chart.data.datasets[2].data.push(value);
+            chart.data.datasets[3].data.push(target);
+            chart.update();
+
+            update_fre_difplay({
+                freq: value,
+                min: lowerLimit,
+                max: upperLimit
+            })
         })
-
-    const graphdef = {
-        categories: ['uvCharts', 'Matisse', 'SocialByWay'],
-        dataset: {
-            'uvCharts': [
-                { name: '2008', value: 16 },
-                { name: '2009', value: 21 },
-                { name: '2010', value: 43 },
-                { name: '2011', value: 81 },
-                { name: '2012', value: 105 },
-                { name: '2013', value: 146 }
-            ],
-            'Matisse': [
-                { name: '2008', value: 15 },
-                { name: '2009', value: 28 },
-                { name: '2010', value: 42 },
-                { name: '2011', value: 88 },
-                { name: '2012', value: 100 },
-                { name: '2013', value: 143 }
-            ],
-            'SocialByWay': [
-                { name: '2008', value: 17 },
-                { name: '2009', value: 29 },
-                { name: '2010', value: 43 },
-                { name: '2011', value: 90 },
-                { name: '2012', value: 95 },
-                { name: '2013', value: 140 }
-            ]
-        }
-    };
-
-    const chartconfig = {
-        /*
-        graph: {
-            //custompalette: palete,
-            bgcolor: 'none',
-            //max: 64,
-            //min: 0
-        },
-        */
-        /*
-        dimension: {
-            height: 20
-        },
-        */
-        margin: {
-            top: 1,
-            bottom: 1,
-            left: 1,
-            right: 1
-        },
-        axis: {
-            showticks: false,
-            showsubticks: false,
-            showtext: false,
-            showhortext: false,
-            showvertext: false
-        },
-        frame: {
-            bgcolor: 'none'
-        },
-        legend: {
-            showlegends: false
-        },
-        label: {
-            postfix: ' Бит',
-            fontfamily: 'PT Sans'
-        },
-        effects: {
-            duration: 100,
-        },
-        tooltip: {
-            format: '%c: %v бит'
-        }
-    };
-
-    var graph = new uv.chart('Line', graphdef, chartconfig);
 });
 
+function update_fre_difplay(cfg): void {
+    let value = Math.round(cfg.freq * 100) / 100;
+    $('#current-freq-display').text(value);
+
+    let bg_class = value < cfg.min
+        ? 'bg-warning'
+        : (value > cfg.max ? 'bg-danger' : 'bg-success');
+
+    let display_bg = $('#current-freq-display-bg');
+    if (!display_bg.hasClass(bg_class)) {
+        display_bg.removeClass('bg-success bg-danger bg-warning').addClass(bg_class);
+    }
+}

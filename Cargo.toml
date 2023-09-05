@@ -16,11 +16,11 @@ futures-util = { version = "0.3", default-features = false, features = ["alloc"]
 clap = { version = "4.2", features = ["derive"] }
 rand = "0.8"
 directories = "5"
+async-stream = { version = "0.3" }
 
 tokio = { version = "1", features = ["full"] }
 tokio-serial = "5.4"
 tokio-util = { version = "0.7", default-features = false, features = ["codec"] }
-tokio-stream = { version = "0.1" }
 
 log = "0.4"
 env_logger = "0.10"

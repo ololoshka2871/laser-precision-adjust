@@ -8,12 +8,13 @@
     <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
 
     <!-- Common styles -->
-    <link rel="stylesheet" href="lib/bootstrap/css/bootstrap.css" />
-    <link rel="stylesheet" href="static/css/site.css" />
-    <link rel="stylesheet" href="lib/font-awesome/css/all.min.css" />
+    <link rel="stylesheet" href="/lib/bootstrap/css/bootstrap.css" />
+    <link rel="stylesheet" href="/static/css/site.css" />
+    <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css" />
 
     <!-- specific styles -->
     <link rel="stylesheet" href="static/css/docs.min.css" />
+    <link rel="stylesheet" href="/lib/chart.js/Chart.min.css">
 </head>
 
 <body>
@@ -48,11 +49,12 @@
         <main role="main" class="pb-3">
             <div class="container">
                 <div class="row">
-                    <div class="col-3 bg-primary" data-toggle="tooltip" title="Текущая частота выбранного резонатора">
-                        <span class="seven-segment-font freq-display">32768.53<span>
+                    <div class="col-3 bg-primary" id="current-freq-display-bg" data-toggle="tooltip"
+                        title="Текущая частота выбранного резонатора">
+                        <span class="seven-segment-font freq-display" id="current-freq-display">32768.53<span>
                     </div>
                     <div class="col-2 bg-secondary">
-                        <input type="text" class="form-control seven-segment-font freq-config" id="freq_input"
+                        <input type="text" class="form-control seven-segment-font freq-config" id="freq-target"
                             placeholder="Цель" value="32764.0" data-toggle="tooltip"
                             title="Целевая частота настройки резонаторов" /> Гц
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq_adj"
@@ -78,8 +80,7 @@
                                         data-toggle="tooltip" title="Автоматическое смещеине после работчего прохода">
                                     <div class="input-group-append">
                                         <button class="btn btn-outline-secondary" type="button"><i
-                                                class="fa fa-fire-alt text-danger"
-                                                title="ЖЕЧЬ! (пробел)"></i></button>
+                                                class="fa fa-fire-alt text-danger" title="ЖЕЧЬ! (пробел)"></i></button>
                                     </div>
                                 </div>
                             </div>
@@ -127,11 +128,14 @@
                     </div>
                     <div class="col-7 bd-callout bd-callout-info" style="margin-top:20px;">
                         <h6>История настройки</h6>
-                        <div id="uv-div"></div>
+                        <div class="chart-container" style="position: relative;">
+                            <canvas id="adj-plot"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
-        </main>
+    </div>
+    </main>
     </div>
 
     <!-- Common scripts -->
@@ -142,7 +146,7 @@
 
     <!-- Specific scripts -->
     <script src="lib/d3/d3.min.js"></script>
-    <script src="lib/uvCharts/uvcharts.min.js"></script>
+    <script src="lib/chart.js/Chart.bundle.min.js"></script>
     <script src="lib/oboe.js/oboe-browser.min.js"></script>
     <script src="static/js/work.js"></script>
 </body>
