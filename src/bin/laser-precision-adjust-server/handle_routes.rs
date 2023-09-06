@@ -11,7 +11,7 @@ use laser_precision_adjust::{Config, PrecisionAdjust};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::AppEngine;
+use crate::{AppEngine, ChannelState};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -48,6 +48,9 @@ pub struct StateResult {
     #[serde(rename = "TargetFreq")]
     target_freq: f32,
 
+    #[serde(rename = "InitialFreq")]
+    initial_freq: f32,
+
     #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: f32,
 
@@ -56,33 +59,19 @@ pub struct StateResult {
 }
 
 pub(super) async fn handle_work(
-    State(config): State<Config>,
+    State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(engine): State<AppEngine>,
 ) -> impl IntoResponse {
-    #[derive(Serialize, Clone, Copy)]
-    struct Rezonator {
-        pub step: u32,
-        pub f_start: f32,
-        pub f_end: f32,
-    }
-
     #[derive(Serialize)]
     struct Model {
-        pub resonators: Vec<Rezonator>,
+        pub resonators: Vec<ChannelState>,
     }
 
     RenderHtml(
         Key("work".to_owned()),
         engine,
         Model {
-            resonators: vec![
-                Rezonator {
-                    step: 0,
-                    f_start: 0.0,
-                    f_end: 0.0,
-                };
-                config.resonator_placement.len()
-            ],
+            resonators: channels.lock().await.clone(),
         },
     )
 }
@@ -114,6 +103,7 @@ pub(super) async fn handle_config(
 pub(super) async fn handle_control(
     Path(path): Path<String>,
     State(_config): State<Config>,
+    State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
     Json(payload): Json<ControlRequest>,
@@ -130,15 +120,31 @@ pub(super) async fn handle_control(
         "select" => {
             if let Some(ch) = payload.channel {
                 tracing::info!("Select channel {}", ch);
-                match precision_adjust.lock().await.select_channel(ch).await {
-                    Ok(_) => ok_result,
-                    Err(e) => {
+
+                let move_to_pos = channels.lock().await[ch as usize].current_step;
+
+                let mut lock = precision_adjust.lock().await;
+
+                if let Err(e) = lock.select_channel(ch).await {
+                    return Json(ControlResult {
+                        success: false,
+                        error: Some(format!("Не удалось переключить канал: {:?}", e)),
+                    });
+                }
+                if move_to_pos != 0 {
+                    tracing::info!("Restore position {}", move_to_pos);
+                    if let Err(e) = lock.step(move_to_pos as i32).await {
                         return Json(ControlResult {
                             success: false,
-                            error: Some(format!("Не удалось переключить канал: {:?}", e)),
-                        })
+                            error: Some(format!(
+                                "Не удалось перейти к позиции {}: {:?}",
+                                move_to_pos, e
+                            )),
+                        });
                     }
                 }
+
+                ok_result
             } else {
                 Json(ControlResult {
                     success: false,
@@ -213,6 +219,8 @@ pub(super) async fn handle_control(
                         )),
                     });
                 } else {
+                    channels.lock().await[status.current_channel as usize].current_step =
+                        target_pos as u32;
                     ok_result
                 }
             } else if let Some(move_offset) = payload.move_offset {
@@ -223,6 +231,8 @@ pub(super) async fn handle_control(
                         error: Some(format!("Не сместиться на {} шагов: {:?}", move_offset, e)),
                     });
                 } else {
+                    channels.lock().await[status.current_channel as usize].current_step =
+                        (status.current_step as i32 + move_offset) as u32;
                     ok_result
                 }
             } else {
@@ -274,6 +284,7 @@ pub(super) async fn handle_control(
 
 // Сюда будут поступать запросы на состояние от веб-интерфейса
 pub(super) async fn handle_state(
+    State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(config): State<Config>,
     State(adjust_target): State<Arc<Mutex<f32>>>,
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
@@ -286,6 +297,7 @@ pub(super) async fn handle_state(
 
             let status = status_rx.borrow().clone();
             let freq_target = adjust_target.lock().await.clone();
+            let channel = channels.lock().await[status.current_channel as usize];
 
             yield StateResult {
                 timestamp: status.since_start.as_millis(),
@@ -294,6 +306,7 @@ pub(super) async fn handle_state(
                 target_freq: freq_target,
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
+                initial_freq: channel.initial_freq
             };
         }
     };

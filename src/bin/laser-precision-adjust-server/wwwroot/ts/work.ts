@@ -18,6 +18,7 @@ interface IState {
     TargetFreq: number
     WorkOffsetHz: number
     CurrentStep: number
+    InitialFreq: number
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -232,6 +233,7 @@ function update_rezonator_table(state: IState): void {
     }
     newly_selected.children('[type=step]').text(round_to_2_digits(state.CurrentStep));
     newly_selected.children('[type=freq-current]').text(round_to_2_digits(state.CurrentFreq));
+    newly_selected.children('[type=freq-initial]').text(round_to_2_digits(state.InitialFreq));
 }
 
 function burn(): void {

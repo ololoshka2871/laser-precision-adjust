@@ -10,6 +10,7 @@ use axum::{
     Router,
 };
 use laser_precision_adjust::PrecisionAdjust;
+use serde::Serialize;
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -23,6 +24,13 @@ use crate::handle_routes::{handle_config, handle_control, handle_stat, handle_st
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
+#[derive(Clone, Copy, Serialize)]
+struct ChannelState {
+    current_step: u32,
+    initial_freq: f32,
+    current_freq: f32,
+}
+
 #[derive(Clone, FromRef)]
 struct AppState {
     engine: AppEngine,
@@ -33,6 +41,7 @@ struct AppState {
     status_rx: tokio::sync::watch::Receiver<laser_precision_adjust::Status>,
 
     precision_adjust: Arc<Mutex<PrecisionAdjust>>,
+    channels: Arc<Mutex<Vec<ChannelState>>>,
 }
 
 #[tokio::main]
@@ -48,7 +57,6 @@ async fn main() -> Result<(), std::io::Error> {
 
     tracing::info!("Loading config...");
     let (config, config_file) = laser_precision_adjust::Config::load();
-
 
     let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
 
@@ -75,6 +83,14 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap();
 
     let app_state = AppState {
+        channels: Arc::new(Mutex::new(vec![
+            ChannelState {
+                current_step: 0,
+                initial_freq: 0.0,
+                current_freq: 0.0,
+            };
+            config.resonator_placement.len()
+        ])),
         adjust_target: Arc::new(Mutex::new(config.target_freq_center)),
         engine: Engine::from(minijinja),
         config,
