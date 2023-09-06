@@ -22,8 +22,35 @@ $(() => {
     $('[data-toggle="tooltip"]').tooltip()
 
     $('#rezonators').on('click', 'tbody tr', (ev) => {
-        //$(ev.target).parent().addClass('bg-primary').siblings().removeClass('bg-primary');
-        console.log('select channel');
+        const channel_to_select = parseInt($(ev.target).parent().attr('row-index')) - 1;
+        $.ajax({
+            url: '/control/select',
+            method: 'POST',
+            data: JSON.stringify({ Channel: channel_to_select }),
+            contentType: 'application/json',
+            success: (data) => {
+                if (data.success) {
+                    noty_success('Выбран резонатор №' + (channel_to_select + 1).toString());
+                } else {
+                    noty_error('Ошибка: ' + data.error);
+                }
+            }
+        })
+    });
+
+    $('.camera-ctrl').on('click', (ev) => {
+        const action = $(ev.target).attr('ctrl-request');
+        $.ajax({
+            url: '/control/camera',
+            method: 'POST',
+            data: JSON.stringify({ CameraAction: action }),
+            contentType: 'application/json',
+            success: (data) => {
+                if (!data.success) {
+                    noty_error('Ошибка: ' + data.error);
+                }
+            }
+        })
     });
 
     const chart = new Chart(

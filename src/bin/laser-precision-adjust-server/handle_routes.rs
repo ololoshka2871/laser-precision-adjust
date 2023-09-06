@@ -1,6 +1,10 @@
 use std::{sync::Arc, time::SystemTime};
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    response::IntoResponse,
+    Json,
+};
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::Config;
 
@@ -10,7 +14,13 @@ use tokio::sync::Mutex;
 use crate::AppEngine;
 
 #[derive(Deserialize, Debug)]
-pub struct ControlRequest {}
+pub struct ControlRequest {
+    #[serde(rename = "Channel")]
+    pub channel: Option<u32>,
+
+    #[serde(rename = "CameraAction")]
+    pub camera_action: Option<String>,
+}
 
 #[derive(Serialize, Debug)]
 pub struct ControlResult {
@@ -22,12 +32,16 @@ pub struct ControlResult {
 pub struct StateResult {
     #[serde(rename = "TimesTamp")]
     timestamp: u128,
+
     #[serde(rename = "SelectedChannel")]
     seleced_channel: u32,
+
     #[serde(rename = "CurrentFreq")]
     current_freq: f32,
+
     #[serde(rename = "TargetFreq")]
     target_freq: f32,
+
     #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: f32,
 }
@@ -82,15 +96,63 @@ pub(super) async fn handle_config(
 
 // Сюда будут поступать команды от веб-интерфейса
 pub(super) async fn handle_control(
+    Path(path): Path<String>,
     State(config): State<Config>,
     Json(payload): Json<ControlRequest>,
 ) -> Json<ControlResult> {
-    tracing::trace!("handle_control: {:?}", payload);
+    tracing::debug!("Handle control: {}: {:?}", path, payload);
 
-    Json(ControlResult {
-        success: true,
-        error: None,
-    })
+    match path.as_str() {
+        "select" => {
+            if let Some(ch) = payload.channel {
+                if ch < config.resonator_placement.len() as u32 {
+                    // TODO: select channel
+
+                    return Json(ControlResult {
+                        success: true,
+                        error: None,
+                    });
+                } else {
+                    Json(ControlResult {
+                        success: false,
+                        error: Some(format!("Invalid channel {}", ch)),
+                    })
+                }
+            } else {
+                Json(ControlResult {
+                    success: false,
+                    error: Some("No 'channel' selected".to_owned()),
+                })
+            }
+        }
+        "camera" => {
+            if let Some(action) = payload.camera_action {
+                match action.as_str() {
+                    "close" | "open" | "vac" => {
+                        // TODO: send command to camera
+
+                        return Json(ControlResult {
+                            success: true,
+                            error: None,
+                        });
+                    }
+                    act => Json(ControlResult {
+                        success: false,
+                        error: Some(format!("Unknown action {}", act)),
+                    }),
+                }
+            } else {
+                Json(ControlResult {
+                    success: false,
+                    error: Some("No 'CameraAction' selected".to_owned()),
+                })
+            }
+        }
+        _ => Json(ControlResult {
+            success: false,
+            error: Some("Unknown command".to_owned()),
+        }),
+    }
 }
 
 // Сюда будут поступать запросы на состояние от веб-интерфейса

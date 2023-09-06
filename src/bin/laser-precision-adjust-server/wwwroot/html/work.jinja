@@ -87,14 +87,14 @@
                         </div>
                     </div>
                     <div class="col-2 align-middle btn-group-vertical">
-                        <button class="btn btn-sm btn-success" data-toggle="tooltip" title="Закрыть вакуумную камеру"><i
-                                class="fa fa-lock"></i> Закрыть</button>
+                        <button class="btn btn-sm btn-success camera-ctrl" ctrl-request="close" data-toggle="tooltip"
+                            title="Закрыть вакуумную камеру"><i class="fa fa-lock"></i> Закрыть</button>
                         <hr class="thin-hr" />
-                        <button class="btn btn-sm btn-info" data-toggle="tooltip"
+                        <button class="btn btn-sm btn-info camera-ctrl" ctrl-request="vac" data-toggle="tooltip"
                             title="Открыть клапан вакуумного насоса"><i class="fa fa-soap"></i> Вакуум</button>
                         <hr class="thin-hr" />
-                        <button class="btn btn-sm btn-danger" data-toggle="tooltip" title="Открыть вакуумную камеру"><i
-                                class="fa fa-unlock"></i> Открыть</button>
+                        <button class="btn btn-sm btn-danger camera-ctrl" ctrl-request="open" data-toggle="tooltip"
+                            title="Открыть вакуумную камеру"><i class="fa fa-unlock"></i> Открыть</button>
                     </div>
                     <div class="col-1 align-middle btn-group-vertical">
                         <button class="btn btn-sm btn-warning" data-toggle="tooltip"
@@ -116,7 +116,7 @@
                             </thead>
                             <tbody>
                                 {% for rez in resonators -%}
-                                <tr class="clickableRow" id="rez-{{ loop.index }}-row">
+                                <tr class="clickableRow" id="rez-{{ loop.index }}-row" row-index="{{ loop.index }}">
                                     <th scope="row">{{ loop.index }}</th>
                                     <td type="step">{{ rez.step }}</td>
                                     <td type="freq-initial">{{ rez.f_start }}</td>
@@ -142,6 +142,7 @@
     <script src="lib/jquery/jquery.min.js"></script>
     <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="lib/font-awesome/js/all.min.js"></script>
+    <script src="lib/jquery-noty/packaged/jquery.noty.packaged.min.js"></script>
     <script src="static/js/common.js"></script>
 
     <!-- Specific scripts -->

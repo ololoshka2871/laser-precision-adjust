@@ -91,6 +91,19 @@
       "files": [
         "dist/hotkeys.min.js"
       ]
+    },
+    {
+      "library": "jquery-noty@2.4.1",
+      "destination": "wwwroot/lib/jquery-noty/",
+      "files": [
+        "packaged/jquery.noty.packaged.min.js",
+        "themes/bootstrap.min.js"
+      ]
+    },
+    {
+      "provider": "jsdelivr",
+      "library": "@types/jquery.noty@2.4.1",
+      "destination": "wwwroot/lib/@types/jquery.noty/"
     }
   ]
 }

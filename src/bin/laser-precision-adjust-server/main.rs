@@ -37,24 +37,24 @@ struct AppState {
 async fn main() -> Result<(), std::io::Error> {
     // Enable tracing using Tokio's https://tokio.rs/#tk-lib-tracing
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG")
-                .unwrap_or_else(|_| "laser-precision-adjust-server=debug,tower_http=info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "laser_precision_adjust_server=debug,tower_http=info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer().with_target(false))
         .init();
 
-    log::info!("Loading config...");
+    tracing::info!("Loading config...");
     let (config, config_file) = laser_precision_adjust::Config::load();
 
     /*
     let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
 
-    log::warn!("Testing connections...");
+    tracing::warn!("Testing connections...");
     if let Err(e) = precision_adjust.test_connection().await {
         panic!("Failed to connect to: {:?}", e);
     } else {
-        log::info!("Connection successful!");
+        tracing::info!("Connection successful!");
     }
 
     let _monitoring = precision_adjust.start_monitoring().await;
@@ -84,7 +84,7 @@ async fn main() -> Result<(), std::io::Error> {
     // Build our application with some routes
     let app = Router::new()
         .route("/", get(|| async { Redirect::permanent("/work") }))
-        .route("/control", post(handle_control))
+        .route("/control/:action", post(handle_control))
         .route("/state", get(handle_state))
         .route("/work", get(handle_work))
         .route("/stat", get(handle_stat))
