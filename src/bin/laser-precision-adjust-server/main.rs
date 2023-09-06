@@ -1,7 +1,7 @@
 mod handle_routes;
 mod static_files;
 
-use std::{net::SocketAddr, sync::Arc, time::SystemTime};
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::FromRef,
@@ -31,6 +31,8 @@ struct AppState {
 
     adjust_target: Arc<Mutex<f32>>,
     status_rx: tokio::sync::watch::Receiver<laser_precision_adjust::Status>,
+
+    precision_adjust: Arc<Mutex<PrecisionAdjust>>,
 }
 
 #[tokio::main]
@@ -78,6 +80,7 @@ async fn main() -> Result<(), std::io::Error> {
         config,
         config_file,
         status_rx,
+        precision_adjust: Arc::new(Mutex::new(precision_adjust)),
     };
 
     // Build our application with some routes

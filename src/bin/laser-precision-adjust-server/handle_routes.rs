@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::SystemTime};
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
@@ -6,7 +6,7 @@ use axum::{
     Json,
 };
 use axum_template::{Key, RenderHtml};
-use laser_precision_adjust::Config;
+use laser_precision_adjust::{Config, PrecisionAdjust};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -50,10 +50,16 @@ pub struct StateResult {
 
     #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: f32,
+
+    #[serde(rename = "CurrentStep")]
+    channel_step: u32,
 }
 
-pub(super) async fn handle_work(State(engine): State<AppEngine>) -> impl IntoResponse {
-    #[derive(Serialize)]
+pub(super) async fn handle_work(
+    State(config): State<Config>,
+    State(engine): State<AppEngine>,
+) -> impl IntoResponse {
+    #[derive(Serialize, Clone, Copy)]
     struct Rezonator {
         pub step: u32,
         pub f_start: f32,
@@ -65,16 +71,20 @@ pub(super) async fn handle_work(State(engine): State<AppEngine>) -> impl IntoRes
         pub resonators: Vec<Rezonator>,
     }
 
-    let mut resonators = vec![];
-    for i in 0..16 {
-        resonators.push(Rezonator {
-            step: i,
-            f_start: i as f32 * 100.0,
-            f_end: (i + 1) as f32 * 100.0,
-        });
-    }
-
-    RenderHtml(Key("work".to_owned()), engine, Model { resonators })
+    RenderHtml(
+        Key("work".to_owned()),
+        engine,
+        Model {
+            resonators: vec![
+                Rezonator {
+                    step: 0,
+                    f_start: 0.0,
+                    f_end: 0.0,
+                };
+                config.resonator_placement.len()
+            ],
+        },
+    )
 }
 
 pub(super) async fn handle_stat(State(engine): State<AppEngine>) -> impl IntoResponse {
@@ -103,54 +113,82 @@ pub(super) async fn handle_config(
 // Сюда будут поступать команды от веб-интерфейса
 pub(super) async fn handle_control(
     Path(path): Path<String>,
-    State(config): State<Config>,
+    State(_config): State<Config>,
+    State(status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
+    State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
     Json(payload): Json<ControlRequest>,
 ) -> Json<ControlResult> {
+    let ok_result = Json(ControlResult {
+        success: true,
+        error: None,
+    });
+    let status = status_rx.borrow().clone();
+
     tracing::debug!("Handle control: {}: {:?}", path, payload);
 
     match path.as_str() {
         "select" => {
             if let Some(ch) = payload.channel {
-                if ch < config.resonator_placement.len() as u32 {
-                    // TODO: select channel
-
-                    Json(ControlResult {
-                        success: true,
-                        error: None,
-                    })
-                } else {
-                    Json(ControlResult {
-                        success: false,
-                        error: Some(format!("Invalid channel {}", ch)),
-                    })
+                tracing::info!("Select channel {}", ch);
+                match precision_adjust.lock().await.select_channel(ch).await {
+                    Ok(_) => ok_result,
+                    Err(e) => {
+                        return Json(ControlResult {
+                            success: false,
+                            error: Some(format!("Не удалось переключить канал: {:?}", e)),
+                        })
+                    }
                 }
             } else {
                 Json(ControlResult {
                     success: false,
-                    error: Some("No 'channel' selected".to_owned()),
+                    error: Some("Не указано поле 'channel'".to_owned()),
                 })
             }
         }
         "camera" => {
             if let Some(action) = payload.camera_action {
+                tracing::info!("Camera action: {}", action);
                 match action.as_str() {
-                    "close" | "open" | "vac" => {
-                        // TODO: send command to camera
-
-                        Json(ControlResult {
-                            success: true,
-                            error: None,
-                        })
+                    "close" => {
+                        if let Err(e) = precision_adjust.lock().await.close_camera(false).await {
+                            return Json(ControlResult {
+                                success: false,
+                                error: Some(format!("Не удалось закрыть камеру: {:?}", e)),
+                            });
+                        } else {
+                            ok_result
+                        }
+                    }
+                    "open" => {
+                        if let Err(e) = precision_adjust.lock().await.open_camera().await {
+                            return Json(ControlResult {
+                                success: false,
+                                error: Some(format!("Не удалось открыть камеру: {:?}", e)),
+                            });
+                        } else {
+                            ok_result
+                        }
+                    }
+                    "vac" => {
+                        if let Err(e) = precision_adjust.lock().await.close_camera(true).await {
+                            return Json(ControlResult {
+                                success: false,
+                                error: Some(format!("Не удалось включить вакуум: {:?}", e)),
+                            });
+                        } else {
+                            ok_result
+                        }
                     }
                     act => Json(ControlResult {
                         success: false,
-                        error: Some(format!("Unknown action {}", act)),
+                        error: Some(format!("Неизвестная команда: {}", act)),
                     }),
                 }
             } else {
                 Json(ControlResult {
                     success: false,
-                    error: Some("No 'CameraAction' selected".to_owned()),
+                    error: Some("Не указано поле действия 'CameraAction'".to_owned()),
                 })
             }
         }
@@ -163,19 +201,30 @@ pub(super) async fn handle_control(
                     });
                 }
 
-                // TODO: move to target
+                let offset = target_pos - status.current_step as i32;
 
-                Json(ControlResult {
-                    success: true,
-                    error: None,
-                })
-            } else if let Some(_move_offset) = payload.move_offset {
-                // TODO: move offset
-
-                Json(ControlResult {
-                    success: true,
-                    error: None,
-                })
+                tracing::info!("Move to {}", target_pos);
+                if let Err(e) = precision_adjust.lock().await.step(offset).await {
+                    return Json(ControlResult {
+                        success: false,
+                        error: Some(format!(
+                            "Не удалось перейти к позиции {}: {:?}",
+                            target_pos, e
+                        )),
+                    });
+                } else {
+                    ok_result
+                }
+            } else if let Some(move_offset) = payload.move_offset {
+                tracing::info!("Move by {}", move_offset);
+                if let Err(e) = precision_adjust.lock().await.step(move_offset).await {
+                    return Json(ControlResult {
+                        success: false,
+                        error: Some(format!("Не сместиться на {} шагов: {:?}", move_offset, e)),
+                    });
+                } else {
+                    ok_result
+                }
             } else {
                 Json(ControlResult {
                     success: false,
@@ -184,14 +233,30 @@ pub(super) async fn handle_control(
             }
         }
         "burn" => {
-            let _autostep = payload.move_offset.unwrap_or(0);
+            let autostep = payload.move_offset.unwrap_or(0);
 
-            // TODO: burn
+            tracing::info!("Burn with autostep {}", autostep);
 
-            Json(ControlResult {
-                success: true,
-                error: None,
-            })
+            if let Err(e) = precision_adjust.lock().await.burn().await {
+                return Json(ControlResult {
+                    success: false,
+                    error: Some(format!("Не удалось сжечь: {:?}", e)),
+                });
+            }
+
+            if autostep != 0 {
+                if let Err(e) = precision_adjust.lock().await.step(autostep).await {
+                    return Json(ControlResult {
+                        success: false,
+                        error: Some(format!(
+                            "Не удалось сместиться на {} шагов: {:?}",
+                            autostep, e
+                        )),
+                    });
+                }
+            }
+
+            ok_result
         }
         "scan-all" => Json(ControlResult {
             success: true,
@@ -228,6 +293,7 @@ pub(super) async fn handle_state(
                 current_freq: status.current_frequency,
                 target_freq: freq_target,
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
+                channel_step: status.current_step,
             };
         }
     };

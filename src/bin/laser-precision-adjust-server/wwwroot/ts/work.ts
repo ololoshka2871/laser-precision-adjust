@@ -11,6 +11,16 @@ declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: 
 
 // ---------------------------------------------------------------------------------------------
 
+interface IState {
+    TimesTamp: number
+    SelectedChannel: number
+    CurrentFreq: number
+    TargetFreq: number
+    WorkOffsetHz: number
+    CurrentStep: number
+}
+
+// ---------------------------------------------------------------------------------------------
 const POINTS_ON_PLOT = 100;
 
 let scan_noty: Noty = null;
@@ -134,7 +144,7 @@ $(() => {
         });
 
     oboe('/state')
-        .node('!.', (state: any) => {
+        .node('!.', (state: IState) => {
             // state - это весь JSON объект, который пришел с сервера
             const angle = state.TimesTamp;
             const current_freq = state.CurrentFreq;
@@ -164,7 +174,7 @@ $(() => {
                 max: upperLimit
             });
 
-            select_rezonator(state.SelectedChannel);
+            update_rezonator_table(state);
 
             /*
             scan_noty = noty({
@@ -196,8 +206,12 @@ $(() => {
     });
 });
 
+function round_to_2_digits(x: number): number {
+    return Math.round(x * 100) / 100;
+}
+
 function update_f_re_display(cfg): void {
-    const value = Math.round(cfg.freq * 100) / 100;
+    const value = round_to_2_digits(cfg.freq);
     $('#current-freq-display').text(value);
 
     const bg_class = value < cfg.min
@@ -210,12 +224,14 @@ function update_f_re_display(cfg): void {
     }
 }
 
-function select_rezonator(channel: number): void {
+function update_rezonator_table(state: IState): void {
     const primary_class = 'bg-primary';
-    const newly_selected = $('#rez-' + (channel + 1).toString() + '-row');
+    const newly_selected = $('#rez-' + (state.SelectedChannel + 1).toString() + '-row');
     if (!newly_selected.hasClass(primary_class)) {
         newly_selected.addClass(primary_class).siblings().removeClass(primary_class);
     }
+    newly_selected.children('[type=step]').text(round_to_2_digits(state.CurrentStep));
+    newly_selected.children('[type=freq-current]').text(round_to_2_digits(state.CurrentFreq));
 }
 
 function burn(): void {

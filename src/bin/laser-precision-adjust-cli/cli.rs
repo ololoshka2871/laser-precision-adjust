@@ -8,8 +8,8 @@ pub enum CliCommand {
     SelectChannel(u32),
     Open,
     Close(bool),
-    Step(u8),
-    Burn(Option<u8>),
+    Step(i32),
+    Burn(Option<i32>),
     Show {
         burn: bool,
         pump: Option<f32>,
@@ -76,7 +76,7 @@ enum Com {
     #[clap(alias = "s")]
     Step {
         #[clap(default_value = "1")]
-        count: Option<u8>,
+        count: Option<i32>,
     },
 
     /// Perform horisontal burn step
@@ -84,7 +84,7 @@ enum Com {
     Burn {
         /// Autostep
         #[clap(default_value = "0")]
-        autostep: Option<u8>,
+        autostep: Option<i32>,
     },
 
     /// Show current working area
