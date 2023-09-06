@@ -13,6 +13,8 @@ declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: 
 
 const POINTS_ON_PLOT = 100;
 
+let scan_noty: Noty = null;
+
 // on page loaded jquery
 $(() => {
     // https://www.chartjs.org/docs/2.9.4/getting-started/integration.html#content-security-policy
@@ -45,6 +47,22 @@ $(() => {
             method: 'POST',
             data: JSON.stringify({ CameraAction: action }),
             contentType: 'application/json',
+            success: (data) => {
+                if (!data.success) {
+                    noty_error('Ошибка: ' + data.error);
+                }
+            }
+        })
+    });
+
+    $('#move-to-btn').on('click', move_to);
+    $('#burn-btn').on('click', burn);
+    $('#scan-all-btn').on('click', () => {
+        $.ajax({
+            url: '/control/scan-all',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({}),
             success: (data) => {
                 if (!data.success) {
                     noty_error('Ошибка: ' + data.error);
@@ -147,12 +165,34 @@ $(() => {
             });
 
             select_rezonator(state.SelectedChannel);
+
+            /*
+            scan_noty = noty({
+                type: "information",
+                text: "<i class='fas fa-spinner fa-pulse'></i> Сканирование начато...",
+            });
+            */
         });
 
     // hotkeys
-    hotkeys('space', (event, handler) => {
-        console.log(handler.key + ' pressed');
+    hotkeys('space', (event, _handler) => {
         event.preventDefault();
+        move_to();
+    });
+
+    hotkeys('enter', (event, _handler) => {
+        event.preventDefault();
+        burn();
+    });
+
+    hotkeys('left', (event, _handler) => {
+        event.preventDefault();
+        move_rel(1);
+    });
+
+    hotkeys('right', (event, _handler) => {
+        event.preventDefault();
+        move_rel(-1);
     });
 });
 
@@ -175,5 +215,66 @@ function select_rezonator(channel: number): void {
     const newly_selected = $('#rez-' + (channel + 1).toString() + '-row');
     if (!newly_selected.hasClass(primary_class)) {
         newly_selected.addClass(primary_class).siblings().removeClass(primary_class);
+    }
+}
+
+function burn(): void {
+    const autostep = $('#auto-offset-input').val();
+
+    let autostep_val: Number;
+    if (autostep === '') {
+        autostep_val = 0;
+    } else {
+        autostep_val = parseInt(autostep as string);
+        if (Number.isNaN(autostep_val)) {
+            noty_error('Неверное значение автошага (не целое число)');
+            return;
+        }
+    }
+
+    $.ajax({
+        url: '/control/burn',
+        method: 'POST',
+        data: JSON.stringify({ MoveOffset: autostep_val }),
+        contentType: 'application/json',
+        success: (data) => {
+            if (!data.success) {
+                noty_error('Ошибка: ' + data.error);
+            }
+        }
+    });
+}
+
+function move_rel(offset: number): void {
+    $.ajax({
+        url: '/control/move',
+        method: 'POST',
+        data: JSON.stringify({ MoveOffset: offset }),
+        contentType: 'application/json',
+        success: (data) => {
+            if (!data.success) {
+                noty_error('Ошибка: ' + data.error);
+            }
+        }
+    });
+}
+
+function move_to(): void {
+    const target = $('#move-to-input').val();
+    if (target === '' || Number.isNaN(parseFloat(target as string))) {
+        return;
+    } else {
+        const target_val = parseFloat(target as string) || 0;
+        $.ajax({
+            url: '/control/move',
+            method: 'POST',
+            data: JSON.stringify({ TargetPosition: target_val }),
+            contentType: 'application/json',
+            success: (data) => {
+                if (!data.success) {
+                    noty_error('Ошибка: ' + data.error);
+                }
+            }
+        })
     }
 }

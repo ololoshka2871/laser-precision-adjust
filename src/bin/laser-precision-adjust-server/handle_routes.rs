@@ -20,6 +20,12 @@ pub struct ControlRequest {
 
     #[serde(rename = "CameraAction")]
     pub camera_action: Option<String>,
+
+    #[serde(rename = "TargetPosition")]
+    pub target_position: Option<i32>,
+
+    #[serde(rename = "MoveOffset")]
+    pub move_offset: Option<i32>,
 }
 
 #[derive(Serialize, Debug)]
@@ -108,10 +114,10 @@ pub(super) async fn handle_control(
                 if ch < config.resonator_placement.len() as u32 {
                     // TODO: select channel
 
-                    return Json(ControlResult {
+                    Json(ControlResult {
                         success: true,
                         error: None,
-                    });
+                    })
                 } else {
                     Json(ControlResult {
                         success: false,
@@ -131,10 +137,10 @@ pub(super) async fn handle_control(
                     "close" | "open" | "vac" => {
                         // TODO: send command to camera
 
-                        return Json(ControlResult {
+                        Json(ControlResult {
                             success: true,
                             error: None,
-                        });
+                        })
                     }
                     act => Json(ControlResult {
                         success: false,
@@ -148,10 +154,56 @@ pub(super) async fn handle_control(
                 })
             }
         }
-        _ => Json(ControlResult {
-            success: false,
-            error: Some("Unknown command".to_owned()),
+        "move" => {
+            if let Some(target_pos) = payload.target_position {
+                if target_pos < 0 {
+                    return Json(ControlResult {
+                        success: false,
+                        error: Some("Target position < 0".to_owned()),
+                    });
+                }
+
+                // TODO: move to target
+
+                Json(ControlResult {
+                    success: true,
+                    error: None,
+                })
+            } else if let Some(_move_offset) = payload.move_offset {
+                // TODO: move offset
+
+                Json(ControlResult {
+                    success: true,
+                    error: None,
+                })
+            } else {
+                Json(ControlResult {
+                    success: false,
+                    error: Some("No 'TargetPosition' selected".to_owned()),
+                })
+            }
+        }
+        "burn" => {
+            let _autostep = payload.move_offset.unwrap_or(0);
+
+            // TODO: burn
+
+            Json(ControlResult {
+                success: true,
+                error: None,
+            })
+        }
+        "scan-all" => Json(ControlResult {
+            success: true,
+            error: None,
         }),
+        _ => {
+            tracing::error!("Unknown command: {}", path);
+            Json(ControlResult {
+                success: false,
+                error: Some("Unknown command".to_owned()),
+            })
+        }
     }
 }
 

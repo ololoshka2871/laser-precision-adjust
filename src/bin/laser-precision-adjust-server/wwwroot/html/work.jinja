@@ -67,9 +67,9 @@
                             <div class="row">
                                 <div class="input-group">
                                     <input type="text" class="form-control" placeholder="К шагу" data-toggle="tooltip"
-                                        title="Перейти к шагу обработки">
+                                        title="Перейти к шагу обработки" id="move-to-input">
                                     <div class="input-group-append">
-                                        <button class="btn btn-outline-secondary" type="button"><i
+                                        <button class="btn btn-outline-secondary" type="button" id="move-to-btn"><i
                                                 class="fa fa-play text-success"></i></button>
                                     </div>
                                 </div>
@@ -77,9 +77,10 @@
                             <div class="row" style="margin-top: 1em;">
                                 <div class="input-group">
                                     <input type="text" class="form-control" placeholder="Авто-отступ" value="1"
-                                        data-toggle="tooltip" title="Автоматическое смещеине после работчего прохода">
+                                        id="auto-offset-input" data-toggle="tooltip"
+                                        title="Автоматическое смещеине после работчего прохода">
                                     <div class="input-group-append">
-                                        <button class="btn btn-outline-secondary" type="button"><i
+                                        <button class="btn btn-outline-secondary" id="burn-btn" type="button"><i
                                                 class="fa fa-fire-alt text-danger" title="ЖЕЧЬ! (пробел)"></i></button>
                                     </div>
                                 </div>
@@ -97,7 +98,7 @@
                             title="Открыть вакуумную камеру"><i class="fa fa-unlock"></i> Открыть</button>
                     </div>
                     <div class="col-1 align-middle btn-group-vertical">
-                        <button class="btn btn-sm btn-warning" data-toggle="tooltip"
+                        <button class="btn btn-sm btn-warning" data-toggle="tooltip" id="scan-all-btn"
                             title="Сканировать все каналы. Будет зафиксирована начальная частота"><i
                                 class="fa fa-sticky-note"></i> Оценка</button>
                     </div>
