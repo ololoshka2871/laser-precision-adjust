@@ -116,11 +116,11 @@
                             </thead>
                             <tbody>
                                 {% for rez in resonators -%}
-                                <tr class="clickableRow">
+                                <tr class="clickableRow" id="rez-{{ loop.index }}-row">
                                     <th scope="row">{{ loop.index }}</th>
-                                    <td id="rez-freq-{{ loop.index }}-step">{{ rez.step }}</td>
-                                    <td id="rez-freq-{{ loop.index }}-target">{{ rez.f_start }}</td>
-                                    <td id="rez-freq-{{ loop.index }}-current">{{ rez.f_end }}</td>
+                                    <td type="step">{{ rez.step }}</td>
+                                    <td type="freq-initial">{{ rez.f_start }}</td>
+                                    <td type="freq-current">{{ rez.f_end }}</td>
                                 </tr>
                                 {% endfor -%}
                             </tbody>

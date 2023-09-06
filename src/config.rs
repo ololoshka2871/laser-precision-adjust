@@ -70,6 +70,12 @@ pub struct Config {
     #[serde(rename = "FreqmeterOffset")]
     pub freqmeter_offset: f32,
 
+    #[serde(rename = "WorkingOffsetPPM")]
+    pub working_offset_ppm: f32,
+
+    #[serde(rename = "TargetFreqCenter")]
+    pub target_freq_center: f32,
+
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
 }
@@ -118,6 +124,8 @@ impl std::fmt::Display for Config {
         writeln!(f, "BurnLaserF: {}", self.burn_laser_feedrate)?;
         writeln!(f, "VerticalStep: {}", self.total_vertical_steps)?;
         writeln!(f, "FreqmeterOffset: {}", self.freqmeter_offset)?;
+        writeln!(f, "WorkingOffsetPPM: {}", self.working_offset_ppm)?;
+        writeln!(f, "TargetFreqCenter: {}", self.target_freq_center)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;

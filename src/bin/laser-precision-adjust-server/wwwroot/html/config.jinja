@@ -105,6 +105,8 @@
                         config.TotalVerticalSteps, 'шт.') }}
                         {{ table_row_simple('Смещенние показания частотомера', 'FreqmeterOffset',
                         config.FreqmeterOffset, 'Гц') }}
+                        {{ table_row_simple('Точность настройки', 'WorkingOffsetPPM', config.WorkingOffsetPPM, "ppm") }}
+                        {{ table_row_simple('Цель настройки', 'TargetFreqCenter', config.TargetFreqCenter, "Гц") }}
                     </tbody>
                 </table>
             </div>

@@ -1,10 +1,16 @@
 mod handle_routes;
 mod static_files;
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc, time::SystemTime};
 
-use axum::{extract::FromRef, response::Redirect, routing::{get, post}, Router};
+use axum::{
+    extract::FromRef,
+    response::Redirect,
+    routing::{get, post},
+    Router,
+};
 use laser_precision_adjust::PrecisionAdjust;
+use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::prelude::*;
@@ -13,7 +19,7 @@ use axum_template::engine::Engine;
 
 use minijinja::Environment;
 
-use crate::handle_routes::{handle_config, handle_stat, handle_work, handle_control, handle_state};
+use crate::handle_routes::{handle_config, handle_control, handle_stat, handle_state, handle_work};
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
@@ -22,6 +28,9 @@ struct AppState {
     engine: AppEngine,
     config: laser_precision_adjust::Config,
     config_file: std::path::PathBuf,
+
+    start_time: SystemTime,
+    adjust_target: Arc<Mutex<f32>>,
 }
 
 #[tokio::main]
@@ -65,6 +74,8 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap();
 
     let app_state = AppState {
+        start_time: SystemTime::now(),
+        adjust_target: Arc::new(Mutex::new(config.target_freq_center)),
         engine: Engine::from(minijinja),
         config,
         config_file,

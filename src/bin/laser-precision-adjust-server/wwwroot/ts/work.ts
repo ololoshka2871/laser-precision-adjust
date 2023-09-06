@@ -11,6 +11,8 @@ declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: 
 
 // ---------------------------------------------------------------------------------------------
 
+const POINTS_ON_PLOT = 100;
+
 // on page loaded jquery
 $(() => {
     // https://www.chartjs.org/docs/2.9.4/getting-started/integration.html#content-security-policy
@@ -20,10 +22,11 @@ $(() => {
     $('[data-toggle="tooltip"]').tooltip()
 
     $('#rezonators').on('click', 'tbody tr', (ev) => {
-        $(ev.target).parent().addClass('bg-primary').siblings().removeClass('bg-primary');
+        //$(ev.target).parent().addClass('bg-primary').siblings().removeClass('bg-primary');
+        console.log('select channel');
     });
 
-    let chart = new Chart(
+    const chart = new Chart(
         $('#adj-plot').get()[0] as HTMLCanvasElement,
         {
             type: 'line',
@@ -88,19 +91,16 @@ $(() => {
     oboe('/state')
         .node('!.', (state: any) => {
             // state - это весь JSON объект, который пришел с сервера
-            let angle = state.angle;
-            let value = state.value;
+            const angle = state.TimesTamp;
+            const current_freq = state.CurrentFreq;
 
-            // get target value from #freq-target input element if value is emty then use 0
-            let v = $('#freq-target').val();
-            let target: number = v ? parseFloat(v.toString()) : 0;
+            const target = state.TargetFreq;
+            const offset_hz = state.WorkOffsetHz;
+            const upperLimit = target + offset_hz;
+            const lowerLimit = target - offset_hz;
 
-            let offset = 30 * 1e-6; // 30 ppm
-            let upperLimit = target + target * offset;
-            let lowerLimit = target - target * offset;
-
-            // если длина массива больше 100, то удаляем первый элемент
-            if (chart.data.labels.length > 100) {
+            // если длина массива больше POINTS_ON_PLOT, то удаляем первый элемент
+            if (chart.data.labels.length > POINTS_ON_PLOT) {
                 chart.data.labels.shift();
                 chart.data.datasets.forEach(ds => ds.data.shift());
             }
@@ -109,15 +109,17 @@ $(() => {
             chart.data.labels.push(angle);
             chart.data.datasets[0].data.push(upperLimit);
             chart.data.datasets[1].data.push(lowerLimit);
-            chart.data.datasets[2].data.push(value);
+            chart.data.datasets[2].data.push(current_freq);
             chart.data.datasets[3].data.push(target);
             chart.update();
 
             update_f_re_display({
-                freq: value,
+                freq: current_freq,
                 min: lowerLimit,
                 max: upperLimit
-            })
+            });
+
+            select_rezonator(state.SelectedChannel);
         });
 
     // hotkeys
@@ -128,15 +130,23 @@ $(() => {
 });
 
 function update_f_re_display(cfg): void {
-    let value = Math.round(cfg.freq * 100) / 100;
+    const value = Math.round(cfg.freq * 100) / 100;
     $('#current-freq-display').text(value);
 
-    let bg_class = value < cfg.min
+    const bg_class = value < cfg.min
         ? 'bg-warning'
         : (value > cfg.max ? 'bg-danger' : 'bg-success');
 
-    let display_bg = $('#current-freq-display-bg');
+    const display_bg = $('#current-freq-display-bg');
     if (!display_bg.hasClass(bg_class)) {
         display_bg.removeClass('bg-success bg-danger bg-warning').addClass(bg_class);
+    }
+}
+
+function select_rezonator(channel: number): void {
+    const primary_class = 'bg-primary';
+    const newly_selected = $('#rez-' + (channel + 1).toString() + '-row');
+    if (!newly_selected.hasClass(primary_class)) {
+        newly_selected.addClass(primary_class).siblings().removeClass(primary_class);
     }
 }
