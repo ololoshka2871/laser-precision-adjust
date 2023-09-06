@@ -70,7 +70,7 @@
       "files": [
         "oboe-browser.min.js"
       ]
-    }, 
+    },
     {
       "library": "Chart.js@2.9.4",
       "destination": "wwwroot/lib/chart.js/",
@@ -83,6 +83,14 @@
       "provider": "jsdelivr",
       "library": "@types/chart.js@2.9.38",
       "destination": "wwwroot/lib/@types/chart.js/"
+    },
+    {
+      "provider": "jsdelivr",
+      "library": "hotkeys-js@3.12.0",
+      "destination": "wwwroot/lib/hotkeys-js/",
+      "files": [
+        "dist/hotkeys.min.js"
+      ]
     }
   ]
 }

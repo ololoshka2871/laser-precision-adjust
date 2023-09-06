@@ -6,6 +6,9 @@ interface JQuery<TElement extends Element = HTMLElement> extends Iterable<TEleme
 // declare oboe as defined global function
 declare function oboe(url: string): any;
 
+// declare hotkeys as defined global function
+declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: any) => void): void;
+
 // ---------------------------------------------------------------------------------------------
 
 // on page loaded jquery
@@ -110,15 +113,21 @@ $(() => {
             chart.data.datasets[3].data.push(target);
             chart.update();
 
-            update_fre_difplay({
+            update_f_re_display({
                 freq: value,
                 min: lowerLimit,
                 max: upperLimit
             })
-        })
+        });
+
+    // hotkeys
+    hotkeys('space', (event, handler) => {
+        console.log(handler.key + ' pressed');
+        event.preventDefault();
+    });
 });
 
-function update_fre_difplay(cfg): void {
+function update_f_re_display(cfg): void {
     let value = Math.round(cfg.freq * 100) / 100;
     $('#current-freq-display').text(value);
 
