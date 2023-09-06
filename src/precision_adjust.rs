@@ -55,6 +55,7 @@ pub struct PrivStatus {
     prev_freq: Option<f32>,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Status {
     pub current_channel: u32,
     pub current_side: Side,
@@ -75,9 +76,7 @@ pub struct PrecisionAdjust {
     laser_control: tokio_util::codec::Framed<tokio_serial::SerialStream, gcode_codec::LineCodec>,
     gcode_timeout: Duration,
 
-    freqmeter_status_rx: Mutex<Option<tokio::sync::mpsc::Receiver<(SystemTime, f32)>>>,
-
-    status: Mutex<PrivStatus>,
+    status: Arc<Mutex<PrivStatus>>,
 
     start_time: SystemTime,
 
@@ -88,9 +87,11 @@ pub struct PrecisionAdjust {
 
     axis_config: crate::config::AxisConfig,
 
-    freq_fifo: Option<tokio::fs::File>,
+    freq_fifo: Arc<Mutex<Option<tokio::fs::File>>>,
 
     freq_meter_i2c_addr: u8,
+
+    update_interval: Duration,
 }
 
 impl PrecisionAdjust {
@@ -111,9 +112,7 @@ impl PrecisionAdjust {
             positions: config.resonator_placement,
             gcode_timeout: Duration::from_millis(config.gcode_timeout_ms),
 
-            freqmeter_status_rx: Mutex::new(None),
-
-            status: Mutex::new(PrivStatus {
+            status: Arc::new(Mutex::new(PrivStatus {
                 current_channel: 0,
                 current_side: Side::Left,
                 current_step: 0,
@@ -122,7 +121,7 @@ impl PrecisionAdjust {
                 current_valve_state: ValveState::Atmosphere,
 
                 prev_freq: None,
-            }),
+            })),
 
             start_time: SystemTime::now(),
 
@@ -134,7 +133,7 @@ impl PrecisionAdjust {
             axis_config: config.axis_config,
 
             freq_fifo: {
-                match config.freq_fifo.as_ref() {
+                Arc::new(Mutex::new(match config.freq_fifo.as_ref() {
                     Some(freq_fifo) => {
                         let file = tokio::fs::OpenOptions::new()
                             .write(true)
@@ -146,10 +145,12 @@ impl PrecisionAdjust {
                         Some(file)
                     }
                     None => None,
-                }
+                }))
             },
 
             freq_meter_i2c_addr: config.freq_meter_i2c_addr,
+
+            update_interval: Duration::from_millis(config.update_interval_ms as u64),
         }
     }
 
@@ -190,71 +191,74 @@ impl PrecisionAdjust {
         self.get_gcode_result().await
     }
 
-    pub async fn get_status(&mut self) -> Result<Status, Error> {
-        let mut guard = self.freqmeter_status_rx.lock().await;
-        if let Some(rx) = guard.as_mut() {
-            if let Some((t, f)) = rx.recv().await {
-                let mut status = self.status.lock().await;
+    pub async fn start_monitoring(&mut self) -> tokio::sync::watch::Receiver<Status> {
+        let (tx, rx) = tokio::sync::watch::channel(Status {
+            current_channel: 0,
+            current_side: Side::Left,
+            current_step: 0,
+            since_start: Duration::from_millis(0),
+            current_frequency: 0.0,
 
-                let e = if let Some(prev_f) = &mut status.prev_freq {
-                    let v_prev_f = *prev_f;
-                    if f > v_prev_f + 500.0 {
-                        Err(Error::Logick(format!(
-                            "Random frequency jump detected! {} -> {}",
-                            prev_f, f
-                        )))
-                    }
-                    else if (f.is_nan() || f < 1.0) && !v_prev_f.is_nan() {
-                        Err(Error::Logick("Empty result".to_owned()))
-                    }
-                    else {
-                        Ok(())
-                    }
-                } else {
-                    status.prev_freq.replace(f);
-                    Ok(())
-                };
-
-                if e.is_err() {
-                    status.prev_freq = None;
-                    e?;
-                } else {
-                    status.prev_freq = Some(f);
-                }
-
-                if let Some(fifo) = self.freq_fifo.as_mut() {
-                    fifo.write_all(format!("{{ \"f\": {}}}\n", f).as_bytes())
-                        .await
-                        .unwrap();
-                }
-
-                Ok(Status {
-                    current_channel: status.current_channel,
-                    current_side: status.current_side,
-                    current_step: status.current_step,
-                    since_start: t.duration_since(self.start_time).unwrap(),
-                    current_frequency: f,
-
-                    camera_state: status.current_camera_state,
-                    valve_state: status.current_valve_state,
-                })
-            } else {
-                unreachable!()
-            }
-        } else {
-            log::error!(
-                "Freqmeter status channel not initialized! please call start_monitoring() first!"
-            );
-            return Err(Error::LaserSetup(laser_setup_interface::Error::Timeout));
-        }
-    }
-
-    pub async fn start_monitoring(&mut self) -> tokio::task::JoinHandle<()> {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
-        self.freqmeter_status_rx.lock().await.replace(rx);
+            camera_state: CameraState::Close,
+            valve_state: ValveState::Atmosphere,
+        });
 
         let dev = self.laser_setup.clone();
         let freq_meter_i2c_addr = self.freq_meter_i2c_addr;
+        let update_interval = self.update_interval;
+
+        let status = self.status.clone();
+        let fifo_file: Arc<Mutex<Option<tokio::fs::File>>> = self.freq_fifo.clone();
+        let start_time = self.start_time;
+
+        async fn update_status(
+            status: &Mutex<PrivStatus>,
+            f: f32,
+            freq_fifo: &Mutex<Option<tokio::fs::File>>,
+            start_time: SystemTime,
+        ) -> Status {
+            let mut status = status.lock().await;
+
+            let e = if let Some(prev_f) = &mut status.prev_freq {
+                let v_prev_f = *prev_f;
+                if f > v_prev_f + 500.0 {
+                    Err(Error::Logick(format!(
+                        "Random frequency jump detected! {} -> {}",
+                        prev_f, f
+                    )))
+                } else if (f.is_nan() || f < 1.0) && !v_prev_f.is_nan() {
+                    Err(Error::Logick("Empty result".to_owned()))
+                } else {
+                    Ok(())
+                }
+            } else {
+                status.prev_freq.replace(f);
+                Ok(())
+            };
+
+            if e.is_err() {
+                status.prev_freq = None;
+                tracing::error!("Freqmeter error: {:?}", e);
+            } else {
+                status.prev_freq = Some(f);
+            }
+
+            if let Some(fifo) = freq_fifo.lock().await.deref_mut() {
+                fifo.write_all(format!("{{ \"f\": {}}}\n", f).as_bytes())
+                    .await
+                    .unwrap();
+            }
+            Status {
+                current_channel: status.current_channel,
+                current_side: status.current_side,
+                current_step: status.current_step,
+                since_start: SystemTime::now().duration_since(start_time).unwrap(),
+                current_frequency: f,
+
+                camera_state: status.current_camera_state,
+                valve_state: status.current_valve_state,
+            }
+        }
 
         tokio::spawn(async move {
             loop {
@@ -266,19 +270,26 @@ impl PrecisionAdjust {
                 match res {
                     Ok(r) => {
                         if r.len() == std::mem::size_of::<f32>() {
-                            let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
-                            let f = f32::from_le_bytes(byte_array);
-                            tx.send((SystemTime::now(), f)).await.ok();
+                            let f = {
+                                let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
+                                f32::from_le_bytes(byte_array)
+                            };
+
+                            let new_status =
+                                update_status(&status, f, &fifo_file, start_time).await;
+                            tx.send(new_status).ok();
                         } else {
-                            log::debug!("Freqmeter returned invalid data, skipping...");
+                            tracing::debug!("Freqmeter returned invalid data, skipping...");
                         }
                     }
-                    Err(e) => log::debug!("Freqmeter error: {:?}", e),
+                    Err(e) => tracing::debug!("Freqmeter error: {:?}", e),
                 }
 
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::time::sleep(update_interval).await;
             }
-        })
+        });
+
+        rx
     }
 
     pub async fn reset(&mut self) -> Result<(), Error> {
@@ -430,15 +441,15 @@ impl PrecisionAdjust {
         let (new_status, cmds) = f(status, workspace);
 
         for cmd in cmds {
-            log::trace!("Sending {:?}...", cmd);
+            tracing::trace!("Sending {:?}...", cmd);
             self.laser_control
                 .send(cmd)
                 .await
                 .map_err(|e| Error::Laser(e))?;
 
-            log::trace!("Waiting conformation");
+            tracing::trace!("Waiting conformation");
             self.get_gcode_result().await.map_err(|e| {
-                log::error!("Can't setup initial position: {:?}", e);
+                tracing::error!("Can't setup initial position: {:?}", e);
                 Error::Laser(e)
             })?;
         }

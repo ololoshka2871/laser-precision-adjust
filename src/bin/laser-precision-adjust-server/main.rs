@@ -29,8 +29,8 @@ struct AppState {
     config: laser_precision_adjust::Config,
     config_file: std::path::PathBuf,
 
-    start_time: SystemTime,
     adjust_target: Arc<Mutex<f32>>,
+    status_rx: tokio::sync::watch::Receiver<laser_precision_adjust::Status>,
 }
 
 #[tokio::main]
@@ -47,7 +47,7 @@ async fn main() -> Result<(), std::io::Error> {
     tracing::info!("Loading config...");
     let (config, config_file) = laser_precision_adjust::Config::load();
 
-    /*
+
     let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
 
     tracing::warn!("Testing connections...");
@@ -57,9 +57,8 @@ async fn main() -> Result<(), std::io::Error> {
         tracing::info!("Connection successful!");
     }
 
-    let _monitoring = precision_adjust.start_monitoring().await;
+    let status_rx = precision_adjust.start_monitoring().await;
     precision_adjust.reset().await.expect("Can't reset laser!");
-    */
 
     // State for our application
     let mut minijinja = Environment::new();
@@ -74,11 +73,11 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap();
 
     let app_state = AppState {
-        start_time: SystemTime::now(),
         adjust_target: Arc::new(Mutex::new(config.target_freq_center)),
         engine: Engine::from(minijinja),
         config,
         config_file,
+        status_rx,
     };
 
     // Build our application with some routes

@@ -33,13 +33,13 @@ impl Decoder for LineCodec {
             match line == "ok" {
                 true => Ok(Some(CmdResp::Ok)),
                 false => {
-                    log::warn!("Got unknown result: {}", line);
+                    tracing::warn!("Got unknown result: {}", line);
                     Ok(Some(CmdResp::Err))
                 }
             }
         } else {
             if !line.is_empty() {
-                log::trace!("No newline found in buffer: [{}]", line);
+                tracing::trace!("No newline found in buffer: [{}]", line);
             }
             Ok(None)
         }

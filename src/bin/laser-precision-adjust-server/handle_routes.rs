@@ -210,28 +210,25 @@ pub(super) async fn handle_control(
 // Сюда будут поступать запросы на состояние от веб-интерфейса
 pub(super) async fn handle_state(
     State(config): State<Config>,
-    State(start_time): State<SystemTime>,
     State(adjust_target): State<Arc<Mutex<f32>>>,
+    State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
 ) -> impl IntoResponse {
     tracing::trace!("handle_state");
 
-    let a = 1.5;
-
     let stream = async_stream::stream! {
         loop {
-            let tmp = SystemTime::now().duration_since(start_time).unwrap().as_millis() as f32;
+            status_rx.changed().await.ok();
+
+            let status = status_rx.borrow().clone();
             let freq_target = adjust_target.lock().await.clone();
 
             yield StateResult {
-                timestamp: SystemTime::now().duration_since(start_time).unwrap().as_millis(),
-                seleced_channel: 0,
-                current_freq: freq_target + a * tmp.sin(),
+                timestamp: status.since_start.as_millis(),
+                seleced_channel: status.current_channel,
+                current_freq: status.current_frequency,
                 target_freq: freq_target,
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
             };
-
-            // sleep for 50 milliseconds
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     };
 

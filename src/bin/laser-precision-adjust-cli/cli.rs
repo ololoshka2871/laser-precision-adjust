@@ -149,48 +149,48 @@ pub async fn process_cli_command(pa: &mut PrecisionAdjust, cmd: CliCommand) {
     match cmd {
         CliCommand::None => {}
         CliCommand::TestConnection => {
-            log::info!("Testing connection...");
+            tracing::info!("Testing connection...");
             if let Err(e) = pa.test_connection().await {
-                log::error!("Failed to connect to: {:?}", e);
+                tracing::error!("Failed to connect to: {:?}", e);
             } else {
-                log::info!("Connection successful!");
+                tracing::info!("Connection successful!");
             }
         }
         CliCommand::SelectChannel(channel) => {
-            log::info!("Selecting channel {}...", channel);
+            tracing::info!("Selecting channel {}...", channel);
             if let Err(e) = pa.select_channel(channel).await {
-                log::error!("Failed to select channel: {:?}", e);
+                tracing::error!("Failed to select channel: {:?}", e);
             }
         }
         CliCommand::Open => {
-            log::info!("Opening camera...");
+            tracing::info!("Opening camera...");
             if let Err(e) = pa.open_camera().await {
-                log::error!("Failed to open camera: {:?}", e);
+                tracing::error!("Failed to open camera: {:?}", e);
             }
         }
         CliCommand::Close(vacuum) => {
             if let Err(e) = pa.close_camera(vacuum).await {
-                log::error!("Failed to close camera: {:?}", e);
+                tracing::error!("Failed to close camera: {:?}", e);
             }
         }
         CliCommand::Step(count) => {
             if let Err(e) = pa.step(count).await {
-                log::error!("Failed to perform step: {:?}", e);
+                tracing::error!("Failed to perform step: {:?}", e);
             }
         }
         CliCommand::Burn(autostep) => {
             if let Err(e) = pa.burn().await {
-                log::error!("Failed to perform burn: {:?}", e);
+                tracing::error!("Failed to perform burn: {:?}", e);
             }
             if let Some(autostep) = autostep {
                 if let Err(e) = pa.step(autostep).await {
-                    log::error!("Failed to perform step: {:?}", e);
+                    tracing::error!("Failed to perform step: {:?}", e);
                 }
             }
         }
         CliCommand::Show { burn, pump, s, f } => {
             if let Err(e) = pa.show(burn, pump, s, f).await {
-                log::error!("Failed to show: {:?}", e);
+                tracing::error!("Failed to show: {:?}", e);
             }
         }
     }
