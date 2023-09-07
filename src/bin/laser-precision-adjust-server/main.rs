@@ -24,11 +24,13 @@ use crate::handle_routes::{handle_config, handle_control, handle_stat, handle_st
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
-#[derive(Clone, Copy, Serialize)]
+#[derive(Clone, Serialize)]
 struct ChannelState {
     current_step: u32,
     initial_freq: f32,
     current_freq: f32,
+
+    points: Vec<(u128, f32)>,
 }
 
 #[derive(Clone, FromRef)]
@@ -42,6 +44,7 @@ struct AppState {
 
     precision_adjust: Arc<Mutex<PrecisionAdjust>>,
     channels: Arc<Mutex<Vec<ChannelState>>>,
+    close_timestamp: Arc<Mutex<Option<u128>>>,
 }
 
 #[tokio::main]
@@ -88,6 +91,7 @@ async fn main() -> Result<(), std::io::Error> {
                 current_step: 0,
                 initial_freq: 0.0,
                 current_freq: 0.0,
+                points: vec![],
             };
             config.resonator_placement.len()
         ])),
@@ -97,6 +101,7 @@ async fn main() -> Result<(), std::io::Error> {
         config_file,
         status_rx,
         precision_adjust: Arc::new(Mutex::new(precision_adjust)),
+        close_timestamp: Arc::new(Mutex::new(None)),
     };
 
     // Build our application with some routes

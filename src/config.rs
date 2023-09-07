@@ -79,6 +79,9 @@ pub struct Config {
     #[serde(rename = "UpdateIntervalMs")]
     pub update_interval_ms: u32,
 
+    #[serde(rename = "DisplayPointsCount")]
+    pub display_points_count: usize,
+
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
 }
@@ -130,6 +133,7 @@ impl std::fmt::Display for Config {
         writeln!(f, "WorkingOffsetPPM: {}", self.working_offset_ppm)?;
         writeln!(f, "TargetFreqCenter: {}", self.target_freq_center)?;
         writeln!(f, "UpdateIntervalMs: {}", self.update_interval_ms)?;
+        writeln!(f, "DisplayPointsCount: {}", self.display_points_count)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;

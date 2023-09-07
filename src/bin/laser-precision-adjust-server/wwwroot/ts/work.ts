@@ -19,10 +19,11 @@ interface IState {
     WorkOffsetHz: number
     CurrentStep: number
     InitialFreq: number
+    Points: [number, number][] // [timestamp, freq]
+    CloseTimestamp: number | null
 }
 
 // ---------------------------------------------------------------------------------------------
-const POINTS_ON_PLOT = 100;
 
 let scan_noty: Noty = null;
 
@@ -92,6 +93,7 @@ $(() => {
                     {
                         label: 'Upper Limit',
                         data: [],
+                        lineTension: 0,
                         pointRadius: 0,
                         fill: 'top',
                         backgroundColor: 'rgba(240, 81, 81, 0.5)',
@@ -100,6 +102,7 @@ $(() => {
                     {
                         label: 'Lower Limit',
                         data: [],
+                        lineTension: 0,
                         pointRadius: 0,
                         fill: 'bottom', // заполнить область до графика 1
                         backgroundColor: 'rgba(204, 167, 80, 0.5)',
@@ -108,6 +111,7 @@ $(() => {
                     {
                         label: 'Actual',
                         data: [],
+                        lineTension: 0,
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(75, 148, 204)',
@@ -115,6 +119,7 @@ $(() => {
                     {
                         label: 'Target',
                         data: [],
+                        lineTension: 0,
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(8, 150, 38)',
@@ -155,18 +160,12 @@ $(() => {
             const upperLimit = target + offset_hz;
             const lowerLimit = target - offset_hz;
 
-            // если длина массива больше POINTS_ON_PLOT, то удаляем первый элемент
-            if (chart.data.labels.length > POINTS_ON_PLOT) {
-                chart.data.labels.shift();
-                chart.data.datasets.forEach(ds => ds.data.shift());
-            }
-
             // добавляем новые значения в график
-            chart.data.labels.push(angle);
-            chart.data.datasets[0].data.push(upperLimit);
-            chart.data.datasets[1].data.push(lowerLimit);
-            chart.data.datasets[2].data.push(current_freq);
-            chart.data.datasets[3].data.push(target);
+            chart.data.labels = state.Points.map(p => p[0]);
+            chart.data.datasets[0].data = Array<number>(state.Points.length).fill(upperLimit);
+            chart.data.datasets[1].data = Array<number>(state.Points.length).fill(lowerLimit);
+            chart.data.datasets[2].data = state.Points.map(p => p[1]);
+            chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
             chart.update();
 
             update_f_re_display({
@@ -176,6 +175,8 @@ $(() => {
             });
 
             update_rezonator_table(state);
+
+            update_camera_controls(state.CloseTimestamp, state.Points.pop()[0]);
 
             /*
             scan_noty = noty({
@@ -294,5 +295,32 @@ function move_to(): void {
                 }
             }
         })
+    }
+}
+
+function update_camera_controls(close_timestamp: number | null, last_timestamp: number | undefined): void {
+    // если close_timestamp === null, то камера открыта, нельзя включать ваккум
+    // если last_timestamp - close_timestamp > 15 сек., камера закрыта, можно включать ваккум
+    const vacuum_btn = $('button[ctrl-request=vac]');
+
+    const after_close_s = Math.round((last_timestamp - close_timestamp) / 1_000);
+    if (close_timestamp === null) {
+        if (vacuum_btn.prop('data-state') !== 'disabled') {
+            vacuum_btn.prop('disabled', 'disabled')
+                .prop('data-state', 'disabled')
+                .html('<i class="fa fa-soap"></i> Вакуум');
+        }
+    } else if (after_close_s > 15) {
+        if (vacuum_btn.prop('data-state') !== 'enabled') {
+            vacuum_btn.prop('disabled', false)
+                .prop('data-state', 'enabled')
+                .html('<i class="fa fa-soap"></i> Вакуум');
+        }
+    } else {
+        if (vacuum_btn.prop('data-state') !== 'w' + (15 - after_close_s).toString()) {
+            vacuum_btn.prop('disabled', 'disabled')
+                .prop('data-state', 'w' + (15 - after_close_s).toString())
+                .html('<i class="fas fa-spinner fa-pulse"></i> Ждите... (' + (15 - after_close_s).toString() + ')');
+        }
     }
 }

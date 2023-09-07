@@ -56,6 +56,12 @@ pub struct StateResult {
 
     #[serde(rename = "CurrentStep")]
     channel_step: u32,
+
+    #[serde(rename = "Points")]
+    points: Vec<(u128, f32)>,
+
+    #[serde(rename = "CloseTimestamp")]
+    close_timestamp: Option<u128>,
 }
 
 pub(super) async fn handle_work(
@@ -288,6 +294,7 @@ pub(super) async fn handle_state(
     State(config): State<Config>,
     State(adjust_target): State<Arc<Mutex<f32>>>,
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
+    State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
 ) -> impl IntoResponse {
     tracing::trace!("handle_state");
 
@@ -297,16 +304,48 @@ pub(super) async fn handle_state(
 
             let status = status_rx.borrow().clone();
             let freq_target = adjust_target.lock().await.clone();
-            let channel = channels.lock().await[status.current_channel as usize];
+
+            let timestamp = status.since_start.as_millis();
+            let (initial_freq, points) = {
+                let mut channels = channels.lock().await;
+                let channel = channels.get_mut(status.current_channel as usize).unwrap();
+                channel.points.push((timestamp, status.current_frequency));
+                if channel.points.len() > config.display_points_count {
+                    channel.points.remove(0);
+                }
+                (channel.initial_freq, channel.points.clone())
+            };
+
+            let close_timestamp = {
+                let mut close_timestamp_guard = close_timestamp.lock().await;
+                match status.camera_state {
+                    laser_setup_interface::CameraState::Close => {
+                        if close_timestamp_guard.is_none() {
+                            let res = Some(timestamp);
+                            *close_timestamp_guard = res;
+                            res
+                        } else {
+                            *close_timestamp_guard
+                        }
+                    },
+                    laser_setup_interface::CameraState::Open => {
+                        let res = None;
+                            *close_timestamp_guard = res;
+                            res
+                    },
+                }
+            };
 
             yield StateResult {
-                timestamp: status.since_start.as_millis(),
+                timestamp,
                 seleced_channel: status.current_channel,
                 current_freq: status.current_frequency,
                 target_freq: freq_target,
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
-                initial_freq: channel.initial_freq
+                initial_freq,
+                points,
+                close_timestamp,
             };
         }
     };
