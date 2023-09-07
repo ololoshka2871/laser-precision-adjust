@@ -219,7 +219,7 @@ impl PrecisionAdjust {
             f: f32,
             freq_fifo: &Mutex<Option<tokio::fs::File>>,
             start_time: SystemTime,
-        ) -> Status {
+        ) -> Result<Status, Error> {
             let mut status = status.lock().await;
 
             let e = if let Some(prev_f) = &mut status.prev_freq {
@@ -239,9 +239,9 @@ impl PrecisionAdjust {
                 Ok(())
             };
 
-            if e.is_err() {
+            if let Err(e) = e {
                 status.prev_freq = None;
-                tracing::error!("Freqmeter error: {:?}", e);
+                Err(e)?;
             } else {
                 status.prev_freq = Some(f);
             }
@@ -251,7 +251,7 @@ impl PrecisionAdjust {
                     .await
                     .unwrap();
             }
-            Status {
+            Ok(Status {
                 current_channel: status.current_channel,
                 current_side: status.current_side,
                 current_step: status.current_step,
@@ -260,7 +260,7 @@ impl PrecisionAdjust {
 
                 camera_state: status.current_camera_state,
                 valve_state: status.current_valve_state,
-            }
+            })
         }
 
         fn genetare_fake_freq(center: f32) -> f32 {
@@ -292,7 +292,10 @@ impl PrecisionAdjust {
 
                             let new_status =
                                 update_status(&status, f, &fifo_file, start_time).await;
-                            tx.send(new_status).ok();
+                            match new_status {
+	                            Ok(s) => {tx.send(s).ok();},
+	                            Err(e) => tracing::error!("Freqmeter error: {:?}", e),
+                            }
                         } else {
                             tracing::debug!("Freqmeter returned invalid data, skipping...");
                         }
