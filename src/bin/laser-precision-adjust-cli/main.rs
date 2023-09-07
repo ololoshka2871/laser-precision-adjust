@@ -45,7 +45,7 @@ async fn main() -> Result<(), std::io::Error> {
         tracing::info!("Connection successful!");
     }
 
-    let mut status_channel = precision_adjust.start_monitoring().await;
+    let mut status_channel = precision_adjust.start_monitoring(None).await;
     precision_adjust.reset().await.expect("Can't reset laser!");
 
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();

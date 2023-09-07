@@ -45,6 +45,7 @@ struct AppState {
     precision_adjust: Arc<Mutex<PrecisionAdjust>>,
     channels: Arc<Mutex<Vec<ChannelState>>>,
     close_timestamp: Arc<Mutex<Option<u128>>>,
+    select_channel_blocked: Arc<Mutex<bool>>,
 }
 
 #[tokio::main]
@@ -58,6 +59,13 @@ async fn main() -> Result<(), std::io::Error> {
         .with(tracing_subscriber::fmt::layer().with_target(false))
         .init();
 
+    let emulate_freq = std::env::var("EMULATE_FREQ")
+        .map(|v| v.parse::<f32>().unwrap_or_default())
+        .ok();
+    if let Some(f) = &emulate_freq {
+        tracing::warn!("Emulating frequency: {}", f);
+    }
+
     tracing::info!("Loading config...");
     let (config, config_file) = laser_precision_adjust::Config::load();
 
@@ -70,7 +78,7 @@ async fn main() -> Result<(), std::io::Error> {
         tracing::info!("Connection successful!");
     }
 
-    let status_rx = precision_adjust.start_monitoring().await;
+    let status_rx = precision_adjust.start_monitoring(emulate_freq).await;
     precision_adjust.reset().await.expect("Can't reset laser!");
 
     // State for our application
@@ -102,6 +110,7 @@ async fn main() -> Result<(), std::io::Error> {
         status_rx,
         precision_adjust: Arc::new(Mutex::new(precision_adjust)),
         close_timestamp: Arc::new(Mutex::new(None)),
+        select_channel_blocked: Arc::new(Mutex::new(false)),
     };
 
     // Build our application with some routes

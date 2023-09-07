@@ -4,7 +4,7 @@ interface JQuery<TElement extends Element = HTMLElement> extends Iterable<TEleme
 }
 
 // declare oboe as defined global function
-declare function oboe(url: string): any;
+declare function oboe(url: string | Object): any;
 
 // declare hotkeys as defined global function
 declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: any) => void): void;
@@ -20,7 +20,13 @@ interface IState {
     CurrentStep: number
     InitialFreq: number
     Points: [number, number][] // [timestamp, freq]
-    CloseTimestamp: number | null
+    CloseTimestamp?: number
+}
+
+interface IControlResult {
+    success: boolean,
+    error?: string,
+    message?: string,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -67,20 +73,31 @@ $(() => {
         })
     });
 
-    $('#move-to-btn').on('click', move_to);
-    $('#burn-btn').on('click', burn);
-    $('#scan-all-btn').on('click', () => {
-        $.ajax({
+    $('#move-to-btn').on('click', (ev) => { move_to(); ev.preventDefault(); });
+    $('#burn-btn').on('click', (ev) => { burn(); ev.preventDefault(); });
+    $('#scan-all-btn').on('click', (ev) => {
+        oboe({
             url: '/control/scan-all',
             method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({}),
-            success: (data) => {
-                if (!data.success) {
-                    noty_error('Ошибка: ' + data.error);
+            body: {}
+        }).node('!.', (state: IControlResult) => {
+            if (state.success) {
+                if (state.message === 'Finished' && scan_noty !== null) {
+                    scan_noty.close();
+                } else if (scan_noty !== null) {
+                    scan_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);
+                } else {
+                    scan_noty = noty({
+                        type: "information",
+                        text: "<i class='fas fa-spinner fa-pulse'></i> " + state.message,
+                    });
                 }
+            } else {
+                noty_error('Ошибка: ' + state.error);
             }
-        })
+        });
+
+        ev.preventDefault();
     });
 
     const chart = new Chart(
@@ -177,13 +194,6 @@ $(() => {
             update_rezonator_table(state);
 
             update_camera_controls(state.CloseTimestamp, state.Points.pop()[0]);
-
-            /*
-            scan_noty = noty({
-                type: "information",
-                text: "<i class='fas fa-spinner fa-pulse'></i> Сканирование начато...",
-            });
-            */
         });
 
     // hotkeys
@@ -317,10 +327,11 @@ function update_camera_controls(close_timestamp: number | null, last_timestamp: 
                 .html('<i class="fa fa-soap"></i> Вакуум');
         }
     } else {
-        if (vacuum_btn.prop('data-state') !== 'w' + (15 - after_close_s).toString()) {
+        const remaning = (15 - after_close_s).toString();
+        if (vacuum_btn.prop('data-state') !== 'w' + remaning) {
             vacuum_btn.prop('disabled', 'disabled')
-                .prop('data-state', 'w' + (15 - after_close_s).toString())
-                .html('<i class="fas fa-spinner fa-pulse"></i> Ждите... (' + (15 - after_close_s).toString() + ')');
+                .prop('data-state', 'w' + remaning)
+                .html('<i class="fas fa-spinner fa-pulse"></i> Ждите... (' + remaning + ')');
         }
     }
 }
