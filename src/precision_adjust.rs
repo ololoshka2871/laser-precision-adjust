@@ -229,7 +229,7 @@ impl PrecisionAdjust {
                         "Random frequency jump detected! {} -> {}",
                         prev_f, f
                     )))
-                } else if (f.is_nan() || f < 1.0) && !v_prev_f.is_nan() {
+                } else if (f.is_nan() || f < 49.0) && !v_prev_f.is_nan() {
                     Err(Error::Logick("Empty result".to_owned()))
                 } else {
                     Ok(())
@@ -293,8 +293,10 @@ impl PrecisionAdjust {
                             let new_status =
                                 update_status(&status, f, &fifo_file, start_time).await;
                             match new_status {
-	                            Ok(s) => {tx.send(s).ok();},
-	                            Err(e) => tracing::error!("Freqmeter error: {:?}", e),
+                                Ok(s) => {
+                                    tx.send(s).ok();
+                                }
+                                Err(e) => tracing::error!("Freqmeter error: {:?}", e),
                             }
                         } else {
                             tracing::debug!("Freqmeter returned invalid data, skipping...");
