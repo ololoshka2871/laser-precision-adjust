@@ -42,7 +42,20 @@ $(() => {
     $('[data-toggle="tooltip"]').tooltip()
 
     $('#rezonators').on('click', 'tbody tr', (ev) => {
-        const channel_to_select = parseInt($(ev.target).parent().attr('row-index')) - 1;
+        let channel_to_select: number;
+        if (ev.target.tagName === 'TD' || ev.target.tagName === 'TH') {
+            // <td> / <th>
+            channel_to_select = parseInt($(ev.target)
+                .parent()
+                .attr('row-index')) - 1;
+        } else {
+            // <td><code></td>
+            channel_to_select = parseInt($(ev.target)
+                .parent()
+                .parent()
+                .attr('row-index')) - 1;
+        }
+
         $.ajax({
             url: '/control/select',
             method: 'POST',

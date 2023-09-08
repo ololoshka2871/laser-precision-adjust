@@ -65,8 +65,19 @@
         {
             "type": "chrome",
             "request": "launch",
-            "name": "open chrome",
+            "name": "open chrome local",
             "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/src/bin/laser-precision-adjust-server/wwwroot",
+            "sourceMaps": true,
+            "sourceMapPathOverrides": {
+                "*.ts": "${webRoot}/ts/*.ts",
+            }
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "open chrome remote",
+            "url": "http://192.168.0.108:3000/",
             "webRoot": "${workspaceFolder}/src/bin/laser-precision-adjust-server/wwwroot",
             "sourceMaps": true,
             "sourceMapPathOverrides": {
