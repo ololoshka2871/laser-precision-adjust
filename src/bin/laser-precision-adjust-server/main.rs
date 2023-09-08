@@ -1,5 +1,6 @@
 mod handle_routes;
 mod static_files;
+mod predict;
 
 use std::{net::SocketAddr, sync::Arc};
 

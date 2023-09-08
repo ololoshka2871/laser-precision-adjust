@@ -30,6 +30,8 @@ rustyline-async = { version = "=0.3.0", default-features = false } # В верс
 colored = "2.0"
 shellwords = "1.1"
 
+nalgebra = "0.23"
+
 ###
 
 laser-setup-interface = { git = "https://github.com/ololoshka2871/Laser-setup-interface.git" }
