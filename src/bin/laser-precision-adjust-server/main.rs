@@ -10,7 +10,6 @@ use axum::{
     Router,
 };
 use laser_precision_adjust::PrecisionAdjust;
-use serde::Serialize;
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -20,11 +19,13 @@ use axum_template::engine::Engine;
 
 use minijinja::Environment;
 
-use crate::handle_routes::{handle_config, handle_control, handle_stat, handle_state, handle_work};
+use crate::handle_routes::{
+    handle_config, handle_control, handle_stat, handle_state, handle_update_config, handle_work,
+};
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
-#[derive(Clone, Serialize)]
+#[derive(Clone)]
 struct ChannelState {
     current_step: u32,
     initial_freq: f32,
@@ -33,13 +34,19 @@ struct ChannelState {
     points: Vec<(u128, f32)>,
 }
 
+#[derive(Clone)]
+struct AdjustConfig {
+    target_freq: f32,
+    work_offset_hz: f32,
+}
+
 #[derive(Clone, FromRef)]
 struct AppState {
     engine: AppEngine,
     config: laser_precision_adjust::Config,
     config_file: std::path::PathBuf,
 
-    adjust_target: Arc<Mutex<f32>>,
+    freqmeter_config: Arc<Mutex<AdjustConfig>>,
     status_rx: tokio::sync::watch::Receiver<laser_precision_adjust::Status>,
 
     precision_adjust: Arc<Mutex<PrecisionAdjust>>,
@@ -103,7 +110,10 @@ async fn main() -> Result<(), std::io::Error> {
             };
             config.resonator_placement.len()
         ])),
-        adjust_target: Arc::new(Mutex::new(config.target_freq_center)),
+        freqmeter_config: Arc::new(Mutex::new(AdjustConfig {
+            target_freq: config.target_freq_center,
+            work_offset_hz: config.freqmeter_offset,
+        })),
         engine: Engine::from(minijinja),
         config,
         config_file,
@@ -120,7 +130,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/state", get(handle_state))
         .route("/work", get(handle_work))
         .route("/stat", get(handle_stat))
-        .route("/config", get(handle_config))
+        .route("/config", get(handle_config).patch(handle_update_config))
         .route("/static/:path/:file", get(static_files::handle_static))
         .route("/lib/*path", get(static_files::handle_lib))
         .with_state(app_state)

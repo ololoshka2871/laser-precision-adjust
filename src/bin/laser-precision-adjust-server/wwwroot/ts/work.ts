@@ -100,6 +100,32 @@ $(() => {
         ev.preventDefault();
     });
 
+    function patch_value(target: HTMLInputElement, field_name: string) {
+        const val = $(target).val() || "0.0";
+
+        const new_value = parseFloat(val as string);
+
+        if (typeof (new_value) !== 'number') {
+            return;
+        }
+
+        let v = {}
+        v[field_name] = new_value;
+
+        $.ajax({
+            url: '/config',
+            method: 'PATCH',
+            data: JSON.stringify(v),
+            contentType: 'application/json',
+            error: (e) => {
+                noty_error(e.responseText || e.statusText);
+            }
+        });
+    }
+
+    $('#freq-target').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'TargetFreq'));
+    $('#freq_adj').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'WorkOffsetHz'));
+
     const chart = new Chart(
         $('#adj-plot').get()[0] as HTMLCanvasElement,
         {
@@ -310,7 +336,8 @@ function move_to(): void {
 
 function update_camera_controls(close_timestamp: number | null, last_timestamp: number | undefined): void {
     // если close_timestamp === null, то камера открыта, нельзя включать ваккум
-    // если last_timestamp - close_timestamp > 15 сек., камера закрыта, можно включать ваккум
+    // если last_timestamp - close_timestamp > 20 сек., камера закрыта, можно включать ваккум
+    const close_time = 20
     const vacuum_btn = $('button[ctrl-request=vac]');
 
     const after_close_s = Math.round((last_timestamp - close_timestamp) / 1_000);
@@ -320,14 +347,14 @@ function update_camera_controls(close_timestamp: number | null, last_timestamp: 
                 .prop('data-state', 'disabled')
                 .html('<i class="fa fa-soap"></i> Вакуум');
         }
-    } else if (after_close_s > 15) {
+    } else if (after_close_s > close_time) {
         if (vacuum_btn.prop('data-state') !== 'enabled') {
             vacuum_btn.prop('disabled', false)
                 .prop('data-state', 'enabled')
                 .html('<i class="fa fa-soap"></i> Вакуум');
         }
     } else {
-        const remaning = (15 - after_close_s).toString();
+        const remaning = (close_time - after_close_s).toString();
         if (vacuum_btn.prop('data-state') !== 'w' + remaning) {
             vacuum_btn.prop('disabled', 'disabled')
                 .prop('data-state', 'w' + remaning)

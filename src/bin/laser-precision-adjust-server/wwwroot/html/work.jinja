@@ -55,11 +55,11 @@
                     </div>
                     <div class="col-2 bg-secondary">
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq-target"
-                            placeholder="Цель" value="32764.0" data-toggle="tooltip"
-                            title="Целевая частота настройки резонаторов" /> Гц
+                            placeholder="Цель" value="{{ target_freq }}" data-toggle="tooltip"
+                            title="Целевая частота настройки резонаторов"> Гц
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq_adj"
-                            placeholder="Поправка" value="+2" data-toggle="tooltip"
-                            title="Поправка показаний частотомера установки" /> Гц
+                            placeholder="Поправка" value="{{ work_offset_hz }}" data-toggle="tooltip"
+                            title="Поправка показаний частотомера установки"> Гц
                     </div>
                     <div class="col flex-grow"></div>
                     <div class="col-2">

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
+    http::StatusCode,
     response::IntoResponse,
     Json,
 };
@@ -11,28 +12,28 @@ use laser_precision_adjust::{Config, PrecisionAdjust};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::{AppEngine, ChannelState};
+use crate::{AdjustConfig, AppEngine, ChannelState};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
     #[serde(rename = "Channel")]
-    pub channel: Option<u32>,
+    channel: Option<u32>,
 
     #[serde(rename = "CameraAction")]
-    pub camera_action: Option<String>,
+    camera_action: Option<String>,
 
     #[serde(rename = "TargetPosition")]
-    pub target_position: Option<i32>,
+    target_position: Option<i32>,
 
     #[serde(rename = "MoveOffset")]
-    pub move_offset: Option<i32>,
+    move_offset: Option<i32>,
 }
 
 #[derive(Serialize, Debug, Default)]
 pub struct ControlResult {
-    pub success: bool,
-    pub error: Option<String>,
-    pub message: Option<String>,
+    success: bool,
+    error: Option<String>,
+    message: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -65,9 +66,19 @@ pub struct StateResult {
     close_timestamp: Option<u128>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UpdateConfigValues {
+    #[serde(rename = "TargetFreq")]
+    target_freq: Option<f32>,
+
+    #[serde(rename = "WorkOffsetHz")]
+    work_offset_hz: Option<f32>,
+}
+
 pub(super) async fn handle_work(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(engine): State<AppEngine>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
 ) -> impl IntoResponse {
     #[derive(Serialize)]
@@ -80,11 +91,18 @@ pub(super) async fn handle_work(
 
     #[derive(Serialize)]
     struct Model {
-        pub resonators: Vec<RezData>,
+        resonators: Vec<RezData>,
+        target_freq: String,
+        work_offset_hz: String,
     }
 
     // force release lock
     *select_channel_blocked.lock().await = false;
+
+    let (target_freq, work_offset_hz) = {
+        let guard = freqmeter_config.lock().await;
+        (guard.target_freq, guard.work_offset_hz)
+    };
 
     RenderHtml(
         Key("work".to_owned()),
@@ -101,6 +119,8 @@ pub(super) async fn handle_work(
                     points: r.points.clone(),
                 })
                 .collect(),
+            target_freq: format!("{:.2}", target_freq),
+            work_offset_hz: format!("{:.2}", work_offset_hz),
         },
     )
 }
@@ -112,6 +132,7 @@ pub(super) async fn handle_stat(State(engine): State<AppEngine>) -> impl IntoRes
 pub(super) async fn handle_config(
     State(engine): State<AppEngine>,
     State(config): State<Config>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(config_file): State<std::path::PathBuf>,
 ) -> impl IntoResponse {
     #[derive(Serialize)]
@@ -120,12 +141,44 @@ pub(super) async fn handle_config(
         pub config: Config,
     }
 
+    let mut config = config.clone();
+    {
+        // update using current selected values
+        let guard = freqmeter_config.lock().await;
+        config.target_freq_center = guard.target_freq;
+        config.freqmeter_offset = guard.work_offset_hz;
+    }
+
     let model: ConfigModel = ConfigModel {
         config_file: config_file.to_string_lossy().to_string(),
         config,
     };
 
     RenderHtml(Key("config".to_owned()), engine, model)
+}
+
+pub(super) async fn handle_update_config(
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    Json(input): Json<UpdateConfigValues>,
+) -> impl IntoResponse {
+    tracing::debug!("handle_update_config: {:?}", input);
+
+    if let Some(target_freq) = input.target_freq {
+        if target_freq > 0.0 {
+            freqmeter_config.lock().await.target_freq = target_freq;
+        } else {
+            return (
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                "TargetFreq Должен быть больше 0",
+            );
+        }
+    }
+
+    if let Some(work_offset_hz) = input.work_offset_hz {
+        freqmeter_config.lock().await.work_offset_hz = work_offset_hz;
+    }
+
+    (StatusCode::OK, "Done")
 }
 
 // Сюда будут поступать команды от веб-интерфейса
@@ -453,7 +506,7 @@ pub(super) async fn handle_control(
 pub(super) async fn handle_state(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(config): State<Config>,
-    State(adjust_target): State<Arc<Mutex<f32>>>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
 ) -> impl IntoResponse {
@@ -464,17 +517,20 @@ pub(super) async fn handle_state(
             status_rx.changed().await.ok();
 
             let status = status_rx.borrow().clone();
-            let freq_target = adjust_target.lock().await.clone();
+            let (freq_target, work_offset_hz) = {
+                let guard = freqmeter_config.lock().await;
+                (guard.target_freq, guard.work_offset_hz)
+            };
 
             let timestamp = status.since_start.as_millis();
             let (initial_freq, points) = {
                 let mut channels = channels.lock().await;
                 let channel = channels.get_mut(status.current_channel as usize).unwrap();
-                channel.points.push((timestamp, status.current_frequency));
+                channel.points.push((timestamp, status.current_frequency + work_offset_hz));
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }
-                (channel.initial_freq, channel.points.clone())
+                (channel.initial_freq + work_offset_hz, channel.points.clone())
             };
 
             let close_timestamp = {
@@ -500,7 +556,7 @@ pub(super) async fn handle_state(
             yield StateResult {
                 timestamp,
                 seleced_channel: status.current_channel,
-                current_freq: status.current_frequency,
+                current_freq: status.current_frequency + work_offset_hz,
                 target_freq: freq_target,
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
