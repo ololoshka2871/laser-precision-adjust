@@ -112,3 +112,23 @@ hr.thin-hr {
     margin-top: 1px;
     margin-bottom: 1px;
 }
+
+/* thin
+    -------------------------------------------------- */
+
+.navbar {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.btn-group-xs > .btn, .btn-xs {
+    padding: .25rem .4rem;
+    font-size: .875rem;
+    line-height: .5;
+    border-radius: .2rem;
+}
+
+.bd-callout {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}

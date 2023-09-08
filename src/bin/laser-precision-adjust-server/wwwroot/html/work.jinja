@@ -9,18 +9,20 @@
 
     <!-- Common styles -->
     <link rel="stylesheet" href="/lib/bootstrap/css/bootstrap.css" />
-    <link rel="stylesheet" href="/static/css/site.css" />
     <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css" />
 
     <!-- specific styles -->
     <link rel="stylesheet" href="static/css/docs.min.css" />
     <link rel="stylesheet" href="/lib/chart.js/Chart.min.css">
+
+    <!-- main style -->
+    <link rel="stylesheet" href="static/css/site.css" />
 </head>
 
 <body>
     <header>
         <nav
-            class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 navbar-custom">
+            class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-1 navbar-custom">
             <div class="container">
                 <a class="navbar-brand" href="/">
                     <img src="/static/images/rez.png" height="40" width="160" style="margin-top:0px;">
@@ -87,15 +89,15 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-2 align-middle btn-group-vertical">
-                        <button class="btn btn-sm btn-success camera-ctrl" ctrl-request="close" data-toggle="tooltip"
+                    <div class="col-2 align-middle btn-group-vertical btn-group-xs">
+                        <button class="btn btn-xs btn-success camera-ctrl" ctrl-request="close" data-toggle="tooltip"
                             title="Закрыть вакуумную камеру"><i class="fa fa-lock"></i> Закрыть</button>
                         <hr class="thin-hr" />
-                        <button class="btn btn-sm btn-info camera-ctrl" ctrl-request="vac" data-toggle="tooltip"
+                        <button class="btn btn-xs btn-info camera-ctrl" ctrl-request="vac" data-toggle="tooltip"
                             data-state="enabled" title="Открыть клапан вакуумного насоса"><i class="fa fa-soap"></i>
                             Вакуум</button>
                         <hr class="thin-hr" />
-                        <button class="btn btn-sm btn-danger camera-ctrl" ctrl-request="open" data-toggle="tooltip"
+                        <button class="btn btn-xs btn-danger camera-ctrl" ctrl-request="open" data-toggle="tooltip"
                             title="Открыть вакуумную камеру"><i class="fa fa-unlock"></i> Открыть</button>
                     </div>
                     <div class="col-1 align-middle btn-group-vertical">
@@ -120,9 +122,9 @@
                                 {% for rez in resonators -%}
                                 <tr class="clickableRow" id="rez-{{ loop.index }}-row" row-index="{{ loop.index }}">
                                     <th scope="row">{{ loop.index }}</th>
-                                    <td type="step">{{ rez.current_step }}</td>
-                                    <td type="freq-initial">{{ rez.initial_freq }}</td>
-                                    <td type="freq-current">{{ rez.current_freq }}</td>
+                                    <td type="step"><code class="text-dark">{{ rez.current_step }}</code></td>
+                                    <td type="freq-initial"><code class="text-dark">{{ rez.initial_freq }}</code></td>
+                                    <td type="freq-current"><code class="text-dark">{{ rez.current_freq }}</code></td>
                                 </tr>
                                 {% endfor -%}
                             </tbody>

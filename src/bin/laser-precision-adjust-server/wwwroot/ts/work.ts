@@ -268,9 +268,9 @@ function update_rezonator_table(state: IState): void {
     if (!newly_selected.hasClass(primary_class)) {
         newly_selected.addClass(primary_class).siblings().removeClass(primary_class);
     }
-    newly_selected.children('[type=step]').text(round_to_2_digits(state.CurrentStep));
-    newly_selected.children('[type=freq-current]').text(round_to_2_digits(state.CurrentFreq));
-    newly_selected.children('[type=freq-initial]').text(round_to_2_digits(state.InitialFreq));
+    newly_selected.children('[type=step]').children().text(state.CurrentStep);
+    newly_selected.children('[type=freq-current]').children().text(round_to_2_digits(state.CurrentFreq));
+    newly_selected.children('[type=freq-initial]').children().text(round_to_2_digits(state.InitialFreq));
 }
 
 function burn(): void {

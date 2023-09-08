@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::min, collections::HashSet, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Path, State},
@@ -51,7 +51,7 @@ pub struct StateResult {
     target_freq: f32,
 
     #[serde(rename = "InitialFreq")]
-    initial_freq: f32,
+    initial_freq: Option<f32>,
 
     #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: f32,
@@ -114,7 +114,11 @@ pub(super) async fn handle_work(
                 .iter()
                 .map(|r| RezData {
                     current_step: r.current_step,
-                    initial_freq: format!("{:.2}", r.initial_freq),
+                    initial_freq: if let Some(initial_freq) = r.initial_freq {
+                        format!("{:.2}", initial_freq)
+                    } else {
+                        "".to_owned()
+                    },
                     current_freq: format!("{:.2}", r.current_freq),
                     points: r.points.clone(),
                 })
@@ -240,6 +244,13 @@ pub(super) async fn handle_control(
                         .into_response();
                     }
                 }
+
+                // swtitch delay
+                tokio::time::sleep(Duration::from_millis(min(
+                    (config.update_interval_ms * 5) as u64,
+                    500,
+                )))
+                .await;
 
                 ok_result.into_response()
             } else {
@@ -428,7 +439,7 @@ pub(super) async fn handle_control(
             let current_channel = status.current_channel;
 
             let stream = async_stream::stream! {
-                const POINTS_TO_AVG: usize = 10;
+                const POINTS_TO_AVG: usize = 15;
                 for i in 0..channels_count {
                     yield ControlResult {
                         success: true,
@@ -436,32 +447,55 @@ pub(super) async fn handle_control(
                         ..Default::default()
                     };
 
-                    if let Err(e) = precision_adjust.lock().await.select_channel(i as u32).await {
-                        yield ControlResult {
-                            success: false,
-                            error: Some(format!("Не удалось переключить канал: {:?}", e)),
-                            ..Default::default()
-                        };
+                    {
+                        let mut guard = precision_adjust.lock().await;
+                        let res = guard.select_channel(i as u32).await;
 
-                        continue;
+                        // swtitch delay
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            min((config.update_interval_ms * 5) as u64, 500))
+                        ).await;
+
+                        // clear history
+                        channels.lock().await[i].points.clear();
+
+                        if let Err(e) = res {
+                            yield ControlResult {
+                                success: false,
+                                error: Some(format!("Не удалось переключить канал: {:?}", e)),
+                                ..Default::default()
+                            };
+
+                            continue;
+                        }
                     }
 
-                    // sleep for 2 second
+                    // sleep POINTS_TO_AVG times of update
                     tokio::time::sleep(std::time::Duration::from_millis(
                         (config.update_interval_ms * POINTS_TO_AVG as u32) as u64)
                     ).await;
 
-                    // take last 10 points and calc avarage frequency -> channel initial_freq
+                    // take last points_to_read points and calc avarage frequency -> channel initial_freq
                     {
                         let mut guard = channels.lock().await;
                         let channel = &mut guard[i];
-                        let avalable_points_count = channel.points.len();
+                        let avalable_points_count = channel.points.len() - 1;
                         let points_to_read = std::cmp::min(avalable_points_count, POINTS_TO_AVG);
-                        channel.initial_freq = channel.points
-                            .iter()
-                            .rev()
-                            .take(points_to_read)
-                            .fold(0.0, |acc, (_, f)| acc + f) / points_to_read as f32;
+                        if points_to_read < POINTS_TO_AVG / 2 || 
+                            (channel.points
+                                .iter()
+                                .rev()
+                                .take(points_to_read)
+                                .map(|v| v.1.to_string())
+                                .collect::<HashSet<_>>().len() < POINTS_TO_AVG / 5
+                        ) {
+                            channel.initial_freq = None;
+                        } else {
+                            channel.points.remove(channel.points.len() - points_to_read);
+                            channel.initial_freq = Some(channel.points
+                                .iter()
+                                .fold(0.0, |acc, (_, f)| acc + f) / channel.points.len() as f32);
+                        }
                     }
 
                     tokio::time::sleep(std::time::Duration::from_millis(
@@ -530,7 +564,7 @@ pub(super) async fn handle_state(
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }
-                (channel.initial_freq + work_offset_hz, channel.points.clone())
+                (channel.initial_freq.map(|v| v + work_offset_hz), channel.points.clone())
             };
 
             let close_timestamp = {

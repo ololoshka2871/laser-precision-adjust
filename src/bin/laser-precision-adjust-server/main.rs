@@ -28,7 +28,7 @@ pub(crate) type AppEngine = Engine<Environment<'static>>;
 #[derive(Clone)]
 struct ChannelState {
     current_step: u32,
-    initial_freq: f32,
+    initial_freq: Option<f32>,
     current_freq: f32,
 
     points: Vec<(u128, f32)>,
@@ -104,7 +104,7 @@ async fn main() -> Result<(), std::io::Error> {
         channels: Arc::new(Mutex::new(vec![
             ChannelState {
                 current_step: 0,
-                initial_freq: 0.0,
+                initial_freq: None,
                 current_freq: 0.0,
                 points: vec![],
             };

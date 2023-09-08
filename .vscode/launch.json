@@ -31,6 +31,25 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_LOG": "laser_precision_adjust_server=debug",
+            },
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=laser-precision-adjust-server"
+                ],
+                "filter": {
+                    "kind": "bin"
+                }
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "web fake_freq",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "laser_precision_adjust_server=debug",
                 "EMULATE_FREQ": "32763.7"
             },
             "cargo": {
