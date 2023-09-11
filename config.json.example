@@ -1,7 +1,7 @@
 {
     "LaserSetupPort": "COM1",
     "LaserControlPort": "COM2",
-    "FreqFifo": "/tmp/freq",
+    "DataLogFile": "/tmp/freq_%d-%m-%Y_%Hh-%Mm.log",
     "FreqMeterI2CAddr": 11,
     "PortTimeoutMs": 100,
     "GCodeTimeoutMs": 1000,
@@ -16,6 +16,10 @@
     "BurnLaserB": 50000,
     "BurnLaserF": 1000.0,
     "FreqmeterOffset": 0.0,
+    "WorkingOffsetPPM": 30.0,
+    "TargetFreqCenter": 32768.0,
+    "UpdateIntervalMs": 100,
+    "DisplayPointsCount": 100,
     "ResonatorsPlacement": [
         { "Xcenter": 50, "Ycenter": -16, "Width": 5, "Height": 3 },
         { "Xcenter": 45, "Ycenter": -16, "Width": 5, "Height": 3 },

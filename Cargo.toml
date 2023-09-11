@@ -1,6 +1,6 @@
 [package]
 name = "laser-precision-adjust"
-version = "0.6.3"
+version = "0.7.0"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"
@@ -17,6 +17,7 @@ clap = { version = "4.2", features = ["derive"] }
 rand = "0.8"
 directories = "5"
 async-stream = { version = "0.3" }
+chrono = "0.4"
 
 tokio = { version = "1", features = ["full"] }
 tokio-serial = "5.4"

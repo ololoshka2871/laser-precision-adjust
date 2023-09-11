@@ -46,4 +46,7 @@
         * [v] Клик по `<code>` не переключает канал
 
 * [ ] Предсказание
-    - [Linear regression in Rust](http://cowlet.org/2016/08/23/linear-regression-in-rust.html)
+    - ~~[Linear regression in Rust](http://cowlet.org/2016/08/23/linear-regression-in-rust.html)~~
+    - [ ] Нейросетью
+        - [v] Сгенерировать данные
+        - [ ] Собрать реальные данные

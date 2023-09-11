@@ -37,8 +37,8 @@ pub struct Config {
     #[serde(rename = "LaserControlPort")]
     pub laser_control_port: String,
 
-    #[serde(rename = "FreqFifo")]
-    pub freq_fifo: Option<PathBuf>,
+    #[serde(rename = "DataLogFile")]
+    pub data_log_file: Option<PathBuf>,
 
     #[serde(rename = "FreqMeterI2CAddr")]
     pub freq_meter_i2c_addr: u8,
@@ -114,7 +114,7 @@ impl std::fmt::Display for Config {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "LaserSetupPort: {}", self.laser_setup_port)?;
         writeln!(f, "LaserControlPort: {}", self.laser_control_port)?;
-        writeln!(f, "FreqFifo: {:?}", self.freq_fifo)?;
+        writeln!(f, "FreqFifo: {:?}", self.data_log_file)?;
         writeln!(f, "FreqMeterI2CAddr: {}", self.freq_meter_i2c_addr)?;
         writeln!(f, "PortTimeoutMs: {}", self.port_timeout_ms)?;
         writeln!(f, "GCodeTimeoutMs: {}", self.gcode_timeout_ms)?;

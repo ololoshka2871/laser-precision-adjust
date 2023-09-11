@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 
 use futures::{SinkExt, StreamExt};
 use laser_setup_interface::{CameraState, ControlState, LaserSetup, ValveState};
+use serde::Serialize;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use tokio_serial::SerialPortBuilderExt;
@@ -87,7 +88,7 @@ pub struct PrecisionAdjust {
 
     axis_config: crate::config::AxisConfig,
 
-    freq_fifo: Arc<Mutex<Option<tokio::fs::File>>>,
+    data_log_file: Arc<Mutex<Option<tokio::fs::File>>>,
 
     freq_meter_i2c_addr: u8,
 
@@ -132,14 +133,17 @@ impl PrecisionAdjust {
 
             axis_config: config.axis_config,
 
-            freq_fifo: {
-                Arc::new(Mutex::new(match config.freq_fifo.as_ref() {
-                    Some(freq_fifo) => {
+            data_log_file: {
+                Arc::new(Mutex::new(match config.data_log_file.clone() {
+                    Some(data_log_file_name) => {
                         let file = tokio::fs::OpenOptions::new()
                             .write(true)
                             .create(true)
                             .truncate(true)
-                            .open(freq_fifo)
+                            .open({
+                                let now = chrono::offset::Local::now();
+                                now.format(data_log_file_name.to_str().unwrap()).to_string()
+                            })
                             .await
                             .unwrap();
                         Some(file)
@@ -211,15 +215,21 @@ impl PrecisionAdjust {
         let update_interval = self.update_interval;
 
         let status = self.status.clone();
-        let fifo_file: Arc<Mutex<Option<tokio::fs::File>>> = self.freq_fifo.clone();
+        let data_log_file = self.data_log_file.clone();
         let start_time = self.start_time;
 
         async fn update_status(
             status: &Mutex<PrivStatus>,
             f: f32,
-            freq_fifo: &Mutex<Option<tokio::fs::File>>,
+            logfile: &Mutex<Option<tokio::fs::File>>,
             start_time: SystemTime,
         ) -> Result<Status, Error> {
+            #[derive(Serialize)]
+            struct LogEntry {
+                channel: u32,
+                f: f32,
+            }
+
             let mut status = status.lock().await;
 
             let e = if let Some(prev_f) = &mut status.prev_freq {
@@ -246,10 +256,16 @@ impl PrecisionAdjust {
                 status.prev_freq = Some(f);
             }
 
-            if let Some(fifo) = freq_fifo.lock().await.deref_mut() {
-                fifo.write_all(format!("{{ \"f\": {}}}\n", f).as_bytes())
-                    .await
-                    .unwrap();
+            if let Some(fifo) = logfile.lock().await.deref_mut() {
+                let entry = LogEntry {
+                    channel: status.current_channel,
+                    f,
+                };
+                fifo.write_all(
+                    format!("{}\n", serde_json::to_string(&entry).unwrap_or_default()).as_bytes(),
+                )
+                .await
+                .unwrap();
             }
             Ok(Status {
                 current_channel: status.current_channel,
@@ -291,7 +307,7 @@ impl PrecisionAdjust {
                             };
 
                             let new_status =
-                                update_status(&status, f, &fifo_file, start_time).await;
+                                update_status(&status, f, &data_log_file, start_time).await;
                             match new_status {
                                 Ok(s) => {
                                     tx.send(s).ok();

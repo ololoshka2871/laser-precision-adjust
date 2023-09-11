@@ -7,3 +7,6 @@
 # Зависимости
 * [LibMan](https://learn.microsoft.com/ru-ru/aspnet/core/client-side/libman/libman-cli?view=aspnetcore-7.0) - менеджер зависимостей клиентских библиотек
     `dotnet tool install -g Microsoft.Web.LibraryManager.Cli`
+
+# Настройки
+- "DataLogFile": шаблон см [здесь](https://docs.rs/chrono/latest/chrono/struct.DateTime.html#method.format)

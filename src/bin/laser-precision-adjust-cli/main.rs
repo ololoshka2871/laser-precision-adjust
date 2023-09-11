@@ -28,7 +28,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     tracing::info!("{}", config);
 
-    if let Some(fifo_name) = config.freq_fifo.as_ref() {
+    if let Some(fifo_name) = config.data_log_file.as_ref() {
         let s = fifo_name.as_os_str();
         writeln!(
             stdout,
