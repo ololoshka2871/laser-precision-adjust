@@ -479,9 +479,9 @@ pub(super) async fn handle_control(
                     {
                         let mut guard = channels.lock().await;
                         let channel = &mut guard[i];
-                        let avalable_points_count = channel.points.len() - 1;
+                        let avalable_points_count = if channel.points.len() == 0 { 0 } else { channel.points.len() - 1  };
                         let points_to_read = std::cmp::min(avalable_points_count, POINTS_TO_AVG);
-                        if points_to_read < POINTS_TO_AVG / 2 || 
+                        if points_to_read < POINTS_TO_AVG / 2 ||
                             (channel.points
                                 .iter()
                                 .rev()
@@ -492,9 +492,10 @@ pub(super) async fn handle_control(
                             channel.initial_freq = None;
                         } else {
                             channel.points.remove(channel.points.len() - points_to_read);
-                            channel.initial_freq = Some(channel.points
+                            let summ = channel.points
                                 .iter()
-                                .fold(0.0, |acc, (_, f)| acc + f) / channel.points.len() as f32);
+                                .fold(0.0, |acc, (_, f)| acc + f);
+                            channel.initial_freq = Some(summ / channel.points.len() as f32);
                         }
                     }
 
@@ -564,7 +565,7 @@ pub(super) async fn handle_state(
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }
-                (channel.initial_freq.map(|v| v + work_offset_hz), channel.points.clone())
+                (channel.initial_freq, channel.points.clone())
             };
 
             let close_timestamp = {

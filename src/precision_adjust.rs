@@ -239,9 +239,9 @@ impl PrecisionAdjust {
                         "Random frequency jump detected! {} -> {}",
                         prev_f, f
                     )))
-                } else if (f.is_nan() || f < 49.0) && !v_prev_f.is_nan() {
-                    Err(Error::Logick("Empty result".to_owned())) 
                 } else if f > 0.0 && f < 49.0 {
+                    Err(Error::Logick("Empty result".to_owned()))
+                } else if (f.is_nan() || f < 49.0) && !v_prev_f.is_nan() {
                     Err(Error::Logick(format!("Invalid result: {}", f)))
                 } else {
                     Ok(())
