@@ -12,6 +12,8 @@ use laser_precision_adjust::{Config, PrecisionAdjust};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use smoothspline::{DataPoint, IDataPoint};
+
 use crate::{AdjustConfig, AppEngine, ChannelState};
 
 #[derive(Deserialize, Debug)]
@@ -60,7 +62,10 @@ pub struct StateResult {
     channel_step: u32,
 
     #[serde(rename = "Points")]
-    points: Vec<(u128, f32)>,
+    points: Vec<(f64, f64)>,
+
+    #[serde(rename = "SmoothPoints")]
+    smooth_points: Option<Vec<(f64, f64)>>,
 
     #[serde(rename = "CloseTimestamp")]
     close_timestamp: Option<u128>,
@@ -86,7 +91,7 @@ pub(super) async fn handle_work(
         current_step: u32,
         initial_freq: String,
         current_freq: String,
-        points: Vec<(u128, f32)>,
+        points: Vec<(f64, f64)>,
     }
 
     #[derive(Serialize)]
@@ -120,7 +125,7 @@ pub(super) async fn handle_work(
                         "".to_owned()
                     },
                     current_freq: format!("{:.2}", r.current_freq),
-                    points: r.points.clone(),
+                    points: r.points.iter().map(|p| (p.x, p.y)).collect(),
                 })
                 .collect(),
             target_freq: format!("{:.2}", target_freq),
@@ -457,7 +462,10 @@ pub(super) async fn handle_control(
                         ).await;
 
                         // clear history
-                        channels.lock().await[i].points.clear();
+                        {
+                            let mut lock = channels.lock().await;
+                            lock[i].points.clear();
+                        }
 
                         if let Err(e) = res {
                             yield ControlResult {
@@ -486,7 +494,7 @@ pub(super) async fn handle_control(
                                 .iter()
                                 .rev()
                                 .take(points_to_read)
-                                .map(|v| v.1.to_string())
+                                .map(|v| v.y.to_string())
                                 .collect::<HashSet<_>>().len() < POINTS_TO_AVG / 5
                         ) {
                             channel.initial_freq = None;
@@ -494,8 +502,8 @@ pub(super) async fn handle_control(
                             channel.points.remove(channel.points.len() - points_to_read);
                             let summ = channel.points
                                 .iter()
-                                .fold(0.0, |acc, (_, f)| acc + f);
-                            channel.initial_freq = Some(summ / channel.points.len() as f32);
+                                .fold(0.0, |acc, dp| acc + dp.y);
+                            channel.initial_freq = Some(summ as f32 / channel.points.len() as f32);
                         }
                     }
 
@@ -561,11 +569,18 @@ pub(super) async fn handle_state(
             let (initial_freq, points) = {
                 let mut channels = channels.lock().await;
                 let channel = channels.get_mut(status.current_channel as usize).unwrap();
-                channel.points.push((timestamp, status.current_frequency + work_offset_hz));
+                channel.points.push(DataPoint::new(timestamp as f64, (status.current_frequency + work_offset_hz) as f64));
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }
                 (channel.initial_freq, channel.points.clone())
+            };
+
+            // smooth points
+            let smooth_points = if points.len() >= 5{
+                Some(filter_points(&points))
+            } else {
+                None
             };
 
             let close_timestamp = {
@@ -596,11 +611,51 @@ pub(super) async fn handle_state(
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
                 initial_freq,
-                points,
+                points: points.iter().map(|p| (p.x, p.y)).collect(),
                 close_timestamp,
+                smooth_points: smooth_points.map(|v| v.iter().map(|p| (p.x, p.y)).collect()),
             };
         }
     };
 
     axum_streams::StreamBodyAs::json_nl(stream)
+}
+
+fn filter_points<T, U>(points: &[U]) -> Vec<DataPoint<T>>
+where
+    T: num_traits::Float + num_traits::FromPrimitive,
+    U: IDataPoint<T> + Clone,
+{
+    use crate::box_plot::BoxPlot;
+    use smoothspline::{SmoothSpline, SplineFragment};
+
+    let mut spline = SmoothSpline::<_, _, SplineFragment<_>>::new(points);
+    spline.update(unsafe { T::from_f64(1.0).unwrap_unchecked() });
+
+    let diffs = points
+        .iter()
+        .map(|p| {
+            let y = spline.y(p.x());
+            p.y() - y
+        })
+        .collect::<Vec<_>>();
+
+    let box_plot = BoxPlot::new(&diffs);
+
+    let filtred = points
+        .iter()
+        .filter(|p| p.y() > box_plot.lower_bound() && p.y() < box_plot.upper_bound())
+        .cloned()
+        .collect::<Vec<U>>();
+
+    let mut spline = SmoothSpline::<_, _, SplineFragment<_>>::new(&filtred);
+    spline.update(unsafe { T::from_f64(1.0).unwrap_unchecked() });
+
+    points
+        .iter()
+        .map(|p| {
+            let y = spline.y(p.x());
+            DataPoint::new(p.x(), y)
+        })
+        .collect::<Vec<_>>()
 }

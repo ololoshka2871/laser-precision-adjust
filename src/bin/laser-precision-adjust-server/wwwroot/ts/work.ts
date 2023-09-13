@@ -20,6 +20,7 @@ interface IState {
     CurrentStep: number
     InitialFreq: number
     Points: [number, number][] // [timestamp, freq]
+    SmoothPoints: [number, number][] // [timestamp, freq]
     CloseTimestamp?: number
 }
 
@@ -168,9 +169,9 @@ $(() => {
                         label: 'Actual',
                         data: [],
                         lineTension: 0,
-                        pointRadius: 0,
+                        pointRadius: 1,
                         fill: false,
-                        borderColor: 'rgb(75, 148, 204)',
+                        borderColor: 'rgba(75, 148, 204, 30)',
                     },
                     {
                         label: 'Target',
@@ -179,6 +180,14 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(8, 150, 38)',
+                    },
+                    {
+                        label: 'Smooth',
+                        data: [],
+                        lineTension: 0,
+                        pointRadius: 0,
+                        fill: false,
+                        borderColor: 'rgb(180, 148, 204)',
                     }
                 ]
             },
@@ -222,6 +231,7 @@ $(() => {
             chart.data.datasets[1].data = Array<number>(state.Points.length).fill(lowerLimit);
             chart.data.datasets[2].data = state.Points.map(p => p[1]);
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
+            chart.data.datasets[4].data = state.SmoothPoints.map(p => p[1]);
             chart.update();
 
             update_f_re_display({

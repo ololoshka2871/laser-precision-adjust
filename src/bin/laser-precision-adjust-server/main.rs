@@ -1,5 +1,6 @@
 mod handle_routes;
 mod static_files;
+mod box_plot;
 //mod predict;
 
 use std::{net::SocketAddr, sync::Arc};
@@ -11,6 +12,7 @@ use axum::{
     Router,
 };
 use laser_precision_adjust::PrecisionAdjust;
+use smoothspline::DataPoint;
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -32,7 +34,7 @@ struct ChannelState {
     initial_freq: Option<f32>,
     current_freq: f32,
 
-    points: Vec<(u128, f32)>,
+    points: Vec<DataPoint<f64>>,
 }
 
 #[derive(Clone)]
