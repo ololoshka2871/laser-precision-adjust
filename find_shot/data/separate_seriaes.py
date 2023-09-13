@@ -29,7 +29,7 @@ def main():
     with open(filename, "w") as f:
         counter = 0
         while True:
-            line = ["" for _ in range(len(seriaes))]
+            line = ["" for _ in range(16)]
             for serie in seriaes:
                 if counter < len(seriaes[serie]):
                     line[serie] = seriaes[serie][counter]

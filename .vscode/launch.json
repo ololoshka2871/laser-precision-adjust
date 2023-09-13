@@ -83,6 +83,28 @@
             "sourceMapPathOverrides": {
                 "*.ts": "${webRoot}/ts/*.ts",
             }
-        }
+        },
+        {
+            "name": "Python: separate_seriaes",
+            "type": "python",
+            "request": "launch",
+            "program": "find_shot/data/separate_seriaes.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "find_shot/data/freq_11-09-2023_13h-38m.log"
+            ]
+        },
+        {
+            "name": "Python: denoize",
+            "type": "python",
+            "request": "launch",
+            "program": "find_shot/denoize.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "find_shot/data/freq_11-09-2023_13h-05m.log"
+            ]
+        },
     ]
 }

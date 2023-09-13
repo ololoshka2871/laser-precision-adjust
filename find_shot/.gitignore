@@ -1,2 +1,4 @@
 __pycache__/
 data/*.csv
+data/*.xlsx
+data/*.json
