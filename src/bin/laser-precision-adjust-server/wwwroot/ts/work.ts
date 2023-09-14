@@ -20,7 +20,7 @@ interface IState {
     CurrentStep: number
     InitialFreq: number
     Points: [number, number][] // [timestamp, freq]
-    SmoothPoints: [number, number][] // [timestamp, freq]
+    SmoothPoints: [number, number, number][] // [y, dy, d2y]
     CloseTimestamp?: number
 }
 
@@ -155,6 +155,7 @@ $(() => {
                         fill: 'top',
                         backgroundColor: 'rgba(240, 81, 81, 0.5)',
                         borderColor: 'rgb(240, 81, 81)',
+                        yAxisID: 'A',
                     },
                     {
                         label: 'Lower Limit',
@@ -164,14 +165,17 @@ $(() => {
                         fill: 'bottom', // заполнить область до графика 1
                         backgroundColor: 'rgba(204, 167, 80, 0.5)',
                         borderColor: 'rgb(204, 167, 80)',
+                        yAxisID: 'A',
                     },
                     {
                         label: 'Actual',
                         data: [],
                         lineTension: 0,
-                        pointRadius: 1,
+                        pointRadius: 2.5,
                         fill: false,
+                        showLine: false,
                         borderColor: 'rgba(75, 148, 204, 30)',
+                        yAxisID: 'A',
                     },
                     {
                         label: 'Target',
@@ -180,6 +184,7 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(8, 150, 38)',
+                        yAxisID: 'A',
                     },
                     {
                         label: 'Smooth',
@@ -188,7 +193,27 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(180, 148, 204)',
-                    }
+                        yAxisID: 'A',
+                    },
+                    /*
+                    {
+                        label: 'Derivative',
+                        data: [],
+                        lineTension: 0,
+                        pointRadius: 0,
+                        fill: false,
+                        borderColor: 'rgba(94, 15, 57, 0.3)',
+                        yAxisID: 'B',
+                    },
+                    {
+                        label: 'Derivative2',
+                        data: [],
+                        lineTension: 0,
+                        pointRadius: 0,
+                        fill: false,
+                        borderColor: 'rgba(175, 179, 64, 0.9)',
+                        yAxisID: 'B',
+                    }*/
                 ]
             },
             options: {
@@ -210,6 +235,15 @@ $(() => {
                             display: false //this will remove only the label
                         }
                     }],
+                    yAxes: [{
+                        id: 'A',
+                        type: 'linear',
+                        position: 'left',
+                    }, {
+                        id: 'B',
+                        type: 'linear',
+                        position: 'right',
+                    }]
                 }
             }
         });
@@ -225,13 +259,27 @@ $(() => {
             const upperLimit = target + offset_hz;
             const lowerLimit = target - offset_hz;
 
+            const non_null_SmoothPoints = state.SmoothPoints
+                .filter((v) => v !== null)
+                .map((v: [number, number, number]) => v[0])
+            const plot_max = Math.round(Math.max(upperLimit, ...non_null_SmoothPoints) + 2.0);
+            const plot_min = Math.round(Math.min(lowerLimit, ...non_null_SmoothPoints) - 2.0);
+
             // добавляем новые значения в график
             chart.data.labels = state.Points.map(p => p[0]);
             chart.data.datasets[0].data = Array<number>(state.Points.length).fill(upperLimit);
             chart.data.datasets[1].data = Array<number>(state.Points.length).fill(lowerLimit);
             chart.data.datasets[2].data = state.Points.map(p => p[1]);
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
-            chart.data.datasets[4].data = state.SmoothPoints.map(p => p[1]);
+
+            /*
+            chart.data.datasets[4].data = state.SmoothPoints.map(p => p === null ? null : p[0]); // smooth
+            chart.data.datasets[5].data = state.SmoothPoints.map(p => p === null ? null : p[1]); // dy
+            chart.data.datasets[6].data = state.SmoothPoints.map(p => p === null ? null : p[2]); // d2y
+            */
+
+            chart.options.scales.yAxes[0].ticks.min = plot_min;
+            chart.options.scales.yAxes[0].ticks.max = plot_max;
             chart.update();
 
             update_f_re_display({

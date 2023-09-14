@@ -65,7 +65,7 @@ pub struct StateResult {
     points: Vec<(f64, f64)>,
 
     #[serde(rename = "SmoothPoints")]
-    smooth_points: Option<Vec<(f64, f64)>>,
+    smooth_points: Option<Vec<Option<(f64, f64, f64)>>>,
 
     #[serde(rename = "CloseTimestamp")]
     close_timestamp: Option<u128>,
@@ -78,6 +78,14 @@ pub struct UpdateConfigValues {
 
     #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: Option<f32>,
+}
+
+#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+struct FullDataPoint<T: num_traits::Float> {
+    pub x: T,
+    pub y: T,
+    pub dy: T,
+    pub d2y: T,
 }
 
 pub(super) async fn handle_work(
@@ -613,7 +621,12 @@ pub(super) async fn handle_state(
                 initial_freq,
                 points: points.iter().map(|p| (p.x, p.y)).collect(),
                 close_timestamp,
-                smooth_points: smooth_points.map(|v| v.iter().map(|p| (p.x, p.y)).collect()),
+                smooth_points: smooth_points
+                                .map(|v| v
+                                    .iter()
+                                    .map(|pv| pv.map(|p| (p.y, p.dy, p.d2y)))
+                                    .collect()
+                                ),
             };
         }
     };
@@ -621,16 +634,18 @@ pub(super) async fn handle_state(
     axum_streams::StreamBodyAs::json_nl(stream)
 }
 
-fn filter_points<T, U>(points: &[U]) -> Vec<DataPoint<T>>
+fn filter_points<T, U>(points: &[U]) -> Vec<Option<FullDataPoint<T>>>
 where
     T: num_traits::Float + num_traits::FromPrimitive,
     U: IDataPoint<T> + Clone,
 {
     use crate::box_plot::BoxPlot;
-    use smoothspline::{SmoothSpline, SplineFragment};
+    use smoothspline::{I2Differentiable, IDifferentiable, IValue, SmoothSpline, SplineFragment};
+
+    let pg = unsafe { T::from_f64(1e-10).unwrap_unchecked() };
 
     let mut spline = SmoothSpline::<_, _, SplineFragment<_>>::new(points);
-    spline.update(unsafe { T::from_f64(1.0).unwrap_unchecked() });
+    spline.update(pg);
 
     let diffs = points
         .iter()
@@ -644,18 +659,45 @@ where
 
     let filtred = points
         .iter()
-        .filter(|p| p.y() > box_plot.lower_bound() && p.y() < box_plot.upper_bound())
-        .cloned()
+        .zip(diffs)
+        .filter_map(|(p, d)| {
+            if (d > box_plot.lower_bound()) && (d < box_plot.upper_bound()) {
+                Some(p.clone())
+            } else {
+                None
+            }
+        })
         .collect::<Vec<U>>();
 
-    let mut spline = SmoothSpline::<_, _, SplineFragment<_>>::new(&filtred);
-    spline.update(unsafe { T::from_f64(1.0).unwrap_unchecked() });
+    if filtred.len() < 5 {
+        vec![]
+    } else {
+        let mut new_spline = SmoothSpline::<_, _, SplineFragment<_>>::new(&filtred);
+        new_spline.update(pg);
 
-    points
-        .iter()
-        .map(|p| {
-            let y = spline.y(p.x());
-            DataPoint::new(p.x(), y)
-        })
-        .collect::<Vec<_>>()
+        let mut filtred = points
+            .iter()
+            .skip(1)
+            .take(points.len() - 2)
+            .map(|p| {
+                let x = p.x();
+                if x >= filtred[0].x() {
+                    if let Some(fragment) = new_spline.find_fragment(x) {
+                        let y = fragment.y(x);
+                        let dy = fragment.dy(x);
+                        let d2y = fragment.d2y(x);
+                        Some(FullDataPoint { x, y, dy, d2y })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        filtred.insert(0, None);
+        filtred.push(None);
+
+        filtred
+    }
 }

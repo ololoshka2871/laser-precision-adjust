@@ -2,7 +2,6 @@
 # -*- codding: utf-8 -*-
 
 import math
-from pip._vendor.pkg_resources import _remove_md5_fragment
 
 __author__ = 'tolyan'
 
