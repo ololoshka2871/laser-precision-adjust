@@ -642,62 +642,98 @@ where
     use crate::box_plot::BoxPlot;
     use smoothspline::{I2Differentiable, IDifferentiable, IValue, SmoothSpline, SplineFragment};
 
-    let pg = unsafe { T::from_f64(1e-10).unwrap_unchecked() };
+    let pg = unsafe { T::from_f64(100.0).unwrap_unchecked() };
+    let m = unsafe { T::from_f64(1.0).unwrap_unchecked() };
 
-    let mut spline = SmoothSpline::<_, _, SplineFragment<_>>::new(points);
+    let mut spline = SmoothSpline::<_, _, SplineFragment<_>>::new(&points);
     spline.update(pg);
 
-    let diffs = points
-        .iter()
-        .map(|p| {
-            let y = spline.y(p.x());
-            p.y() - y
-        })
-        .collect::<Vec<_>>();
-
-    let box_plot = BoxPlot::new(&diffs);
-
-    let filtred = points
-        .iter()
-        .zip(diffs)
-        .filter_map(|(p, d)| {
-            if (d > box_plot.lower_bound()) && (d < box_plot.upper_bound()) {
-                Some(p.clone())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<U>>();
-
-    if filtred.len() < 5 {
-        vec![]
-    } else {
-        let mut new_spline = SmoothSpline::<_, _, SplineFragment<_>>::new(&filtred);
-        new_spline.update(pg);
-
-        let mut filtred = points
+    if false {
+        let diffs = points
             .iter()
-            .skip(1)
-            .take(points.len() - 2)
             .map(|p| {
-                let x = p.x();
-                if x >= filtred[0].x() {
-                    if let Some(fragment) = new_spline.find_fragment(x) {
-                        let y = fragment.y(x);
-                        let dy = fragment.dy(x);
-                        let d2y = fragment.d2y(x);
-                        Some(FullDataPoint { x, y, dy, d2y })
-                    } else {
-                        None
-                    }
+                let y = spline.y(p.x());
+                p.y() - y
+            })
+            .collect::<Vec<_>>();
+
+        let box_plot = BoxPlot::new(&diffs);
+
+        let filtred = points
+            .iter()
+            .zip(diffs)
+            .filter_map(|(p, d)| {
+                if (d > box_plot.bound(-m)) && (d < box_plot.bound(m)) {
+                    Some(p.clone())
                 } else {
                     None
                 }
             })
-            .collect::<Vec<_>>();
-        filtred.insert(0, None);
-        filtred.push(None);
+            .collect::<Vec<U>>();
 
-        filtred
+        if filtred.len() < 5 {
+            vec![]
+        } else {
+            let mut new_spline = SmoothSpline::<_, _, SplineFragment<_>>::new(&filtred);
+            new_spline.update(pg);
+
+            let mut filtred = points
+                .iter()
+                .skip(1)
+                .take(points.len() - 2)
+                .map(|p| {
+                    let x = p.x();
+                    if x >= filtred[0].x() {
+                        if let Some(fragment) = new_spline.find_fragment(x) {
+                            let y = fragment.y(x);
+                            //let dy = fragment.dy(x);
+                            //let d2y = fragment.d2y(x);
+                            let dy = T::zero();
+                            let d2y = T::zero();
+                            Some(FullDataPoint { x, y, dy, d2y })
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            filtred.insert(0, None);
+            filtred.push(None);
+
+            let box_plot = BoxPlot::new(
+                &filtred
+                    .iter()
+                    .filter_map(|v| v.map(|v| v.y))
+                    .collect::<Vec<_>>(),
+            );
+
+            let (u, l) = (box_plot.upper_bound(), box_plot.lower_bound());
+            filtred.iter_mut().for_each(|v| {
+                if let Some(v) = v {
+                    v.dy = u;
+                    v.d2y = l;
+                }
+            });
+
+            filtred
+        }
+    } else {
+        points
+            .iter()
+            .map(|p| {
+                let x = p.x();
+                if let Some(fragment) = spline.find_fragment(x) {
+                    let y = fragment.y(x);
+                    let dy = fragment.dy(x);
+                    let d2y = fragment.d2y(x);
+                    Some(FullDataPoint { x, y, dy, d2y })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
     }
 }

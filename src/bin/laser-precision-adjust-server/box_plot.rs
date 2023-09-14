@@ -1,15 +1,16 @@
-use num_traits::{Float, NumOps, FromPrimitive};
+use num_traits::{Float, FromPrimitive, NumOps};
 
 pub struct BoxPlot<T> {
     median: T,
     q1: T,
     q3: T,
+    iqr: T,
     lower_bound: T,
     upper_bound: T,
 }
 
 // Функция вычисления медианы вектора и квартилей 25% и 75%
-fn median_q1q3<T>(series: &[T]) -> (T, T, T) 
+fn median_q1q3<T>(series: &[T]) -> (T, T, T)
 where
     T: Float + Copy,
 {
@@ -38,6 +39,7 @@ where
             median,
             q1,
             q3,
+            iqr,
             lower_bound,
             upper_bound,
         }
@@ -61,5 +63,9 @@ where
 
     pub fn upper_bound(&self) -> T {
         self.upper_bound
+    }
+
+    pub fn bound(&self, m: T) -> T {
+        (if m < T::zero() { self.q1 } else { self.q3 }) + m * self.iqr
     }
 }

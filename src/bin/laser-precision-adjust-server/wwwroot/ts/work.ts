@@ -195,7 +195,7 @@ $(() => {
                         borderColor: 'rgb(180, 148, 204)',
                         yAxisID: 'A',
                     },
-                    /*
+               
                     {
                         label: 'Derivative',
                         data: [],
@@ -203,7 +203,7 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgba(94, 15, 57, 0.3)',
-                        yAxisID: 'B',
+                        yAxisID: 'B' //'B',
                     },
                     {
                         label: 'Derivative2',
@@ -212,8 +212,8 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgba(175, 179, 64, 0.9)',
-                        yAxisID: 'B',
-                    }*/
+                        yAxisID: 'B' // 'B',
+                    }
                 ]
             },
             options: {
@@ -272,11 +272,11 @@ $(() => {
             chart.data.datasets[2].data = state.Points.map(p => p[1]);
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
-            /*
             chart.data.datasets[4].data = state.SmoothPoints.map(p => p === null ? null : p[0]); // smooth
+            
             chart.data.datasets[5].data = state.SmoothPoints.map(p => p === null ? null : p[1]); // dy
             chart.data.datasets[6].data = state.SmoothPoints.map(p => p === null ? null : p[2]); // d2y
-            */
+            
 
             chart.options.scales.yAxes[0].ticks.min = plot_min;
             chart.options.scales.yAxes[0].ticks.max = plot_max;
