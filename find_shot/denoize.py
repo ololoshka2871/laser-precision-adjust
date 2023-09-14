@@ -33,7 +33,7 @@ def filter_serie(serie):
     sm = lss.SmoothSpline()
 
     sm.Points = [lss.Point(i, p) for (i, p) in enumerate(serie)]
-    sm.Update(1)
+    sm.Update(100)
 
     smooth_serie = []
     for i in range(len(serie)):
@@ -95,7 +95,7 @@ def main():
             else:
                 current_seriae.append(obj["f"])
 
-    serie = series[2] # 2
+    serie = series[3]  # 6, 7, 8, 12, 13, 15, 27
 
     smooth_serie, filtred_serie = filter_serie(serie)
     
