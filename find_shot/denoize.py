@@ -3,14 +3,13 @@
 import libSmoothSpline as lss
 import sys
 import math
-import json
 import numpy as np
 from matplotlib import pyplot as plt
 from data.flatterise import SERIE_SIZE
 from load_serie import load_serie
 
 
-def build_box_plot(series):
+def build_box_plot(series: list[float]) -> dict:
     # медиана
     median = np.median(series)
     # первый квартиль
@@ -26,8 +25,13 @@ def build_box_plot(series):
     # верхняя граница
     upper_bound = q3 + 1.5 * iqr
 
-    return median, q1, q3, lower_bound, upper_bound
-
+    return {
+        'median': median,
+        'q1': q1,
+        'q3': q3,
+        'lower_bound': lower_bound,
+        'upper_bound': upper_bound
+    }
 
 def denoize_serie(data, smooth):
     dns, sm = create_denoized_spline(data, smooth)
@@ -61,7 +65,8 @@ def create_denoized_spline(data: list[float], smooth: float) -> (lss.SmoothSplin
     diffs = [abs(s - d)
              for (s, d) in zip(smooth_serie, data)]
     
-    _, _, _, lower_bound, upper_bound = build_box_plot(diffs)
+    bx = build_box_plot(diffs)
+    lower_bound, upper_bound = (bx['lower_bound'], bx['upper_bound'])
 
     new_points = list(filter(lambda x: x is not None, [
         p if (d > lower_bound) and (d < upper_bound) else None
