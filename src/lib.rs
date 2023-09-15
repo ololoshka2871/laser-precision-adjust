@@ -3,6 +3,7 @@ mod precision_adjust;
 
 pub(crate) mod gcode_codec;
 pub(crate) mod gcode_ctrl;
+pub mod box_plot;
 pub mod coordinates;
 
 pub use config::Config;

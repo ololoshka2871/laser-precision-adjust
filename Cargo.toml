@@ -61,3 +61,6 @@ name = "laser-precision-adjust-cli"
 
 [[bin]]
 name = "laser-precision-adjust-server"
+
+[[bin]]
+name = "denoize"

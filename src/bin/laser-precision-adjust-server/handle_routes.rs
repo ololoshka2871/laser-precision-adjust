@@ -639,7 +639,7 @@ where
     T: num_traits::Float + num_traits::FromPrimitive,
     U: IDataPoint<T> + Clone,
 {
-    use crate::box_plot::BoxPlot;
+    use laser_precision_adjust::box_plot::BoxPlot;
     use smoothspline::{I2Differentiable, IDifferentiable, IValue, SmoothSpline, SplineFragment};
 
     let pg = unsafe { T::from_f64(100.0).unwrap_unchecked() };

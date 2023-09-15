@@ -63,6 +63,26 @@
             }
         },
         {
+            "type": "lldb",
+            "request": "launch",
+            "name": "denoize",
+            "args": [
+                "-s", "0.1",
+                "-N", "11",
+                "find_shot/data/freq_11-09-2023_13h-05m.log"
+            ],
+            "cwd": "${workspaceFolder}",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=denoize"
+                ],
+                "filter": {
+                    "kind": "bin"
+                }
+            }
+        },
+        {
             "type": "chrome",
             "request": "launch",
             "name": "open chrome local",
@@ -103,7 +123,9 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "find_shot/data/freq_11-09-2023_13h-05m.log"
+                "find_shot/data/freq_11-09-2023_13h-05m.log",
+                "0.1",
+                "11"
             ]
         },
     ]

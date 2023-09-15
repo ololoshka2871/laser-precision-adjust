@@ -1,6 +1,5 @@
 mod handle_routes;
 mod static_files;
-mod box_plot;
 //mod predict;
 
 use std::{net::SocketAddr, sync::Arc};
