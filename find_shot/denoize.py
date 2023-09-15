@@ -68,10 +68,16 @@ def create_denoized_spline(data: list[float], smooth: float) -> (lss.SmoothSplin
     bx = build_box_plot(diffs)
     lower_bound, upper_bound = (bx['lower_bound'], bx['upper_bound'])
 
-    new_points = list(filter(lambda x: x is not None, [
-        p if (d > lower_bound) and (d < upper_bound) else None
-        for (p, d) in zip(sm.Points, diffs)
-    ]))
+    new_points = []
+    for i, (y, diff) in enumerate(zip(data, diffs)):
+        if (diff > lower_bound) and (diff < upper_bound):
+            new_points.append(lss.Point(i, y))
+        #else:
+        #    new_points.append(lss.Point(i, smooth_serie[i]))
+            # if i == 0 or i == len(sm.Points) - 1:
+                # new_points.append(lss.Point(i, y))
+            # else:
+                # new_points.append(lss.Point(i, (data[i - 1] + data[i + 1]) / 2))
 
     dns = lss.SmoothSpline()
     dns.Points = new_points

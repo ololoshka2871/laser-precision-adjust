@@ -221,7 +221,7 @@ class SmoothSpline:
 
         self._spline_fragments[0].Xmin = self.Points[0].X
 
-        for i in range(1, lastN + 1):
+        for i in range(1, lastN):
             res_index = i - 1
 
             hi = self.Points[i].X - self.Points[i - 1].X
