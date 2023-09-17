@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 
-import libSmoothSpline as lss
 import sys
 import math
 import numpy as np
 from matplotlib import pyplot as plt
+from csaps import ISmoothingSpline, csaps 
 from data.flatterise import SERIE_SIZE
 from load_serie import load_serie
 
@@ -42,46 +42,30 @@ def denoize_serie(data, smooth):
     return smooth_serie, filtred_serie
 
 
-def aproximete_spline(data: list[float], smooth: float):
-    sm = lss.SmoothSpline()
-
-    sm.Points = [lss.Point(i, p) for (i, p) in enumerate(data)]
-    sm.Update(smooth)
-
-    return sm
+def aproximete_spline(data: list[float], smooth: float) -> ISmoothingSpline:
+    x = np.linspace(0, len(data) - 1, num=len(data))    
+    return csaps(x, data, smooth=smooth)
 
 
-def create_denoized_spline(data: list[float], smooth: float) -> (lss.SmoothSpline, lss.SmoothSpline):
+def create_denoized_spline(data: list[float], smooth: float) -> (ISmoothingSpline, ISmoothingSpline):
     sm = aproximete_spline(data, smooth)
 
-    smooth_serie = []
+    smooth_serie = np.array([])
     for i in range(len(data)):
-        y = sm.Y(i)
-        if math.isnan(y):
-            smooth_serie.append(data[i])
-        else:
-            smooth_serie.append(y)
+        y = sm(i)
+        smooth_serie = np.append(smooth_serie, y)
 
-    diffs = [abs(s - d)
-             for (s, d) in zip(smooth_serie, data)]
+    diffs = np.subtract(smooth_serie, data)
     
     bx = build_box_plot(diffs)
     lower_bound, upper_bound = (bx['lower_bound'], bx['upper_bound'])
 
-    new_points = []
-    for i, (y, diff) in enumerate(zip(data, diffs)):
-        if (diff > lower_bound) and (diff < upper_bound):
-            new_points.append(lss.Point(i, y))
-        #else:
-        #    new_points.append(lss.Point(i, smooth_serie[i]))
-            # if i == 0 or i == len(sm.Points) - 1:
-                # new_points.append(lss.Point(i, y))
-            # else:
-                # new_points.append(lss.Point(i, (data[i - 1] + data[i + 1]) / 2))
-
-    dns = lss.SmoothSpline()
-    dns.Points = new_points
-    dns.Update(smooth)
+    weigths = [1.0] * len(data)
+    for index in filter(lambda i: diffs[i] < lower_bound or diffs[i] > upper_bound, range(len(diffs))):
+        weigths[index] = 0.01
+        
+    x = np.linspace(0, len(data) - 1, len(data))  
+    dns = csaps(x, data, weights=weigths, smooth=smooth)
 
     return dns, sm
 

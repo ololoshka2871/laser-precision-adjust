@@ -1,25 +1,42 @@
 
-def detect_raizing(data: list[float], uper_bound: float) -> int:
-    current = data[0]
-    for i in range(1, len(data)):
-        if data[i] > uper_bound:  # Верхний предел превышен - найден конец роста
-            return i
-        elif data[i] > current:  # Запоминаем текущее значение как максимум, рост продолжается
-            current = data[i]
-        else:
-            return None  # был рост но предел не превышен, значит это ложный сигнал
-        
+from enum import Enum
 
-def detect_shots(derivative: list[float], lower_bond: float, upper_bound: float) -> list[int]:
+
+class States(Enum):
+    WAIT = 0  # Ожидание начала спада
+    FALLING = 1  # Спад
+    RAIZING = 2  # Рост
+        
+        
+def new_detect_shots(derivative: list[float]) -> list[int]:
     if len(derivative) < 5:
         return []
     
-    i = 0
-    while i < len(derivative) - 2:
-        if derivative[i] < lower_bond:
-            raizing_end = detect_raizing(derivative[i:], upper_bound)
-            if raizing_end != None:
-                yield i
-                i += raizing_end
+    state = States.WAIT
+    start = None
+    count = 0
+    for i, v in enumerate(derivative):
+        if state == States.WAIT:
+            if v < 0.0:
+                start = i
+                count = 1
+                state = States.FALLING
+        elif state == States.FALLING:
+            if v < derivative[i - 1]:
+                count += 1
+            elif v > 0.0:
+                # reset
+                state = States.WAIT
+            else:
+                count += 1
+                state = States.RAIZING
+        elif state == States.RAIZING:
+            if v > derivative[i - 1]:
+                count += 1
+                continue
+            elif v > 0.0 and count > 4:
+                yield start
 
-        i += 1
+            state = States.WAIT
+        else:
+            raise Exception('Unknown state')
