@@ -95,6 +95,7 @@ pub struct PrecisionAdjust {
     data_log_file: Arc<Mutex<Option<tokio::fs::File>>>,
 
     freq_meter_i2c_addr: u8,
+    freq_merer_offset: Arc<Mutex<f32>>,
 
     update_interval: Duration,
 }
@@ -158,6 +159,7 @@ impl PrecisionAdjust {
             },
 
             freq_meter_i2c_addr: config.freq_meter_i2c_addr,
+            freq_merer_offset: Arc::new(Mutex::new(config.freqmeter_offset)),
 
             update_interval: Duration::from_millis(config.update_interval_ms as u64),
         }
@@ -224,6 +226,8 @@ impl PrecisionAdjust {
         let status = self.status.clone();
         let data_log_file = self.data_log_file.clone();
         let start_time = self.start_time;
+
+        let freq_merer_offset = self.freq_merer_offset.clone();
 
         async fn update_status(
             status: &Mutex<PrivStatus>,
@@ -327,7 +331,7 @@ impl PrecisionAdjust {
                             };
 
                             let new_status =
-                                update_status(&status, f, &data_log_file, start_time).await;
+                                update_status(&status, f + *freq_merer_offset.lock().await, &data_log_file, start_time).await;
                             match new_status {
                                 Ok(s) => {
                                     tx.send(s).ok();
@@ -681,5 +685,13 @@ impl PrecisionAdjust {
         d.transaction(dev_addr, &mut ops).await?;
 
         Ok(buf)
+    }
+
+    pub async fn set_freq_meter_offset(&self, offset: f32) {
+        *self.freq_merer_offset.lock().await = offset;
+    }
+
+    pub async fn get_freq_meter_offset(&self) -> f32 {
+        *self.freq_merer_offset.lock().await
     }
 }

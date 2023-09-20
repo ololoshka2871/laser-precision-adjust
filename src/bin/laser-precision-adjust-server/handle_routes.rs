@@ -181,6 +181,7 @@ pub(super) async fn handle_config(
 
 pub(super) async fn handle_update_config(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
     Json(input): Json<UpdateConfigValues>,
 ) -> impl IntoResponse {
     tracing::debug!("handle_update_config: {:?}", input);
@@ -198,6 +199,11 @@ pub(super) async fn handle_update_config(
 
     if let Some(work_offset_hz) = input.work_offset_hz {
         freqmeter_config.lock().await.work_offset_hz = work_offset_hz;
+        precision_adjust
+            .lock()
+            .await
+            .set_freq_meter_offset(work_offset_hz)
+            .await;
     }
 
     (StatusCode::OK, "Done")

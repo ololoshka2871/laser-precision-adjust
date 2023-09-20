@@ -2,11 +2,9 @@ use std::{marker::PhantomData, sync::Arc};
 
 use laser_precision_adjust::{box_plot::BoxPlot, ForecastConfig, Status};
 use num_traits::Float;
-use serde::{Deserialize, Serialize};
 use tokio::sync::{watch::Receiver, Mutex};
-use tracing_subscriber::registry::Data;
 
-use crate::{DataPoint, IDataPoint};
+use crate::DataPoint;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Prediction<T: Float> {
@@ -104,8 +102,7 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
                             // Апроксимация экспонентой
                             if let Ok(coeffs) = aproximate_exp(&t[f_min_index..], &fz) {
                                 let mut guard = fragments.lock().await;
-                                let serie =
-                                    guard.get_mut(cc).unwrap();
+                                let serie = guard.get_mut(cc).unwrap();
                                 let data = t
                                     .iter()
                                     .zip(f)
