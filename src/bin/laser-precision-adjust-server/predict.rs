@@ -1,9 +1,10 @@
 use std::{marker::PhantomData, sync::Arc};
 
-use laser_precision_adjust::{ForecastConfig, Status};
+use laser_precision_adjust::{box_plot::BoxPlot, ForecastConfig, Status};
 use num_traits::Float;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{watch::Receiver, Mutex};
+use tracing_subscriber::registry::Data;
 
 use crate::{DataPoint, IDataPoint};
 
@@ -20,13 +21,18 @@ pub struct Predictor<T> {
     _t: PhantomData<T>,
 }
 
-impl<T: Float + num_traits::FromPrimitive + 'static> Predictor<T> {
-    pub fn new(rx: Receiver<Status>, forecast_config: ForecastConfig) -> Self {
-        let fragments = Arc::new(Mutex::new(vec![]));
+impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> {
+    pub fn new(
+        rx: Receiver<Status>,
+        forecast_config: ForecastConfig,
+        channels_count: usize,
+        fragment_len: usize,
+    ) -> Self {
+        let fragments = Arc::new(Mutex::new(vec![vec![]; channels_count]));
 
         {
             let fragments = fragments.clone();
-            tokio::spawn(Self::task(rx, fragments));
+            tokio::spawn(Self::task(rx, fragments, fragment_len));
         }
         Self {
             fragments,
@@ -35,15 +41,95 @@ impl<T: Float + num_traits::FromPrimitive + 'static> Predictor<T> {
         }
     }
 
-    async fn task(mut status_rx: Receiver<Status>, fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>) {
+    async fn task(
+        mut status_rx: Receiver<Status>,
+        fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
+        fragment_len: usize,
+    ) {
+        let mut current_chanel = None;
+        let mut serie_data = vec![];
         loop {
             status_rx.changed().await.ok();
+
+            let new_status = status_rx.borrow().clone();
+
+            if new_status.shot_mark {
+                // выстрел - фиксируем канал
+                current_chanel.replace(new_status.current_channel);
+
+                // drop data
+                serie_data.clear();
+
+                serie_data.push((
+                    new_status.since_start.as_millis(),
+                    new_status.current_frequency,
+                ))
+            } else if current_chanel != Some(new_status.current_channel) {
+                // произошла смена канала, выстрелов не было, так что снимаем определенность канала.
+                current_chanel = None;
+                // drop data
+                serie_data.clear();
+            } else {
+                // продолжаем обработку текущего окна
+                if current_chanel.is_some() && serie_data.len() < fragment_len {
+                    serie_data.push((
+                        new_status.since_start.as_millis(),
+                        new_status.current_frequency,
+                    ))
+                } else {
+                    let cc = current_chanel.unwrap() as usize;
+                    // сброс
+                    current_chanel = None;
+
+                    // Сбор закончен
+                    let mut t = vec![];
+                    let mut f = vec![];
+                    serie_data.iter().for_each(|v| {
+                        t.push(unsafe { T::from_u128(v.0).unwrap_unchecked() });
+                        f.push(unsafe { T::from_f32(v.1).unwrap_unchecked() });
+                    });
+
+                    // Грубая фильтрация от всяких выбросов в 0
+                    hard_filter(&mut f);
+
+                    // сглаживающая фильтрация
+                    if let Ok(filtred_f) = smooth_filter(&t, &f) {
+                        if let Some((f_min_index, min_f)) = find_min(&f) {
+                            let fz = filtred_f
+                                .iter()
+                                .skip(f_min_index - 1)
+                                .map(move |f| *f - min_f)
+                                .collect::<Vec<_>>();
+
+                            // Апроксимация экспонентой
+                            if let Ok(coeffs) = aproximate_exp(&t[f_min_index..], &fz) {
+                                let mut guard = fragments.lock().await;
+                                let serie =
+                                    guard.get_mut(cc).unwrap();
+                                let data = t
+                                    .iter()
+                                    .zip(f)
+                                    .map(|(t, f)| DataPoint::new(*t, f))
+                                    .collect::<Vec<_>>();
+                                serie.push(Fragment::new(
+                                    serie_data[0].0,
+                                    &data,
+                                    coeffs,
+                                    f_min_index,
+                                ))
+                            } else {
+                                tracing::error!("Failed to aproximate last fragment");
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     /// получить все удачно-аппроксикированные фрагменты
     /// не старше указанного времени (или вообще все, если время не указано)
-    async fn get_fragments(&self, channel: u32, t_min: Option<u128>) -> Vec<Fragment<T>> {
+    pub async fn get_fragments(&self, channel: u32, t_min: Option<f64>) -> Vec<Fragment<T>> {
         let guard = self.fragments.lock().await;
         if let Some(channel_data) = guard.get(channel as usize) {
             if let Some(t_min) = t_min {
@@ -65,42 +151,46 @@ impl<T: Float + num_traits::FromPrimitive + 'static> Predictor<T> {
 
     /// Получить прогноз для изменения частоты для текущего канала если произвести
     /// выстрел сейчас
-    async fn get_prediction(&self, _channel: u32, f_start: T) -> Prediction<T> {
+    pub async fn get_prediction(&self, _channel: u32, f_start: T) -> Option<Prediction<T>> {
         // Static prediction
         unsafe {
-            Prediction {
+            Some(Prediction {
                 minimal: T::from_f32(self.forecast_config.min_freq_grow).unwrap_unchecked()
                     + f_start,
                 maximal: T::from_f32(self.forecast_config.max_freq_grow).unwrap_unchecked()
                     + f_start,
                 median: T::from_f32(self.forecast_config.median_freq_grow).unwrap_unchecked()
                     + f_start,
-            }
+            })
         }
     }
 }
 
 #[derive(Clone)]
-pub(crate) struct Fragment<T> {
-    start_timestamp: u128,
+pub struct Fragment<T> {
+    start_timestamp: f64,
     raw_points: Vec<DataPoint<T>>,
+    coeffs: (T, T),
+    min_index: usize,
 }
 
 impl<T: Float> Fragment<T> {
     // Создать фрагмент из набора точек
     // start_timestamp - время начала фрагмента
     // raw_points - набор точек
-    // min_grow_speed - минимальная скорость роста
-    // max_grow_speed - максимальная скорость роста
+    // coeffs - коэфициенты
+    // min_index - индекс точки минимума
     pub fn new(
         start_timestamp: u128,
         raw_points: &[DataPoint<T>],
-        min_grow_speed: T,
-        max_grow_speed: T,
+        coeffs: (T, T),
+        min_index: usize,
     ) -> Self {
         Self {
-            start_timestamp,
+            start_timestamp: start_timestamp as f64,
             raw_points: raw_points.to_vec(),
+            coeffs,
+            min_index,
         }
     }
 
@@ -110,53 +200,68 @@ impl<T: Float> Fragment<T> {
 
     // Найти индекс точки, в которой достигается минимум raw_points
     pub fn minimum_index(&self) -> usize {
-        todo!()
+        self.min_index
     }
 
     // Коэффициенты аппроксимации функцией y = A * (1 - exp(-x * B))
     // Принимается, что исходная кривя смещена таким образом, что минимум
     // находится в точке (0, 0)
-    // Если аппроксимация не удалась, возвращается None
-    pub fn aprox_coeffs(&self) -> Option<(T, T)> {
-        todo!()
+    pub fn aprox_coeffs(&self) -> (T, T) {
+        self.coeffs
     }
 
     // Рассчитать аппроксимированную кривую начинаи подвинуть
     // её в точку (x_start, y_offset)
-    // Если аппроксимация не удалась, возвращается None
-    pub fn evaluate(&self, x_start: T, y_offset: T) -> Option<Vec<(T, T)>> {
-        todo!()
+    pub fn evaluate(&self) -> Vec<DataPoint<T>> {
+        self.raw_points.clone()
     }
 }
 
 unsafe impl<T: Float> Send for Fragment<T> {}
 
+//-----------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
-pub struct FullDataPoint<T: Float> {
-    pub x: T,
-    pub y: T,
-    //pub dy: T,
-    //pub d2y: T,
-}
-
-fn filter_points<T, U>(points: &[U]) -> Vec<Option<FullDataPoint<T>>>
-where
-    T: num_traits::Float + num_traits::FromPrimitive + csaps::Real,
-    U: IDataPoint<T> + Clone,
-{
-    use laser_precision_adjust::box_plot::BoxPlot;
-
-    let pg = unsafe { T::from_f64(0.85).unwrap_unchecked() };
-
-    let x = points.iter().map(|p| p.x()).collect::<Vec<_>>();
-    let mut y = points.iter().map(|p| p.y()).collect::<Vec<_>>();
+fn hard_filter<T: Float + num_traits::NumOps + num_traits::FromPrimitive + Copy>(data: &mut [T]) {
+    let raw_box_plot = BoxPlot::new(data);
     let mut prev_y = None;
 
-    // первичная фильтрация, должна отрезать точки ~0
-    let raw_box_plot = BoxPlot::new(&y);
-    y.iter_mut().for_each(|y| {
+    data.iter_mut().for_each(|y| {
         if (*y > raw_box_plot.lower_bound()) && (*y < raw_box_plot.upper_bound()) {
+            prev_y = Some(*y);
+        } else if let Some(py) = prev_y {
+            *y = py;
+        }
+    });
+}
+
+fn smooth_filter<'a, T>(x: &Vec<T>, y: &Vec<T>) -> csaps::Result<Vec<T>>
+where
+    T: Float + num_traits::NumOps + num_traits::FromPrimitive + csaps::Real + Copy,
+{
+    let pg = unsafe { T::from_f64(0.85).unwrap_unchecked() };
+    let mut y = y.clone();
+
+    // Апроксимация сплайном
+    let spline = csaps::CubicSmoothingSpline::new(x, &y)
+        .with_smooth(pg)
+        .make()?;
+
+    // вычисление сплайна в точках
+    let spline_y_vals = spline.evaluate(&x)?;
+
+    // разница истинного значения и прогноза
+    let diffs = y
+        .iter()
+        .zip(spline_y_vals.iter())
+        .map(|(y, ys)| *y - *ys)
+        .collect::<Vec<_>>();
+
+    let box_plot = BoxPlot::new(&diffs);
+
+    // вторичный фильтр, удаляет случайные иголки вверх
+    let mut prev_y = None;
+    y.iter_mut().zip(diffs).for_each(move |(y, d)| {
+        if (d > box_plot.lower_bound()) && (d < box_plot.upper_bound()) {
             // ok
             prev_y = Some(*y);
         } else {
@@ -166,58 +271,23 @@ where
         }
     });
 
-    // Апроксимация сплайном
-    if let Ok(spline) = csaps::CubicSmoothingSpline::new(&x, &y)
-        .with_smooth(pg)
-        .make()
-    {
-        // вычисление сплайна в точках
-        if let Ok(spline_y_vals) = spline.evaluate(&x) {
-            // разница истинного значения и прогноза
-            let diffs = y
-                .iter()
-                .zip(spline_y_vals.iter())
-                .map(|(y, ys)| *y - *ys)
-                .collect::<Vec<_>>();
+    Ok(y)
+}
 
-            let box_plot = BoxPlot::new(&diffs);
-
-            // вторичный фильтр, удаляет случайные иголки вверх
-            y.iter_mut().zip(diffs).for_each(move |(y, d)| {
-                if (d > box_plot.lower_bound()) && (d < box_plot.upper_bound()) {
-                    // ok
-                    prev_y = Some(*y);
-                } else {
-                    if let Some(py) = prev_y {
-                        *y = py;
-                    }
-                }
-            });
-
-            // повторная апроксимация сплайном
-            if let Ok(spline) = csaps::CubicSmoothingSpline::new(&x, &y)
-                .with_smooth(pg)
-                .make()
-            {
-                if let Ok(y) = spline.evaluate(&x) {
-                    let start = x.len().checked_sub(30).unwrap_or_default();
-                    return x
-                        .iter()
-                        .enumerate()
-                        .take(x.len() - 1)
-                        .zip(y.into_iter())
-                        .map(move |((i, x), y)| {
-                            if i < start {
-                                None
-                            } else {
-                                Some(FullDataPoint { x: *x, y: *y })
-                            }
-                        })
-                        .collect();
-                }
+fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
+    if let Some((mut min, mut minindex)) = data.first().map(|d0| (*d0, 0)) {
+        data.iter().enumerate().for_each(|(i, v)| {
+            if *v < min {
+                min = *v;
+                minindex = i;
             }
-        }
+        });
+        Some((minindex, min))
+    } else {
+        None
     }
+}
 
-    vec![]
+fn aproximate_exp<T: Float>(x: &[T], y: &[T]) -> Result<(T, T), ()> {
+    Ok((T::zero(), T::zero()))
 }

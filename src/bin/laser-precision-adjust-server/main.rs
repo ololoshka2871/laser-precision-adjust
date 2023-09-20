@@ -33,7 +33,7 @@ pub trait IDataPoint<T> {
 }
 
 #[derive(Clone, Copy)]
-struct DataPoint<T> {
+pub struct DataPoint<T> {
     x: T,
     y: T,
 }
@@ -119,7 +119,12 @@ async fn main() -> Result<(), std::io::Error> {
     let status_rx = precision_adjust.start_monitoring(emulate_freq).await;
     precision_adjust.reset().await.expect("Can't reset laser!");
 
-    let predictor = predict::Predictor::new(status_rx.clone(), config.forecast_config);
+    let predictor = predict::Predictor::new(
+        status_rx.clone(),
+        config.forecast_config,
+        config.resonator_placement.len(),
+        (config.cooldown_time_ms / config.update_interval_ms) as usize,
+    );
 
     // State for our application
     let mut minijinja = Environment::new();

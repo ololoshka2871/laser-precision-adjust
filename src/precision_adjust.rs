@@ -69,6 +69,8 @@ pub struct Status {
 
     pub camera_state: CameraState,
     pub valve_state: ValveState,
+
+    pub shot_mark: bool,
 }
 
 pub struct PrecisionAdjust {
@@ -211,6 +213,8 @@ impl PrecisionAdjust {
 
             camera_state: CameraState::Close,
             valve_state: ValveState::Atmosphere,
+
+            shot_mark: false,
         });
 
         let dev = self.laser_setup.clone();
@@ -290,6 +294,8 @@ impl PrecisionAdjust {
 
                 camera_state: status.current_camera_state,
                 valve_state: status.current_valve_state,
+
+                shot_mark,
             })
         }
 

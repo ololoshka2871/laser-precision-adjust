@@ -28,7 +28,8 @@ interface IState {
     InitialFreq: number
     Points: [number, number][] // [timestamp, freq]
     Prediction?: IPrediction,
-    CloseTimestamp?: number
+    CloseTimestamp?: number,
+    Aproximations: Array<Array<[number, number]>>,
 }
 
 interface IControlResult {
@@ -156,7 +157,6 @@ $(() => {
                 datasets: [
                     { // 0
                         label: 'Upper Limit',
-                        data: [],
                         lineTension: 0,
                         pointRadius: 0,
                         fill: 'top',
@@ -166,7 +166,6 @@ $(() => {
                     },
                     { // 1
                         label: 'Lower Limit',
-                        data: [],
                         lineTension: 0,
                         pointRadius: 0,
                         fill: 'bottom', // заполнить область до графика 1
@@ -176,7 +175,6 @@ $(() => {
                     },
                     { // 2
                         label: 'Actual',
-                        data: [],
                         lineTension: 0,
                         pointRadius: 2.5,
                         fill: false,
@@ -186,7 +184,6 @@ $(() => {
                     },
                     { // 3
                         label: 'Target',
-                        data: [],
                         lineTension: 0,
                         pointRadius: 0,
                         fill: false,
@@ -215,6 +212,14 @@ $(() => {
                         pointRadius: 0,
                         fill: 4,
                         borderColor: 'rgb(133, 21, 42, 0.6)',
+                        yAxisID: 'A',
+                    },
+                    { // 7
+                        label: 'aproximation',
+                        lineTension: 0,
+                        pointRadius: 0,
+                        fill: false,
+                        borderColor: 'green',
                         yAxisID: 'A',
                     }
                 ]
@@ -280,6 +285,17 @@ $(() => {
                 chart.data.datasets[4].data = []
                 chart.data.datasets[5].data = []
                 chart.data.datasets[6].data = []
+            }
+
+            chart.data.datasets[7].data = Array<number>(state.Points.length).fill(NaN);
+            for (var i = 0; i < state.Aproximations.length; ++i) {
+                const d: Array<[number, number]> = state.Aproximations[i];
+                const res_index_offset = chart.data.labels.findIndex((v) => v == d[0][0]);
+                if (res_index_offset >= 0) {
+                    for (var j = 0; j < d.length; ++j) {
+                        chart.data.datasets[7].data[res_index_offset + j] = d[j][1];
+                    }
+                }
             }
 
             //chart.options.scales.yAxes[0].ticks.min = plot_min;

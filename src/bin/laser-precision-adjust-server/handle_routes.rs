@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashSet, sync::Arc, time::Duration};
+use std::{borrow::Borrow, cmp::min, collections::HashSet, sync::Arc, time::Duration};
 
 use axum::{
     extract::{Path, State},
@@ -9,10 +9,14 @@ use axum::{
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::{box_plot::BoxPlot, Config, PrecisionAdjust};
 
+use num_traits::Float;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::{AdjustConfig, AppEngine, ChannelState, DataPoint, IDataPoint};
+use crate::{
+    predict::{Fragment, Predictor},
+    AdjustConfig, AppEngine, ChannelState, DataPoint, IDataPoint,
+};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -75,6 +79,9 @@ pub struct StateResult {
 
     #[serde(rename = "CloseTimestamp")]
     close_timestamp: Option<u128>,
+
+    #[serde(rename = "Aproximations")]
+    aproximations: Vec<Vec<(f64, f64)>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -558,6 +565,7 @@ pub(super) async fn handle_state(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
+    State(predictor): State<Arc<Mutex<crate::predict::Predictor<f64>>>>,
 ) -> impl IntoResponse {
     let stream = async_stream::stream! {
         loop {
@@ -573,19 +581,24 @@ pub(super) async fn handle_state(
             let (initial_freq, points) = {
                 let mut channels = channels.lock().await;
                 let channel = channels.get_mut(status.current_channel as usize).unwrap();
-                channel.points.push(DataPoint::new(timestamp as f64, (status.current_frequency + work_offset_hz) as f64));
+                channel.points.push(DataPoint::new(timestamp as f64, status.current_frequency as f64));
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }
                 (channel.initial_freq, channel.points.clone())
             };
 
-            let prediction = if points.len() > 5 {
-                let boxplot = BoxPlot::new(&points[points.len() - 5..].iter().map(|p| p.y()).collect::<Vec<_>>());
-                let median = boxplot.median();
-                Some(Prediction{ start_offset: points.len() - 5, minimal: median + 0.1, maximal: median + 1.0, median: median + 0.5 })
+            const MEDIAN_LEN: usize = 5;
+            let (aproximations, prediction) = if points.len() > MEDIAN_LEN {
+                let median = BoxPlot::new(&points[(points.len() - MEDIAN_LEN)..].iter().map(|p| p.y()).collect::<Vec<_>>()).median();
+                get_prediction(predictor.lock().await.borrow(),
+                               status.current_channel,
+                               median,
+                               points.len() - MEDIAN_LEN,
+                               points.first().unwrap().x()
+                              ).await
             } else {
-                None
+                (vec![], None)
             };
 
             let close_timestamp = {
@@ -619,9 +632,47 @@ pub(super) async fn handle_state(
                 points: points.iter().map(|p| (p.x, p.y)).collect(),
                 close_timestamp,
                 prediction,
+                aproximations,
             };
         }
     };
 
     axum_streams::StreamBodyAs::json_nl(stream)
+}
+
+//-----------------------------------------------------------------------------
+
+async fn get_prediction<T: Float + num_traits::FromPrimitive + csaps::Real + 'static>(
+    predictor: &Predictor<T>,
+    channel: u32,
+    f_start: T,
+    start_offset: usize,
+    start_timeestamp: f64,
+) -> (Vec<Vec<(T, T)>>, Option<Prediction>) {
+    let prediction = predictor
+        .get_prediction(channel, f_start)
+        .await
+        .map(|pr| unsafe {
+            Prediction {
+                start_offset,
+                maximal: pr.maximal.to_f64().unwrap_unchecked(),
+                minimal: pr.minimal.to_f64().unwrap_unchecked(),
+                median: pr.median.to_f64().unwrap_unchecked(),
+            }
+        });
+
+    let fragments = predictor
+        .get_fragments(channel, Some(start_timeestamp))
+        .await
+        .iter()
+        .map(|fragment| {
+            fragment
+                .evaluate()
+                .into_iter()
+                .map(|p| (p.x(), p.y()))
+                .collect()
+        })
+        .collect();
+
+    (fragments, prediction)
 }
