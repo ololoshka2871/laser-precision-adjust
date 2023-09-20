@@ -11,7 +11,7 @@ use axum::{
     Router,
 };
 use laser_precision_adjust::PrecisionAdjust;
-use smoothspline::DataPoint;
+
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
@@ -26,6 +26,33 @@ use crate::handle_routes::{
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
+
+pub trait IDataPoint<T> {
+    fn x(&self) -> T;
+    fn y(&self) -> T;
+}
+
+#[derive(Clone, Copy)]
+struct DataPoint<T> {
+    x: T,
+    y: T,
+}
+
+impl<T: num_traits::Float> DataPoint<T> {
+    pub fn new(x: T, y: T) -> Self {
+        Self { x, y }
+    }
+}
+
+impl<T: num_traits::Float> IDataPoint<T> for DataPoint<T> {
+    fn x(&self) -> T {
+        self.x
+    }
+
+    fn y(&self) -> T {
+        self.y
+    }
+}
 
 #[derive(Clone)]
 struct ChannelState {

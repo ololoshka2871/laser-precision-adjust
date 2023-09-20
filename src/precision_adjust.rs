@@ -54,6 +54,8 @@ pub struct PrivStatus {
     current_valve_state: ValveState,
 
     prev_freq: Option<f32>,
+
+    shot_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -122,6 +124,7 @@ impl PrecisionAdjust {
                 current_valve_state: ValveState::Atmosphere,
 
                 prev_freq: None,
+                shot_requested: false,
             })),
 
             start_time: SystemTime::now(),
@@ -228,6 +231,7 @@ impl PrecisionAdjust {
             struct LogEntry {
                 channel: u32,
                 f: f32,
+                shot_mark: bool,
             }
 
             let mut status = status.lock().await;
@@ -258,10 +262,18 @@ impl PrecisionAdjust {
                 status.prev_freq = Some(f);
             }
 
+            let shot_mark = if status.shot_requested {
+                status.shot_requested = false;
+                true
+            } else {
+                false
+            };
+
             if let Some(fifo) = logfile.lock().await.deref_mut() {
                 let entry = LogEntry {
                     channel: status.current_channel,
                     f,
+                    shot_mark,
                 };
                 fifo.write_all(
                     format!("{}\n", serde_json::to_string(&entry).unwrap_or_default()).as_bytes(),
@@ -542,7 +554,8 @@ impl PrecisionAdjust {
             .execute_gcode(status, move |mut status, workspace| {
                 let mut commands = vec![];
 
-                status.current_side = status.current_side.morrored();
+                status.current_side = status.current_side.mirrored();
+                status.shot_requested = true;
 
                 let new_abs_coordinates = workspace.to_abs(
                     &ax_conf,

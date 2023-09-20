@@ -1,6 +1,6 @@
 [package]
 name = "laser-precision-adjust"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"
@@ -32,9 +32,9 @@ rustyline-async = { version = "=0.3.0", default-features = false } # В верс
 colored = "2.0"
 shellwords = "1.1"
 
-###
+csaps = "0.3"
 
-smoothspline = { git = "https://bitbucket.org/Olololshka/libsmoothspline.git" }
+###
 
 laser-setup-interface = { git = "https://github.com/ololoshka2871/Laser-setup-interface.git" }
 

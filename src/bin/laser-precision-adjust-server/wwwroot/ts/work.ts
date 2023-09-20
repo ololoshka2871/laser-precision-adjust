@@ -20,7 +20,7 @@ interface IState {
     CurrentStep: number
     InitialFreq: number
     Points: [number, number][] // [timestamp, freq]
-    SmoothPoints: [number, number, number][] // [y, dy, d2y]
+    SmoothPoints: [number, /*number, number*/][] // [y, dy, d2y]
     CloseTimestamp?: number
 }
 
@@ -195,7 +195,7 @@ $(() => {
                         borderColor: 'rgb(180, 148, 204)',
                         yAxisID: 'A',
                     },
-               
+                    /*
                     {
                         label: 'Derivative',
                         data: [],
@@ -214,6 +214,7 @@ $(() => {
                         borderColor: 'rgba(175, 179, 64, 0.9)',
                         yAxisID: 'B' // 'B',
                     }
+                    */
                 ]
             },
             options: {
@@ -261,7 +262,7 @@ $(() => {
 
             const non_null_SmoothPoints = state.SmoothPoints
                 .filter((v) => v !== null)
-                .map((v: [number, number, number]) => v[0])
+                .map((v: [number, /*number, number*/]) => v[0])
             const plot_max = Math.round(Math.max(upperLimit, ...non_null_SmoothPoints) + 2.0);
             const plot_min = Math.round(Math.min(lowerLimit, ...non_null_SmoothPoints) - 2.0);
 
@@ -273,10 +274,10 @@ $(() => {
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
             chart.data.datasets[4].data = state.SmoothPoints.map(p => p === null ? null : p[0]); // smooth
-            
-            chart.data.datasets[5].data = state.SmoothPoints.map(p => p === null ? null : p[1]); // dy
-            chart.data.datasets[6].data = state.SmoothPoints.map(p => p === null ? null : p[2]); // d2y
-            
+
+            //chart.data.datasets[5].data = state.SmoothPoints.map(p => p === null ? null : p[1]); // dy
+            //chart.data.datasets[6].data = state.SmoothPoints.map(p => p === null ? null : p[2]); // d2y
+
 
             chart.options.scales.yAxes[0].ticks.min = plot_min;
             chart.options.scales.yAxes[0].ticks.max = plot_max;

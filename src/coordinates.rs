@@ -7,7 +7,7 @@ pub enum Side {
 }
 
 impl Side {
-    pub fn morrored(self) -> Self {
+    pub fn mirrored(self) -> Self {
         match self {
             Side::Left => Side::Right,
             Side::Right => Side::Left,
