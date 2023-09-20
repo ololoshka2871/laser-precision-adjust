@@ -55,13 +55,21 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
                 // выстрел - фиксируем канал
                 current_chanel.replace(new_status.current_channel);
 
+                // Сбор прерван
+                if serie_data.len() > 3 {
+                    if let Err(_) = try_consume_fragment(
+                        &serie_data,
+                        new_status.current_channel as usize,
+                        &fragments,
+                    )
+                    .await
+                    {
+                        tracing::error!("Invalid fragment");
+                    }
+                }
+
                 // drop data
                 serie_data.clear();
-
-                serie_data.push((
-                    new_status.since_start.as_millis(),
-                    new_status.current_frequency,
-                ))
             } else if current_chanel != Some(new_status.current_channel) {
                 // произошла смена канала, выстрелов не было, так что снимаем определенность канала.
                 current_chanel = None;
@@ -76,48 +84,13 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
                     ))
                 } else {
                     let cc = current_chanel.unwrap() as usize;
+
                     // сброс
                     current_chanel = None;
 
                     // Сбор закончен
-                    let mut t = vec![];
-                    let mut f = vec![];
-                    serie_data.iter().for_each(|v| {
-                        t.push(unsafe { T::from_u128(v.0).unwrap_unchecked() });
-                        f.push(unsafe { T::from_f32(v.1).unwrap_unchecked() });
-                    });
-
-                    // Грубая фильтрация от всяких выбросов в 0
-                    hard_filter(&mut f);
-
-                    // сглаживающая фильтрация
-                    if let Ok(filtred_f) = smooth_filter(&t, &f) {
-                        if let Some((f_min_index, min_f)) = find_min(&f) {
-                            let fz = filtred_f
-                                .iter()
-                                .skip(f_min_index - 1)
-                                .map(move |f| *f - min_f)
-                                .collect::<Vec<_>>();
-
-                            // Апроксимация экспонентой
-                            if let Ok(coeffs) = aproximate_exp(&t[f_min_index..], &fz) {
-                                let mut guard = fragments.lock().await;
-                                let serie = guard.get_mut(cc).unwrap();
-                                let data = t
-                                    .iter()
-                                    .zip(f)
-                                    .map(|(t, f)| DataPoint::new(*t, f))
-                                    .collect::<Vec<_>>();
-                                serie.push(Fragment::new(
-                                    serie_data[0].0,
-                                    &data,
-                                    coeffs,
-                                    f_min_index,
-                                ))
-                            } else {
-                                tracing::error!("Failed to aproximate last fragment");
-                            }
-                        }
+                    if let Err(_) = try_consume_fragment(&serie_data, cc, &fragments).await {
+                        tracing::error!("Failed to aproximate last fragment");
                     }
                 }
             }
@@ -287,4 +260,51 @@ fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
 
 fn aproximate_exp<T: Float>(x: &[T], y: &[T]) -> Result<(T, T), ()> {
     Ok((T::zero(), T::zero()))
+}
+
+//-----------------------------------------------------------------------------
+
+async fn try_consume_fragment<T>(
+    serie_data: &[(u128, f32)],
+    channel: usize,
+    fragments: &Mutex<Vec<Vec<Fragment<T>>>>,
+) -> Result<(), ()>
+where
+    T: Float + num_traits::NumOps + num_traits::FromPrimitive + csaps::Real + Copy,
+{
+    let mut t = vec![];
+    let mut f = vec![];
+    serie_data.iter().for_each(|v| {
+        t.push(unsafe { T::from_u128(v.0).unwrap_unchecked() });
+        f.push(unsafe { T::from_f32(v.1).unwrap_unchecked() });
+    });
+
+    // Грубая фильтрация от всяких выбросов в 0
+    hard_filter(&mut f);
+
+    // сглаживающая фильтрация
+    if let Ok(filtred_f) = smooth_filter(&t, &f) {
+        if let Some((f_min_index, min_f)) = find_min(&f) {
+            let fz = filtred_f
+                .iter()
+                .skip(f_min_index)
+                .map(move |f| *f - min_f)
+                .collect::<Vec<_>>();
+
+            // Апроксимация экспонентой
+            if let Ok(coeffs) = aproximate_exp(&t[f_min_index..], &fz) {
+                let mut guard = fragments.lock().await;
+                let serie = guard.get_mut(channel).unwrap();
+                let data = t
+                    .iter()
+                    .zip(f)
+                    .map(|(t, f)| DataPoint::new(*t, f))
+                    .collect::<Vec<_>>();
+                serie.push(Fragment::new(serie_data[0].0, &data, coeffs, f_min_index));
+                return Ok(());
+            }
+        }
+    }
+
+    Err(())
 }
