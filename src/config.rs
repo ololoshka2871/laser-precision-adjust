@@ -29,6 +29,18 @@ pub struct AxisConfig {
     pub reverse_y: bool,
 }
 
+#[derive(Deserialize, Clone, Copy, Serialize)]
+pub struct ForecastConfig {
+    #[serde(rename = "MinFreqGrow")]
+    pub min_freq_grow: f32,
+
+    #[serde(rename = "MaxFreqGrow")]
+    pub max_freq_grow: f32,
+
+    #[serde(rename = "MedianFreqGrow")]
+    pub median_freq_grow: f32,
+}
+
 #[derive(Deserialize, Clone, Serialize)]
 pub struct Config {
     #[serde(rename = "LaserSetupPort")]
@@ -82,6 +94,12 @@ pub struct Config {
     #[serde(rename = "DisplayPointsCount")]
     pub display_points_count: usize,
 
+    #[serde(rename = "ForecastConfig")]
+    pub forecast_config: ForecastConfig,
+
+    #[serde(rename = "CooldownTimeMs")]
+    pub cooldown_time_ms: u32,
+
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
 }
@@ -134,6 +152,13 @@ impl std::fmt::Display for Config {
         writeln!(f, "TargetFreqCenter: {}", self.target_freq_center)?;
         writeln!(f, "UpdateIntervalMs: {}", self.update_interval_ms)?;
         writeln!(f, "DisplayPointsCount: {}", self.display_points_count)?;
+
+        writeln!(f, "ForecastConfig:")?;
+        writeln!(f, "  MinFreqGrow: {}", self.forecast_config.min_freq_grow)?;
+        writeln!(f, "  MaxFreqGrow: {}", self.forecast_config.max_freq_grow)?;
+        writeln!(f, "  MedianFreqGrow: {}", self.forecast_config.median_freq_grow)?;
+
+        writeln!(f, "CooldownTimeMs: {}", self.cooldown_time_ms)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;

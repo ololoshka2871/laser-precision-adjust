@@ -111,6 +111,10 @@
                         {{ table_row_simple('Цель настройки', 'TargetFreqCenter', config.TargetFreqCenter, "Гц") }}
                         {{ table_row_simple('Интервал опроса', 'UpdateIntervalMs', config.UpdateIntervalMs, "мс.") }}
                         {{ table_row_simple('Длина истории на графике', 'DisplayPointsCount', config.DisplayPointsCount, 'шт.')}}
+                        {{ table_row_simple('Минимальное ожидаемое изменение частоты', 'ForecastConfig.MinFreqGrow', ForecastConfig.MinFreqGrow, 'Гц') }}
+                        {{ table_row_simple('Максимальное ожидаемое изменение частоты', 'ForecastConfig.MaxFreqGrow', ForecastConfig.MaxFreqGrow, 'Гц') }}
+                        {{ table_row_simple('Медианное ожидаемое изменение частоты', 'ForecastConfig.MedianFreqGrow', ForecastConfig.MedianFreqGrow, 'Гц') }}
+                        {{ table_row_simple('Время остывания', 'CooldownTimeMs', config.CooldownTimeMs, "мс.") }}
                     </tbody>
                 </table>
             </div>

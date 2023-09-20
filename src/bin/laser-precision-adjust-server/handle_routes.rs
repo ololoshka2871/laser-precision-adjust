@@ -9,11 +9,11 @@ use axum::{
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::{Config, PrecisionAdjust};
 
-use num_traits::CheckedSub;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::{AdjustConfig, AppEngine, ChannelState, DataPoint, IDataPoint};
+use crate::predict::Prediction;
+use crate::{AdjustConfig, AppEngine, ChannelState, DataPoint};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -63,8 +63,8 @@ pub struct StateResult {
     #[serde(rename = "Points")]
     points: Vec<(f64, f64)>,
 
-    #[serde(rename = "SmoothPoints")]
-    smooth_points: Option<Vec<Option<(f64 /*f64, f64*/,)>>>,
+    #[serde(rename = "Prediction")]
+    prediction: Option<Prediction<f64>>,
 
     #[serde(rename = "CloseTimestamp")]
     close_timestamp: Option<u128>,
@@ -77,14 +77,6 @@ pub struct UpdateConfigValues {
 
     #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: Option<f32>,
-}
-
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
-struct FullDataPoint<T: num_traits::Float> {
-    pub x: T,
-    pub y: T,
-    //pub dy: T,
-    //pub d2y: T,
 }
 
 pub(super) async fn handle_work(
@@ -560,8 +552,6 @@ pub(super) async fn handle_state(
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
 ) -> impl IntoResponse {
-    tracing::trace!("handle_state");
-
     let stream = async_stream::stream! {
         loop {
             status_rx.changed().await.ok();
@@ -583,12 +573,10 @@ pub(super) async fn handle_state(
                 (channel.initial_freq, channel.points.clone())
             };
 
-            // smooth points
-            let smooth_points = if points.len() >= 5{
-                Some(filter_points(&points))
-            } else {
-                None
-            };
+            let prediction: Option<Prediction<f64> > = points
+                .last()
+                .map(|p| p.y)
+                .map(|y| Prediction{ minimal: y + 0.1, maximal: y + 1.0, median: y + 0.5 });
 
             let close_timestamp = {
                 let mut close_timestamp_guard = close_timestamp.lock().await;
@@ -620,97 +608,10 @@ pub(super) async fn handle_state(
                 initial_freq,
                 points: points.iter().map(|p| (p.x, p.y)).collect(),
                 close_timestamp,
-                smooth_points: smooth_points
-                                .map(|v| v
-                                    .iter()
-                                    .map(|pv| pv.map(|p| (p.y, /*p.dy, p.d2y*/)))
-                                    .collect()
-                                ),
+                prediction,
             };
         }
     };
 
     axum_streams::StreamBodyAs::json_nl(stream)
-}
-
-fn filter_points<T, U>(points: &[U]) -> Vec<Option<FullDataPoint<T>>>
-where
-    T: num_traits::Float + num_traits::FromPrimitive + csaps::Real,
-    U: IDataPoint<T> + Clone,
-{
-    use laser_precision_adjust::box_plot::BoxPlot;
-
-    let pg = unsafe { T::from_f64(0.85).unwrap_unchecked() };
-
-    let x = points.iter().map(|p| p.x()).collect::<Vec<_>>();
-    let mut y = points.iter().map(|p| p.y()).collect::<Vec<_>>();
-    let mut prev_y = None;
-
-    // первичная фильтрация, должна отрезать точки ~0
-    let raw_box_plot = BoxPlot::new(&y);
-    y.iter_mut().for_each(|y| {
-        if (*y > raw_box_plot.lower_bound()) && (*y < raw_box_plot.upper_bound()) {
-            // ok
-            prev_y = Some(*y);
-        } else {
-            if let Some(py) = prev_y {
-                *y = py;
-            }
-        }
-    });
-
-    // Апроксимация сплайном
-    if let Ok(spline) = csaps::CubicSmoothingSpline::new(&x, &y)
-        .with_smooth(pg)
-        .make()
-    {
-        // вычисление сплайна в точках
-        if let Ok(spline_y_vals) = spline.evaluate(&x) {
-            // разница истинного значения и прогноза
-            let diffs = y
-                .iter()
-                .zip(spline_y_vals.iter())
-                .map(|(y, ys)| *y - *ys)
-                .collect::<Vec<_>>();
-
-            let box_plot = BoxPlot::new(&diffs);
-
-            // вторичный фильтр, удаляет случайные иголки вверх
-            y.iter_mut().zip(diffs).for_each(move |(y, d)| {
-                if (d > box_plot.lower_bound()) && (d < box_plot.upper_bound()) {
-                    // ok
-                    prev_y = Some(*y);
-                } else {
-                    if let Some(py) = prev_y {
-                        *y = py;
-                    }
-                }
-            });
-
-            // повторная апроксимация сплайном
-            if let Ok(spline) = csaps::CubicSmoothingSpline::new(&x, &y)
-                .with_smooth(pg)
-                .make()
-            {
-                if let Ok(y) = spline.evaluate(&x) {
-                    let start = x.len().checked_sub(30).unwrap_or_default();
-                    return x
-                        .iter()
-                        .enumerate()
-                        .take(x.len() - 1)
-                        .zip(y.into_iter())
-                        .map(move |((i, x), y)| {
-                            if i < start {
-                                None
-                            } else {
-                                Some(FullDataPoint { x: *x, y: *y })
-                            }
-                        })
-                        .collect();
-                }
-            }
-        }
-    }
-
-    vec![]
 }

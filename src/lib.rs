@@ -6,5 +6,5 @@ pub(crate) mod gcode_ctrl;
 pub mod box_plot;
 pub mod coordinates;
 
-pub use config::Config;
+pub use config::{Config, ForecastConfig};
 pub use precision_adjust::{PrecisionAdjust, Error, Status};

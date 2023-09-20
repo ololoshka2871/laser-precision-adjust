@@ -11,6 +11,12 @@ declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: 
 
 // ---------------------------------------------------------------------------------------------
 
+interface IPrediction {
+    minimal: number,
+    maximal: number,
+    median: number,
+}
+
 interface IState {
     TimesTamp: number
     SelectedChannel: number
@@ -20,7 +26,7 @@ interface IState {
     CurrentStep: number
     InitialFreq: number
     Points: [number, number][] // [timestamp, freq]
-    SmoothPoints: [number, /*number, number*/][] // [y, dy, d2y]
+    Prediction?: IPrediction,
     CloseTimestamp?: number
 }
 
@@ -195,6 +201,12 @@ $(() => {
                         borderColor: 'rgb(180, 148, 204)',
                         yAxisID: 'A',
                     },
+                    {
+                        label: 'Forecast',
+                        type: 'boxplot',
+                        data: [],
+                        yAxisID: 'A'
+                    }
                     /*
                     {
                         label: 'Derivative',
@@ -260,11 +272,13 @@ $(() => {
             const upperLimit = target + offset_hz;
             const lowerLimit = target - offset_hz;
 
+            /*
             const non_null_SmoothPoints = state.SmoothPoints
                 .filter((v) => v !== null)
-                .map((v: [number, /*number, number*/]) => v[0])
+                .map((v: [number, number, number]) => v[0])
             const plot_max = Math.round(Math.max(upperLimit, ...non_null_SmoothPoints) + 2.0);
             const plot_min = Math.round(Math.min(lowerLimit, ...non_null_SmoothPoints) - 2.0);
+            */
 
             // добавляем новые значения в график
             chart.data.labels = state.Points.map(p => p[0]);
@@ -273,14 +287,19 @@ $(() => {
             chart.data.datasets[2].data = state.Points.map(p => p[1]);
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
-            chart.data.datasets[4].data = state.SmoothPoints.map(p => p === null ? null : p[0]); // smooth
+            //chart.data.datasets[4].data = state.SmoothPoints.map(p => p === null ? null : p[0]); // smooth
 
             //chart.data.datasets[5].data = state.SmoothPoints.map(p => p === null ? null : p[1]); // dy
             //chart.data.datasets[6].data = state.SmoothPoints.map(p => p === null ? null : p[2]); // d2y
 
+            if (state.Prediction !== null) {
+                chart.data.datasets[4].data = [[state.Prediction.minimal, state.Prediction.maximal, state.Prediction.median]]
+            } else {
+                chart.data.datasets[4].data = []
+            }
 
-            chart.options.scales.yAxes[0].ticks.min = plot_min;
-            chart.options.scales.yAxes[0].ticks.max = plot_max;
+            //chart.options.scales.yAxes[0].ticks.min = plot_min;
+            //chart.options.scales.yAxes[0].ticks.max = plot_max;
             chart.update();
 
             update_f_re_display({

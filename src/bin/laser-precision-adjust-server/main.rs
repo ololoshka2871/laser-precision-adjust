@@ -1,6 +1,6 @@
 mod handle_routes;
-mod static_files;
 mod predict;
+mod static_files;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -82,6 +82,8 @@ struct AppState {
     channels: Arc<Mutex<Vec<ChannelState>>>,
     close_timestamp: Arc<Mutex<Option<u128>>>,
     select_channel_blocked: Arc<Mutex<bool>>,
+
+    predictor: Arc<Mutex<predict::Predictor<f64>>>,
 }
 
 #[tokio::main]
@@ -117,6 +119,8 @@ async fn main() -> Result<(), std::io::Error> {
     let status_rx = precision_adjust.start_monitoring(emulate_freq).await;
     precision_adjust.reset().await.expect("Can't reset laser!");
 
+    let predictor = predict::Predictor::new(status_rx.clone(), config.forecast_config);
+
     // State for our application
     let mut minijinja = Environment::new();
     minijinja
@@ -150,6 +154,8 @@ async fn main() -> Result<(), std::io::Error> {
         precision_adjust: Arc::new(Mutex::new(precision_adjust)),
         close_timestamp: Arc::new(Mutex::new(None)),
         select_channel_blocked: Arc::new(Mutex::new(false)),
+
+        predictor: Arc::new(Mutex::new(predictor)),
     };
 
     // Build our application with some routes
