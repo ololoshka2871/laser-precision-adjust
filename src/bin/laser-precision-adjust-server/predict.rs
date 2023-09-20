@@ -7,7 +7,7 @@ use tokio::sync::{watch::Receiver, Mutex};
 
 use crate::{DataPoint, IDataPoint};
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug)]
 pub struct Prediction<T: Float> {
     pub minimal: T,
     pub maximal: T,

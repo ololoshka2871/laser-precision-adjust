@@ -12,6 +12,7 @@ declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: 
 // ---------------------------------------------------------------------------------------------
 
 interface IPrediction {
+    start_offset: number,
     minimal: number,
     maximal: number,
     median: number,
@@ -153,7 +154,7 @@ $(() => {
             data: {
                 labels: [],
                 datasets: [
-                    {
+                    { // 0
                         label: 'Upper Limit',
                         data: [],
                         lineTension: 0,
@@ -163,7 +164,7 @@ $(() => {
                         borderColor: 'rgb(240, 81, 81)',
                         yAxisID: 'A',
                     },
-                    {
+                    { // 1
                         label: 'Lower Limit',
                         data: [],
                         lineTension: 0,
@@ -173,7 +174,7 @@ $(() => {
                         borderColor: 'rgb(204, 167, 80)',
                         yAxisID: 'A',
                     },
-                    {
+                    { // 2
                         label: 'Actual',
                         data: [],
                         lineTension: 0,
@@ -183,7 +184,7 @@ $(() => {
                         borderColor: 'rgba(75, 148, 204, 30)',
                         yAxisID: 'A',
                     },
-                    {
+                    { // 3
                         label: 'Target',
                         data: [],
                         lineTension: 0,
@@ -192,41 +193,30 @@ $(() => {
                         borderColor: 'rgb(8, 150, 38)',
                         yAxisID: 'A',
                     },
-                    {
-                        label: 'Smooth',
-                        data: [],
+                    { // 4
+                        label: 'Median_predict',
                         lineTension: 0,
                         pointRadius: 0,
                         fill: false,
-                        borderColor: 'rgb(180, 148, 204)',
+                        borderColor: 'rgb(25, 133, 29, 0.6)',
                         yAxisID: 'A',
                     },
-                    {
-                        label: 'Forecast',
-                        type: 'boxplot',
-                        data: [],
-                        yAxisID: 'A'
-                    }
-                    /*
-                    {
-                        label: 'Derivative',
-                        data: [],
+                    { // 5
+                        label: 'Upper_predict',
                         lineTension: 0,
                         pointRadius: 0,
-                        fill: false,
-                        borderColor: 'rgba(94, 15, 57, 0.3)',
-                        yAxisID: 'B' //'B',
+                        fill: 4,
+                        borderColor: 'rgb(133, 21, 42, 0.6)',
+                        yAxisID: 'A',
                     },
-                    {
-                        label: 'Derivative2',
-                        data: [],
+                    { // 6
+                        label: 'Lower_predict',
                         lineTension: 0,
                         pointRadius: 0,
-                        fill: false,
-                        borderColor: 'rgba(175, 179, 64, 0.9)',
-                        yAxisID: 'B' // 'B',
+                        fill: 4,
+                        borderColor: 'rgb(133, 21, 42, 0.6)',
+                        yAxisID: 'A',
                     }
-                    */
                 ]
             },
             options: {
@@ -252,11 +242,13 @@ $(() => {
                         id: 'A',
                         type: 'linear',
                         position: 'left',
-                    }, {
-                        id: 'B',
-                        type: 'linear',
-                        position: 'right',
-                    }]
+                    },
+                        /*{
+                            id: 'B',
+                            type: 'linear',
+                            position: 'right',
+                        }*/
+                    ]
                 }
             }
         });
@@ -272,14 +264,6 @@ $(() => {
             const upperLimit = target + offset_hz;
             const lowerLimit = target - offset_hz;
 
-            /*
-            const non_null_SmoothPoints = state.SmoothPoints
-                .filter((v) => v !== null)
-                .map((v: [number, number, number]) => v[0])
-            const plot_max = Math.round(Math.max(upperLimit, ...non_null_SmoothPoints) + 2.0);
-            const plot_min = Math.round(Math.min(lowerLimit, ...non_null_SmoothPoints) - 2.0);
-            */
-
             // добавляем новые значения в график
             chart.data.labels = state.Points.map(p => p[0]);
             chart.data.datasets[0].data = Array<number>(state.Points.length).fill(upperLimit);
@@ -287,15 +271,15 @@ $(() => {
             chart.data.datasets[2].data = state.Points.map(p => p[1]);
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
-            //chart.data.datasets[4].data = state.SmoothPoints.map(p => p === null ? null : p[0]); // smooth
-
-            //chart.data.datasets[5].data = state.SmoothPoints.map(p => p === null ? null : p[1]); // dy
-            //chart.data.datasets[6].data = state.SmoothPoints.map(p => p === null ? null : p[2]); // d2y
-
-            if (state.Prediction !== null) {
-                chart.data.datasets[4].data = [[state.Prediction.minimal, state.Prediction.maximal, state.Prediction.median]]
+            if (state.Prediction !== null && state.Points.length > 5) {
+                const offset = state.Prediction.start_offset;
+                chart.data.datasets[4].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.median, offset)
+                chart.data.datasets[5].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.maximal, offset)
+                chart.data.datasets[6].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.minimal, offset)
             } else {
                 chart.data.datasets[4].data = []
+                chart.data.datasets[5].data = []
+                chart.data.datasets[6].data = []
             }
 
             //chart.options.scales.yAxes[0].ticks.min = plot_min;

@@ -21,10 +21,10 @@
     "UpdateIntervalMs": 100,
     "DisplayPointsCount": 100,
     "ForecastConfig": {
-        MinFreqGrow: 0.1,
-        MaxFreqGrow: 1.0,
-        MedianFreqGrow: 0.45,
-    }
+        "MinFreqGrow": 0.1,
+        "MaxFreqGrow": 1.0,
+        "MedianFreqGrow": 0.45
+    },
     "CooldownTimeMs": 2500,
     "ResonatorsPlacement": [
         { "Xcenter": 50, "Ycenter": -16, "Width": 5, "Height": 3 },

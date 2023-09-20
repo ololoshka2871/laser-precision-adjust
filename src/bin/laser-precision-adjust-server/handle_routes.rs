@@ -7,13 +7,12 @@ use axum::{
     Json,
 };
 use axum_template::{Key, RenderHtml};
-use laser_precision_adjust::{Config, PrecisionAdjust};
+use laser_precision_adjust::{box_plot::BoxPlot, Config, PrecisionAdjust};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::predict::Prediction;
-use crate::{AdjustConfig, AppEngine, ChannelState, DataPoint};
+use crate::{AdjustConfig, AppEngine, ChannelState, DataPoint, IDataPoint};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -35,6 +34,14 @@ pub struct ControlResult {
     success: bool,
     error: Option<String>,
     message: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Prediction {
+    pub start_offset: usize,
+    pub minimal: f64,
+    pub maximal: f64,
+    pub median: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -64,7 +71,7 @@ pub struct StateResult {
     points: Vec<(f64, f64)>,
 
     #[serde(rename = "Prediction")]
-    prediction: Option<Prediction<f64>>,
+    prediction: Option<Prediction>,
 
     #[serde(rename = "CloseTimestamp")]
     close_timestamp: Option<u128>,
@@ -573,10 +580,13 @@ pub(super) async fn handle_state(
                 (channel.initial_freq, channel.points.clone())
             };
 
-            let prediction: Option<Prediction<f64> > = points
-                .last()
-                .map(|p| p.y)
-                .map(|y| Prediction{ minimal: y + 0.1, maximal: y + 1.0, median: y + 0.5 });
+            let prediction = if points.len() > 5 {
+                let boxplot = BoxPlot::new(&points[points.len() - 5..].iter().map(|p| p.y()).collect::<Vec<_>>());
+                let median = boxplot.median();
+                Some(Prediction{ start_offset: points.len() - 5, minimal: median + 0.1, maximal: median + 1.0, median: median + 0.5 })
+            } else {
+                None
+            };
 
             let close_timestamp = {
                 let mut close_timestamp_guard = close_timestamp.lock().await;
