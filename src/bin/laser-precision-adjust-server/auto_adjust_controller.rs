@@ -1,14 +1,17 @@
 use std::{sync::Arc, time::Duration};
 
 use tokio::{
-    sync::{mpsc::error::SendError, Mutex},
+    sync::{mpsc, Mutex},
     task::JoinHandle,
     time,
 };
 
 use laser_precision_adjust::{AutoAdjustLimits, PrecisionAdjust};
 
-use crate::predict::{Fragment, Predictor};
+use crate::{
+    predict::{Fragment, Predictor},
+    IDataPoint,
+};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum State {
@@ -34,6 +37,17 @@ pub enum State {
     ReverseStepping,
 }
 
+#[derive(Clone, Debug)]
+pub struct HardwareLogickError(String);
+
+impl std::fmt::Display for HardwareLogickError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for HardwareLogickError {}
+
 pub enum AutoAdjustStateReport {
     Progress(String),
     Error(String),
@@ -44,7 +58,7 @@ pub struct AutoAdjestController {
     config: AutoAdjustLimits,
     update_interval_ms: u32,
     state: Arc<Mutex<State>>,
-    task: Option<JoinHandle<Result<(), SendError<AutoAdjustStateReport>>>>,
+    task: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
 
 impl AutoAdjestController {
@@ -62,9 +76,9 @@ impl AutoAdjestController {
         channel: u32,
         predictor: Arc<Mutex<Predictor<f64>>>,
         precision_adjust: Arc<Mutex<PrecisionAdjust>>,
-    ) -> Result<tokio::sync::mpsc::Receiver<AutoAdjustStateReport>, &'static str> {
+    ) -> Result<mpsc::Receiver<AutoAdjustStateReport>, &'static str> {
         if *self.state.lock().await == State::Idle {
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            let (tx, rx) = mpsc::channel(1);
 
             tracing::warn!("Start auto-adjustion channel {}", channel);
             self.task.replace(tokio::spawn(adjust_task(
@@ -115,17 +129,15 @@ impl AutoAdjestController {
 async fn adjust_task(
     channel: u32,
     update_interval_ms: u32,
-    status_report_q: tokio::sync::mpsc::Sender<AutoAdjustStateReport>,
+    status_report_q: mpsc::Sender<AutoAdjustStateReport>,
     state: Arc<Mutex<State>>,
     predictor: Arc<Mutex<Predictor<f64>>>,
     precision_adjust: Arc<Mutex<PrecisionAdjust>>,
     config: AutoAdjustLimits,
-) -> Result<(), SendError<AutoAdjustStateReport>> {
+) -> anyhow::Result<()> {
     // Стадия 1: поиск края
     *state.lock().await = State::DetctingEdge;
-    status_report_q
-        .send(AutoAdjustStateReport::Progress("Detecting edge".into()))
-        .await?;
+    display_progress(&status_report_q, "Detecting edge".to_owned()).await?;
 
     match find_edge(
         channel,
@@ -133,6 +145,7 @@ async fn adjust_task(
         &predictor,
         &precision_adjust,
         config.edge_detect_interval,
+        status_report_q,
     )
     .await
     {
@@ -152,13 +165,22 @@ async fn adjust_task(
     Ok(())
 }
 
-async fn burn(precision_adjust: &Mutex<PrecisionAdjust>) -> Result<(), String> {
+async fn display_progress(
+    status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
+    msg: String,
+) -> Result<(), mpsc::error::SendError<AutoAdjustStateReport>> {
+    status_report_q
+        .send(AutoAdjustStateReport::Progress(msg))
+        .await
+}
+
+async fn burn(precision_adjust: &Mutex<PrecisionAdjust>) -> Result<(), HardwareLogickError> {
     precision_adjust
         .lock()
         .await
         .burn()
         .await
-        .map_err(|e| format!("Не удалось включить лазер ({e:?})"))
+        .map_err(|e| HardwareLogickError(format!("Не удалось включить лазер ({e:?})")))
 }
 
 async fn sleep_ms(ms: u64) {
@@ -178,7 +200,8 @@ async fn find_edge(
     predictor: &Mutex<Predictor<f64>>,
     precision_adjust: &Mutex<PrecisionAdjust>,
     edge_detect_interval: u32,
-) -> Result<u32, String> {
+    status_report_q: mpsc::Sender<AutoAdjustStateReport>,
+) -> anyhow::Result<u32> {
     use std::cmp::min;
 
     // switch channel
@@ -187,7 +210,9 @@ async fn find_edge(
         .await
         .select_channel(channel)
         .await
-        .map_err(|e| format!("Не удалось переключить канал ({e:?})"))?;
+        .map_err(|e| HardwareLogickError(format!("Не удалось переключить канал ({e:?})")))?;
+
+    display_progress(&status_report_q, format!("Канал {channel}")).await?;
 
     // switch delay
     sleep_ms(min((update_interval_ms * 5) as u64, 500)).await;
@@ -200,10 +225,16 @@ async fn find_edge(
     loop {
         // Прожиг
         burn(precision_adjust).await?;
+        display_progress(
+            &status_report_q,
+            format!("Ожидаине реакции на шаге {current_step}"),
+        )
+        .await?;
+        sleep_ms((update_interval_ms * 10) as u64).await;
 
         // Ждем пока не появится новый фрагмент
         let mut last_fragment: Option<Fragment<f64>> = None;
-        for _ in 0..10 {
+        for _ in 0..5 {
             sleep_ms(100).await;
             last_fragment = get_last_fragment(predictor, channel).await;
             if let Some(last_fragment) = &last_fragment {
@@ -215,11 +246,18 @@ async fn find_edge(
             }
         }
 
-        // посик во фрагменте повышения частоты не менее чем на 0.2 Гц
+        // поиск во фрагменте повышения частоты не менее чем на 0.2 Гц
         if let Some(last_fragment) = &last_fragment {
             let box_plot = last_fragment.box_plot();
-            if box_plot.q3() - box_plot.q1() >= 0.2 {
+            let points = last_fragment.points();
+            if box_plot.q3() - box_plot.q1() >= 0.2
+                && (points.first().map_or(box_plot.q1(), |p| p.y())
+                    - points.last().map_or(box_plot.q3(), |p| p.y()))
+                .abs()
+                    >= 0.2
+            {
                 // нашли
+                display_progress(&status_report_q, format!("Реакция обнаружена!")).await?;
                 return Ok(current_step);
             }
         }
@@ -235,11 +273,15 @@ async fn find_edge(
                 current_step += edge_detect_interval;
             } // ok
             Err(laser_precision_adjust::Error::Logick(_)) => break, // конец хода
-            Err(e) => return Err(format!("Не удалось сделать шаг ({e:?})")),
+            Err(e) => {
+                return Err(HardwareLogickError(format!(
+                    "Не удалось сделать шаг ({e:?})"
+                )))?
+            }
         }
     }
 
-    Err(format!(
+    Err(HardwareLogickError(format!(
         "Край не найден, достигнут лимит перемещения ({current_step})"
-    ))
+    )))?
 }

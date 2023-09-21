@@ -130,9 +130,9 @@ $(() => {
             body: {}
         }).node('!.', (state: IControlResult) => {
             if (state.success) {
-                console.log(state.message || "ok");
+                console.log(state.message);
             } else {
-                console.log(state.error || "error");
+                console.log(state.error);
             }
         });
 

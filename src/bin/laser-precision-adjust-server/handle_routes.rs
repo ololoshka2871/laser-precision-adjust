@@ -537,15 +537,15 @@ pub(super) async fn handle_control(
                         use crate::auto_adjust_controller::AutoAdjustStateReport;
                         yield match msg {
                             AutoAdjustStateReport::Progress(msg) => {
-                                ControlResult::success(Some(msg));
+                                ControlResult::success(Some(msg))
                             },
 
                             AutoAdjustStateReport::Error(e) => {
-                                ControlResult::error(e);
+                                ControlResult::error(e)
 
                             },
                             AutoAdjustStateReport::Finished => {
-                                 ControlResult::success(Some("Настройка завершена".to_owned()));
+                                 ControlResult::success(Some("Настройка завершена".to_owned()))
                             },
                         };
                     }

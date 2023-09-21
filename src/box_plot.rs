@@ -14,13 +14,21 @@ fn median_q1q3<T>(series: &[T]) -> (T, T, T)
 where
     T: Float + Copy,
 {
-    let mut sorted_series = series.to_vec();
-    sorted_series.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let len = sorted_series.len();
-    let q1 = sorted_series[len / 4];
-    let q3 = sorted_series[len * 3 / 4];
-    let median = sorted_series[len / 2];
-    (median, q1, q3)
+    let mut sorted_series = series
+        .into_iter()
+        .filter(|v| !v.is_nan())
+        .copied()
+        .collect::<Vec<_>>();
+    if sorted_series.is_empty() {
+        (T::nan(), T::nan(), T::nan())
+    } else {
+        sorted_series.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let len = sorted_series.len();
+        let q1 = sorted_series[len / 4];
+        let q3 = sorted_series[len * 3 / 4];
+        let median = sorted_series[len / 2];
+        (median, q1, q3)
+    }
 }
 
 #[allow(unused)]
