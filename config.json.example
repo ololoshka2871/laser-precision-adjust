@@ -30,7 +30,8 @@
         "MinFreqOffset": 20.0,
         "MaxForwardSteps": 70,
         "MaxRetreatSteps": 10,
-        "FastForwardStepLimit": 5
+        "FastForwardStepLimit": 5,
+        "EdgeDetectSintervalSt": 10,
     },
     "ResonatorsPlacement": [
         { "Xcenter": 50, "Ycenter": -16, "Width": 5, "Height": 3 },

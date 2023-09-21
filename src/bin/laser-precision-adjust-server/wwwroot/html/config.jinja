@@ -128,6 +128,9 @@
                         'AutoAdjustLimits.MaxRetreatSteps', config.AutoAdjustLimits.MaxRetreatSteps, 'шт.') }}
                         {{ table_row_simple('Максимальное количество единовременных шагов на быстром этапе',
                         'AutoAdjustLimits.FastForwardStepLimit', config.AutoAdjustLimits.FastForwardStepLimit, 'Гц.') }}
+                        {{ table_row_simple('Интервал в шагах при поиске края резонатора',
+                        'AutoAdjustLimits.EdgeDetectSintervalSt', config.AutoAdjustLimits.EdgeDetectSintervalSt, 'шаг.')
+                        }}
                     </tbody>
                 </table>
             </div>

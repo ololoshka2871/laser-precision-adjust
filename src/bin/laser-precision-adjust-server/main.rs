@@ -128,8 +128,10 @@ async fn main() -> Result<(), std::io::Error> {
         (config.cooldown_time_ms / config.update_interval_ms) as usize,
     );
 
-    let auto_adjust_controller =
-        auto_adjust_controller::AutoAdjestController::new(config.auto_adjust_limits);
+    let auto_adjust_controller = auto_adjust_controller::AutoAdjestController::new(
+        config.auto_adjust_limits,
+        config.update_interval_ms,
+    );
 
     // State for our application
     let mut minijinja = Environment::new();

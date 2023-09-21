@@ -54,6 +54,9 @@ pub struct AutoAdjustLimits {
 
     #[serde(rename = "FastForwardStepLimit")]
     pub fast_forward_step_limit: u32,
+
+    #[serde(rename = "EdgeDetectSintervalSt")]
+    pub edge_detect_interval: u32,
 }
 
 #[derive(Deserialize, Clone, Serialize)]
@@ -183,6 +186,7 @@ impl std::fmt::Display for Config {
         writeln!(f, "  MaxForwardSteps: {}", self.auto_adjust_limits.max_forward_steps)?;
         writeln!(f, "  MaxRetreatSteps: {}", self.auto_adjust_limits.max_retreat_steps)?;
         writeln!(f, "  FastForwardStepLimit: {}", self.auto_adjust_limits.fast_forward_step_limit)?;
+        writeln!(f, "  EdgeDetectSintervalSt: {}", self.auto_adjust_limits.edge_detect_interval)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;

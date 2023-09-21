@@ -330,8 +330,13 @@ impl PrecisionAdjust {
                                 f32::from_le_bytes(byte_array)
                             };
 
-                            let new_status =
-                                update_status(&status, f + *freq_merer_offset.lock().await, &data_log_file, start_time).await;
+                            let new_status = update_status(
+                                &status,
+                                f + *freq_merer_offset.lock().await,
+                                &data_log_file,
+                                start_time,
+                            )
+                            .await;
                             match new_status {
                                 Ok(s) => {
                                     tx.send(s).ok();
@@ -693,5 +698,9 @@ impl PrecisionAdjust {
 
     pub async fn get_freq_meter_offset(&self) -> f32 {
         *self.freq_merer_offset.lock().await
+    }
+
+    pub async fn get_current_step(&self) -> u32 {
+        self.status.lock().await.current_step
     }
 }

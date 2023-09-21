@@ -4,7 +4,7 @@ use laser_precision_adjust::{box_plot::BoxPlot, ForecastConfig, Status};
 use num_traits::Float;
 use tokio::sync::{watch::Receiver, Mutex};
 
-use crate::DataPoint;
+use crate::{DataPoint, IDataPoint};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Prediction<T: Float> {
@@ -119,6 +119,16 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
         }
     }
 
+    /// Получить последний фрагмент канала, если есть
+    pub async fn get_last_fragment(&self, channel: u32) -> Option<Fragment<T>> {
+        let guard = self.fragments.lock().await;
+        if let Some(channel_data) = guard.get(channel as usize) {
+            channel_data.last().cloned()
+        } else {
+            None
+        }
+    }
+
     /// Получить прогноз для изменения частоты для текущего канала если произвести
     /// выстрел сейчас
     pub async fn get_prediction(&self, _channel: u32, f_start: T) -> Option<Prediction<T>> {
@@ -144,7 +154,7 @@ pub struct Fragment<T> {
     min_index: usize,
 }
 
-impl<T: Float> Fragment<T> {
+impl<T: Float + num_traits::FromPrimitive> Fragment<T> {
     // Создать фрагмент из набора точек
     // start_timestamp - время начала фрагмента
     // raw_points - набор точек
@@ -184,6 +194,15 @@ impl<T: Float> Fragment<T> {
     // её в точку (x_start, y_offset)
     pub fn evaluate(&self) -> Vec<DataPoint<T>> {
         self.raw_points.clone()
+    }
+
+    // Таймштамп начала фрагмента
+    pub fn start_timestamp(&self) -> f64 {
+        self.start_timestamp
+    }
+
+    pub fn box_plot(&self) -> BoxPlot<T> {
+        BoxPlot::new(&self.raw_points.iter().map(|p| p.y()).collect::<Vec<_>>())
     }
 }
 

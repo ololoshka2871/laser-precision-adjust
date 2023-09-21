@@ -239,6 +239,7 @@ pub(super) async fn handle_control(
     State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
+    State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     Json(payload): Json<ControlRequest>,
 ) -> impl IntoResponse {
     let ok_result = Json(ControlResult {
@@ -284,7 +285,7 @@ pub(super) async fn handle_control(
                     }
                 }
 
-                // swtitch delay
+                // switch delay
                 tokio::time::sleep(Duration::from_millis(min(
                     (config.update_interval_ms * 5) as u64,
                     500,
@@ -524,12 +525,29 @@ pub(super) async fn handle_control(
             if let Ok(mut status_channel) = auto_adjust_ctrl
                 .lock()
                 .await
-                .try_start(status.current_channel)
+                .try_start(
+                    status.current_channel,
+                    predictor.clone(),
+                    precision_adjust.clone(),
+                )
                 .await
             {
                 let stream = async_stream::stream! {
                     while let Some(msg) = status_channel.recv().await {
-                        yield ControlResult::success(Some(msg.to_string()));
+                        use crate::auto_adjust_controller::AutoAdjustStateReport;
+                        yield match msg {
+                            AutoAdjustStateReport::Progress(msg) => {
+                                ControlResult::success(Some(msg));
+                            },
+
+                            AutoAdjustStateReport::Error(e) => {
+                                ControlResult::error(e);
+
+                            },
+                            AutoAdjustStateReport::Finished => {
+                                 ControlResult::success(Some("Настройка завершена".to_owned()));
+                            },
+                        };
                     }
 
                     // unblock interface
@@ -571,7 +589,7 @@ pub(super) async fn handle_state(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
-    State(predictor): State<Arc<Mutex<crate::predict::Predictor<f64>>>>,
+    State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
 ) -> impl IntoResponse {
     let stream = async_stream::stream! {
