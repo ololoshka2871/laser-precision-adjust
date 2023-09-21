@@ -1,7 +1,7 @@
+mod auto_adjust_controller;
 mod handle_routes;
 mod predict;
 mod static_files;
-mod auto_adjust_controller;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -23,7 +23,7 @@ use axum_template::engine::Engine;
 use minijinja::Environment;
 
 use crate::handle_routes::{
-    handle_config, handle_control, handle_stat, handle_state, handle_update_config, handle_work
+    handle_config, handle_control, handle_stat, handle_state, handle_update_config, handle_work,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -128,7 +128,8 @@ async fn main() -> Result<(), std::io::Error> {
         (config.cooldown_time_ms / config.update_interval_ms) as usize,
     );
 
-    let auto_adjust_controller = auto_adjust_controller::AutoAdjestController::new();
+    let auto_adjust_controller =
+        auto_adjust_controller::AutoAdjestController::new(config.auto_adjust_limits);
 
     // State for our application
     let mut minijinja = Environment::new();

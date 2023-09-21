@@ -687,7 +687,7 @@ impl PrecisionAdjust {
         Ok(buf)
     }
 
-    pub async fn set_freq_meter_offset(&self, offset: f32) {
+    pub async fn set_freq_meter_offset(&mut self, offset: f32) {
         *self.freq_merer_offset.lock().await = offset;
     }
 

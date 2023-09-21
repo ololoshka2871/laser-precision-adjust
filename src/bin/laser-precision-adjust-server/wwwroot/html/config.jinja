@@ -107,14 +107,27 @@
                         config.TotalVerticalSteps, 'шт.') }}
                         {{ table_row_simple('Смещенние показания частотомера', 'FreqmeterOffset',
                         config.FreqmeterOffset, 'Гц') }}
-                        {{ table_row_simple('Точность настройки', 'WorkingOffsetPPM', config.WorkingOffsetPPM, "ppm") }}
+                        {{ table_row_simple('Точность настройки', 'WorkingOffsetPPM', config.WorkingOffsetPPM, 'ppm') }}
                         {{ table_row_simple('Цель настройки', 'TargetFreqCenter', config.TargetFreqCenter, "Гц") }}
                         {{ table_row_simple('Интервал опроса', 'UpdateIntervalMs', config.UpdateIntervalMs, "мс.") }}
-                        {{ table_row_simple('Длина истории на графике', 'DisplayPointsCount', config.DisplayPointsCount, 'шт.')}}
-                        {{ table_row_simple('Минимальное ожидаемое изменение частоты', 'ForecastConfig.MinFreqGrow', ForecastConfig.MinFreqGrow, 'Гц') }}
-                        {{ table_row_simple('Максимальное ожидаемое изменение частоты', 'ForecastConfig.MaxFreqGrow', ForecastConfig.MaxFreqGrow, 'Гц') }}
-                        {{ table_row_simple('Медианное ожидаемое изменение частоты', 'ForecastConfig.MedianFreqGrow', ForecastConfig.MedianFreqGrow, 'Гц') }}
-                        {{ table_row_simple('Время остывания', 'CooldownTimeMs', config.CooldownTimeMs, "мс.") }}
+                        {{ table_row_simple('Длина истории на графике', 'DisplayPointsCount', config.DisplayPointsCount,
+                        'шт.')}}
+                        {{ table_row_simple('Минимальное ожидаемое изменение частоты', 'ForecastConfig.MinFreqGrow',
+                        ForecastConfig.MinFreqGrow, 'Гц') }}
+                        {{ table_row_simple('Максимальное ожидаемое изменение частоты', 'ForecastConfig.MaxFreqGrow',
+                        ForecastConfig.MaxFreqGrow, 'Гц') }}
+                        {{ table_row_simple('Медианное ожидаемое изменение частоты', 'ForecastConfig.MedianFreqGrow',
+                        ForecastConfig.MedianFreqGrow, 'Гц') }}
+                        {{ table_row_simple('Время остывания', 'CooldownTimeMs', config.CooldownTimeMs, 'мс.') }}
+
+                        {{ table_row_simple('Максимально-возможнная настройка в автоматическом режиме',
+                        'AutoAdjustLimits.MinFreqOffset', config.AutoAdjustLimits.MinFreqOffset, 'Гц') }}
+                        {{ table_row_simple('Максимальное количество шагов настройки после обнаружения краярезонатора',
+                        'AutoAdjustLimits.MaxForwardSteps', config.AutoAdjustLimits.MaxForwardSteps, 'шт.') }}
+                        {{ table_row_simple('Максимальное количество обратных отступов на точном этапе',
+                        'AutoAdjustLimits.MaxRetreatSteps', config.AutoAdjustLimits.MaxRetreatSteps, 'шт.') }}
+                        {{ table_row_simple('Максимальное количество единовременных шагов на быстром этапе',
+                        'AutoAdjustLimits.FastForwardStepLimit', config.AutoAdjustLimits.FastForwardStepLimit, 'Гц.') }}
                     </tbody>
                 </table>
             </div>

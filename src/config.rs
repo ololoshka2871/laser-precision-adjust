@@ -41,6 +41,21 @@ pub struct ForecastConfig {
     pub median_freq_grow: f32,
 }
 
+#[derive(Deserialize, Clone, Copy, Serialize)]
+pub struct AutoAdjustLimits {
+    #[serde(rename = "MinFreqOffset")]
+    pub min_freq_offset: f32,
+
+    #[serde(rename = "MaxForwardSteps")]
+    pub max_forward_steps: u32,
+
+    #[serde(rename = "MaxRetreatSteps")]
+    pub max_retreat_steps: u32,
+
+    #[serde(rename = "FastForwardStepLimit")]
+    pub fast_forward_step_limit: u32,
+}
+
 #[derive(Deserialize, Clone, Serialize)]
 pub struct Config {
     #[serde(rename = "LaserSetupPort")]
@@ -99,6 +114,9 @@ pub struct Config {
 
     #[serde(rename = "CooldownTimeMs")]
     pub cooldown_time_ms: u32,
+
+    #[serde(rename = "AutoAdjustLimits")]
+    pub auto_adjust_limits: AutoAdjustLimits,
 
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
@@ -159,6 +177,12 @@ impl std::fmt::Display for Config {
         writeln!(f, "  MedianFreqGrow: {}", self.forecast_config.median_freq_grow)?;
 
         writeln!(f, "CooldownTimeMs: {}", self.cooldown_time_ms)?;
+
+        writeln!(f, "AutoAdjustLimits:")?;
+        writeln!(f, "  MinFreqOffset: {}", self.auto_adjust_limits.min_freq_offset)?;
+        writeln!(f, "  MaxForwardSteps: {}", self.auto_adjust_limits.max_forward_steps)?;
+        writeln!(f, "  MaxRetreatSteps: {}", self.auto_adjust_limits.max_retreat_steps)?;
+        writeln!(f, "  FastForwardStepLimit: {}", self.auto_adjust_limits.fast_forward_step_limit)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;

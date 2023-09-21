@@ -2,6 +2,8 @@ use std::{sync::Arc, time::Duration};
 
 use tokio::{sync::Mutex, time};
 
+use laser_precision_adjust::AutoAdjustLimits;
+
 #[derive(PartialEq, Clone, Copy)]
 pub enum State {
     // Бездействие
@@ -27,13 +29,15 @@ pub enum State {
 }
 
 pub struct AutoAdjestController {
+    config: AutoAdjustLimits,
     state: Arc<Mutex<State>>,
     task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl AutoAdjestController {
-    pub fn new() -> Self {
+    pub fn new(config: AutoAdjustLimits) -> Self {
         Self {
+            config,
             state: Arc::new(Mutex::new(State::Idle)),
             task: None,
         }
