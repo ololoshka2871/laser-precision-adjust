@@ -1,4 +1,8 @@
-#[derive(PartialEq)]
+use std::{sync::Arc, time::Duration};
+
+use tokio::{sync::Mutex, time};
+
+#[derive(PartialEq, Clone, Copy)]
 pub enum State {
     // Бездействие
     Idle,
@@ -22,21 +26,76 @@ pub enum State {
     ReverseStepping,
 }
 
-
 pub struct AutoAdjestController {
-
+    state: Arc<Mutex<State>>,
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl AutoAdjestController {
-    pub fn try_start(&mut self) -> Result<tokio::sync::mpsc::Receiver<u32>, &'static str>  {
-        Err("Not implemented")
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(State::Idle)),
+            task: None,
+        }
     }
 
-    pub fn cancel(&mut self) -> Result<(), &'static str> {
-        Err("Not implemented")
+    pub async fn try_start(
+        &mut self,
+        channel: u32,
+    ) -> Result<tokio::sync::mpsc::Receiver<u32>, &'static str> {
+        if *self.state.lock().await == State::Idle {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+
+            tracing::warn!("Start auto-adjustion channel {}", channel);
+            self.task
+                .replace(tokio::spawn(Self::adjust_task(tx, self.state.clone())));
+
+            Ok(rx)
+        } else {
+            Err("Busy!")
+        }
     }
 
-    pub fn current_state(&self) -> State {
-        State::Idle
+    pub async fn cancel(&mut self) -> Result<(), &'static str> {
+        if *self.state.lock().await == State::Idle {
+            Err("Not running")
+        } else if let Some(task) = &self.task {
+            if !task.is_finished() {
+                tracing::warn!("Abort auto-adjust");
+                task.abort();
+                time::sleep(Duration::from_secs(1)).await;
+
+                // Leave in safe state
+                *self.state.lock().await = State::Idle;
+
+                Ok(())
+            } else {
+                *self.state.lock().await = State::Idle;
+                Err("Already finished")
+            }
+        } else {
+            Err("Unknown state")
+        }
+    }
+
+    pub async fn current_state(&self) -> State {
+        *self.state.lock().await
+    }
+
+    async fn adjust_task(
+        status_report_q: tokio::sync::mpsc::Sender<u32>,
+        state: Arc<Mutex<State>>,
+    ) {
+        *state.lock().await = State::DetctingEdge;
+        for i in 0..10 {
+            match status_report_q.send(i).await {
+                Ok(_) => time::sleep(Duration::from_secs(1)).await,
+                Err(e) => {
+                    tracing::error!("adjust_task error: {}", e);
+                    break;
+                }
+            }
+        }
+        *state.lock().await = State::Idle;
     }
 }

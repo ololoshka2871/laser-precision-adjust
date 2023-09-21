@@ -40,6 +40,24 @@ pub struct ControlResult {
     message: Option<String>,
 }
 
+impl ControlResult {
+    pub fn new(success: bool, error: Option<String>, message: Option<String>) -> Self {
+        Self {
+            success,
+            error,
+            message,
+        }
+    }
+
+    pub fn success(message: Option<String>) -> Self {
+        Self::new(true, None, message)
+    }
+
+    pub fn error(err_message: String) -> Self {
+        Self::new(false, Some(err_message), None)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Prediction {
     pub start_offset: usize,
@@ -235,11 +253,9 @@ pub(super) async fn handle_control(
     match path.as_str() {
         "select" => {
             if *select_channel_blocked.lock().await {
-                return Json(ControlResult {
-                    success: false,
-                    error: Some("Операция временно недоступна".to_owned()),
-                    ..Default::default()
-                })
+                return Json(ControlResult::error(
+                    "Операция временно недоступна".to_owned(),
+                ))
                 .into_response();
             }
 
@@ -251,24 +267,19 @@ pub(super) async fn handle_control(
                 let mut lock = precision_adjust.lock().await;
 
                 if let Err(e) = lock.select_channel(ch).await {
-                    return Json(ControlResult {
-                        success: false,
-                        error: Some(format!("Не удалось переключить канал: {:?}", e)),
-                        ..Default::default()
-                    })
+                    return Json(ControlResult::error(format!(
+                        "Не удалось переключить канал: {:?}",
+                        e
+                    )))
                     .into_response();
                 }
                 if move_to_pos != 0 {
                     tracing::info!("Restore position {}", move_to_pos);
                     if let Err(e) = lock.step(move_to_pos as i32).await {
-                        return Json(ControlResult {
-                            success: false,
-                            error: Some(format!(
-                                "Не удалось перейти к позиции {}: {:?}",
-                                move_to_pos, e
-                            )),
-                            ..Default::default()
-                        })
+                        return Json(ControlResult::error(format!(
+                            "Не удалось перейти к позиции {}: {:?}",
+                            move_to_pos, e
+                        )))
                         .into_response();
                     }
                 }
@@ -282,12 +293,7 @@ pub(super) async fn handle_control(
 
                 ok_result.into_response()
             } else {
-                Json(ControlResult {
-                    success: false,
-                    error: Some("Не указано поле 'channel'".to_owned()),
-                    ..Default::default()
-                })
-                .into_response()
+                Json(ControlResult::error("Не указано поле 'channel'".to_owned())).into_response()
             }
         }
         "camera" => {
@@ -296,11 +302,10 @@ pub(super) async fn handle_control(
                 match action.as_str() {
                     "close" => {
                         if let Err(e) = precision_adjust.lock().await.close_camera(false).await {
-                            return Json(ControlResult {
-                                success: false,
-                                error: Some(format!("Не удалось закрыть камеру: {:?}", e)),
-                                ..Default::default()
-                            })
+                            return Json(ControlResult::error(format!(
+                                "Не удалось закрыть камеру: {:?}",
+                                e
+                            )))
                             .into_response();
                         } else {
                             ok_result.into_response()
@@ -308,11 +313,10 @@ pub(super) async fn handle_control(
                     }
                     "open" => {
                         if let Err(e) = precision_adjust.lock().await.open_camera().await {
-                            return Json(ControlResult {
-                                success: false,
-                                error: Some(format!("Не удалось открыть камеру: {:?}", e)),
-                                ..Default::default()
-                            })
+                            return Json(ControlResult::error(format!(
+                                "Не удалось открыть камеру: {:?}",
+                                e
+                            )))
                             .into_response();
                         } else {
                             ok_result.into_response()
@@ -320,64 +324,50 @@ pub(super) async fn handle_control(
                     }
                     "vac" => {
                         if let Err(e) = precision_adjust.lock().await.close_camera(true).await {
-                            return Json(ControlResult {
-                                success: false,
-                                error: Some(format!("Не удалось включить вакуум: {:?}", e)),
-                                ..Default::default()
-                            })
+                            return Json(ControlResult::error(format!(
+                                "Не удалось включить вакуум: {:?}",
+                                e
+                            )))
                             .into_response();
                         } else {
                             ok_result.into_response()
                         }
                     }
-                    act => Json(ControlResult {
-                        success: false,
-                        error: Some(format!("Неизвестная команда: {}", act)),
-                        ..Default::default()
-                    })
+                    act => Json(ControlResult::error(format!(
+                        "Неизвестная команда: {}",
+                        act
+                    )))
                     .into_response(),
                 }
             } else {
-                Json(ControlResult {
-                    success: false,
-                    error: Some("Не указано поле действия 'CameraAction'".to_owned()),
-                    ..Default::default()
-                })
+                Json(ControlResult::error(
+                    "Не указано поле действия 'CameraAction'".to_owned(),
+                ))
                 .into_response()
             }
         }
         "move" => {
             if *select_channel_blocked.lock().await {
-                return Json(ControlResult {
-                    success: false,
-                    error: Some("Операция временно недоступна".to_owned()),
-                    ..Default::default()
-                })
+                return Json(ControlResult::error(
+                    "Операция временно недоступна".to_owned(),
+                ))
                 .into_response();
             }
 
             if let Some(target_pos) = payload.target_position {
                 if target_pos < 0 {
-                    return Json(ControlResult {
-                        success: false,
-                        error: Some("Target position < 0".to_owned()),
-                        ..Default::default()
-                    })
-                    .into_response();
+                    return Json(ControlResult::error("Target position < 0".to_owned()))
+                        .into_response();
                 }
 
                 let offset = target_pos - status.current_step as i32;
 
                 tracing::info!("Move to {}", target_pos);
                 if let Err(e) = precision_adjust.lock().await.step(offset).await {
-                    return Json(ControlResult {
-                        success: false,
-                        error: Some(format!(
-                            "Не удалось перейти к позиции {}: {:?}",
-                            target_pos, e
-                        )),
-                        ..Default::default()
-                    })
+                    return Json(ControlResult::error(format!(
+                        "Не удалось перейти к позиции {}: {:?}",
+                        target_pos, e
+                    )))
                     .into_response();
                 } else {
                     channels.lock().await[status.current_channel as usize].current_step =
@@ -387,11 +377,10 @@ pub(super) async fn handle_control(
             } else if let Some(move_offset) = payload.move_offset {
                 tracing::info!("Move by {}", move_offset);
                 if let Err(e) = precision_adjust.lock().await.step(move_offset).await {
-                    return Json(ControlResult {
-                        success: false,
-                        error: Some(format!("Не сместиться на {} шагов: {:?}", move_offset, e)),
-                        ..Default::default()
-                    })
+                    return Json(ControlResult::error(format!(
+                        "Не сместиться на {} шагов: {:?}",
+                        move_offset, e
+                    )))
                     .into_response();
                 } else {
                     channels.lock().await[status.current_channel as usize].current_step =
@@ -399,21 +388,17 @@ pub(super) async fn handle_control(
                     ok_result.into_response()
                 }
             } else {
-                Json(ControlResult {
-                    success: false,
-                    error: Some("No 'TargetPosition' selected".to_owned()),
-                    ..Default::default()
-                })
+                Json(ControlResult::error(
+                    "No 'TargetPosition' selected".to_owned(),
+                ))
                 .into_response()
             }
         }
         "burn" => {
             if *select_channel_blocked.lock().await {
-                return Json(ControlResult {
-                    success: false,
-                    error: Some("Операция временно недоступна".to_owned()),
-                    ..Default::default()
-                })
+                return Json(ControlResult::error(
+                    "Операция временно недоступна".to_owned(),
+                ))
                 .into_response();
             }
 
@@ -422,24 +407,16 @@ pub(super) async fn handle_control(
             tracing::info!("Burn with autostep {}", autostep);
 
             if let Err(e) = precision_adjust.lock().await.burn().await {
-                return Json(ControlResult {
-                    success: false,
-                    error: Some(format!("Не удалось сжечь: {:?}", e)),
-                    ..Default::default()
-                })
-                .into_response();
+                return Json(ControlResult::error(format!("Не удалось сжечь: {:?}", e)))
+                    .into_response();
             }
 
             if autostep != 0 {
                 if let Err(e) = precision_adjust.lock().await.step(autostep).await {
-                    return Json(ControlResult {
-                        success: false,
-                        error: Some(format!(
-                            "Не удалось сместиться на {} шагов: {:?}",
-                            autostep, e
-                        )),
-                        ..Default::default()
-                    })
+                    return Json(ControlResult::error(format!(
+                        "Не удалось сместиться на {} шагов: {:?}",
+                        autostep, e
+                    )))
                     .into_response();
                 }
             }
@@ -459,11 +436,7 @@ pub(super) async fn handle_control(
             let stream = async_stream::stream! {
                 const POINTS_TO_AVG: usize = 15;
                 for i in 0..channels_count {
-                    yield ControlResult {
-                        success: true,
-                        message: Some(format!("Сканирование канала: {}", i + 1)),
-                        ..Default::default()
-                    };
+                    yield ControlResult::success(Some(format!("Сканирование канала: {}", i + 1)));
 
                     {
                         let mut guard = precision_adjust.lock().await;
@@ -481,11 +454,7 @@ pub(super) async fn handle_control(
                         }
 
                         if let Err(e) = res {
-                            yield ControlResult {
-                                success: false,
-                                error: Some(format!("Не удалось переключить канал: {:?}", e)),
-                                ..Default::default()
-                            };
+                            yield ControlResult::error(format!("Не удалось переключить канал: {:?}", e));
 
                             continue;
                         }
@@ -525,18 +494,10 @@ pub(super) async fn handle_control(
 
                 // restore selected channel
                 if let Err(e) = precision_adjust.lock().await.select_channel(current_channel).await {
-                    yield ControlResult {
-                        success: false,
-                        error: Some(format!("Не удалось переключить канал: {:?}", e)),
-                        ..Default::default()
-                    };
+                    yield ControlResult::error(format!("Не удалось переключить канал: {:?}", e));
                 }
 
-                yield ControlResult {
-                    success: true,
-                    message: Some("Finished".to_owned()),
-                    ..Default::default()
-                };
+                yield ControlResult::success(Some("Finished".to_owned()));
 
                 // release lock
                 *select_channel_blocked.lock().await = false;
@@ -545,45 +506,44 @@ pub(super) async fn handle_control(
             axum_streams::StreamBodyAs::json_nl(stream).into_response()
         }
         "auto-adjust" => {
-            if let Err(e) = try_block_interface(&select_channel_blocked).await {
-                return e.into_response();
+            if let Err(_) = try_block_interface(&select_channel_blocked).await {
+                return match auto_adjust_ctrl.lock().await.cancel().await {
+                    Ok(()) => {
+                        // unblock interface
+                        *select_channel_blocked.lock().await = false;
+
+                        Json(ControlResult::success(Some(
+                            "Настройка отменена".to_owned(),
+                        )))
+                    }
+                    Err(e) => Json(ControlResult::error(format!("Неизвестная ошибка: {e}"))),
+                }
+                .into_response();
             }
 
-            if let Ok(mut status_channel) = auto_adjust_ctrl.lock().await.try_start() {
-                // current selected channel
-                let current_channel = status.current_channel;
-
+            if let Ok(mut status_channel) = auto_adjust_ctrl
+                .lock()
+                .await
+                .try_start(status.current_channel)
+                .await
+            {
                 let stream = async_stream::stream! {
                     while let Some(msg) = status_channel.recv().await {
-                        yield 0
+                        yield ControlResult::success(Some(msg.to_string()));
                     }
 
-                    yield 1
+                    // unblock interface
+                    *select_channel_blocked.lock().await = false;
                 };
 
                 axum_streams::StreamBodyAs::json_nl(stream).into_response()
-            } else if let Ok(_) = auto_adjust_ctrl.lock().await.cancel() {
-                Json(ControlResult {
-                    success: true,
-                    message: Some("Настройка отменена".to_owned()),
-                    ..Default::default()
-                }).into_response()
             } else {
-                Json(ControlResult {
-                    success: false,
-                    error: Some("Неизвестная ошибка".to_owned()),
-                    ..Default::default()
-                }).into_response()
+                Json(ControlResult::error("Невозможное состояние!".to_owned())).into_response()
             }
         }
         _ => {
             tracing::error!("Unknown command: {}", path);
-            Json(ControlResult {
-                success: false,
-                error: Some("Unknown command".to_owned()),
-                ..Default::default()
-            })
-            .into_response()
+            Json(ControlResult::error("Unknown command".to_owned())).into_response()
         }
     }
 }
@@ -668,7 +628,11 @@ pub(super) async fn handle_state(
                 }
             };
 
-            let is_auto_adjust_busy = auto_adjust_ctrl.lock().await.current_state() != crate::auto_adjust_controller::State::Idle;
+            let is_auto_adjust_busy = auto_adjust_ctrl
+                .lock()
+                .await
+                .current_state()
+                .await != crate::auto_adjust_controller::State::Idle;
 
             yield StateResult {
                 timestamp,
