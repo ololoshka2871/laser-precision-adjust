@@ -30,6 +30,7 @@ interface IState {
     Prediction?: IPrediction,
     CloseTimestamp?: number,
     Aproximations: Array<Array<[number, number]>>,
+    IsAutoAdjustBusy: boolean,
 }
 
 interface IControlResult {
@@ -116,6 +117,22 @@ $(() => {
                 }
             } else {
                 noty_error('Ошибка: ' + state.error);
+            }
+        });
+
+        ev.preventDefault();
+    });
+
+    $('#adj-ctrl-btn').on('click', (ev) => {
+        oboe({
+            url: '/control/auto-adjust',
+            method: 'POST',
+            body: {}
+        }).node('!.', (state: IControlResult) => {
+            if (state.success) {
+                console.log(state.message || "ok");
+            } else {
+                console.log(state.error || "error");
             }
         });
 
@@ -273,20 +290,29 @@ $(() => {
             chart.data.labels = state.Points.map(p => p[0]);
             chart.data.datasets[0].data = Array<number>(state.Points.length).fill(upperLimit);
             chart.data.datasets[1].data = Array<number>(state.Points.length).fill(lowerLimit);
+            // raw data
             chart.data.datasets[2].data = state.Points.map(p => p[1]);
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
+            var plot_max = upperLimit;
+            var plot_min = Math.min(...chart.data.datasets[2].data as number[]) - 1.0;
+
+            // prediction
             if (state.Prediction !== null && state.Points.length > 5) {
                 const offset = state.Prediction.start_offset;
                 chart.data.datasets[4].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.median, offset)
                 chart.data.datasets[5].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.maximal, offset)
                 chart.data.datasets[6].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.minimal, offset)
+
+                plot_max = Math.max(plot_max, state.Prediction.maximal);
+                plot_min = Math.max(plot_min, state.Prediction.minimal) - (state.Prediction.maximal - state.Prediction.minimal);
             } else {
                 chart.data.datasets[4].data = []
                 chart.data.datasets[5].data = []
                 chart.data.datasets[6].data = []
             }
 
+            // approx
             chart.data.datasets[7].data = Array<number>(state.Points.length).fill(NaN);
             for (var i = 0; i < state.Aproximations.length; ++i) {
                 const d: Array<[number, number]> = state.Aproximations[i];
@@ -298,8 +324,9 @@ $(() => {
                 }
             }
 
-            //chart.options.scales.yAxes[0].ticks.min = plot_min;
-            //chart.options.scales.yAxes[0].ticks.max = plot_max;
+            // Y-axis limits
+            chart.options.scales.yAxes[0].ticks.min = plot_min;
+            chart.options.scales.yAxes[0].ticks.max = plot_max;
             chart.update();
 
             update_f_re_display({
@@ -311,6 +338,8 @@ $(() => {
             update_rezonator_table(state);
 
             update_camera_controls(state.CloseTimestamp, state.Points.pop()[0]);
+
+            update_autoadj_button(state.IsAutoAdjustBusy);
         });
 
     // hotkeys
@@ -451,5 +480,16 @@ function update_camera_controls(close_timestamp: number | null, last_timestamp: 
                 .prop('data-state', 'w' + remaning)
                 .html('<i class="fas fa-spinner fa-pulse"></i> Ждите... (' + remaning + ')');
         }
+    }
+}
+
+function update_autoadj_button(busy: boolean): void {
+    const btn = $('#adj-ctrl-btn');
+    if (busy && !btn.hasClass('btn-warning')) {
+        // make cancel
+        btn.removeClass('btn-danger').addClass('btn-warning').text('Стоп');
+    } else if (!busy && !btn.hasClass('btn-danger')) {
+        // make start
+        btn.removeClass('btn-warning').addClass('btn-danger').text('Настроить');
     }
 }

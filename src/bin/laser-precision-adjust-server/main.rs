@@ -1,6 +1,7 @@
 mod handle_routes;
 mod predict;
 mod static_files;
+mod auto_adjust_controller;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -22,7 +23,7 @@ use axum_template::engine::Engine;
 use minijinja::Environment;
 
 use crate::handle_routes::{
-    handle_config, handle_control, handle_stat, handle_state, handle_update_config, handle_work,
+    handle_config, handle_control, handle_stat, handle_state, handle_update_config, handle_work
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -84,6 +85,7 @@ struct AppState {
     select_channel_blocked: Arc<Mutex<bool>>,
 
     predictor: Arc<Mutex<predict::Predictor<f64>>>,
+    auto_adjust_ctrl: Arc<Mutex<auto_adjust_controller::AutoAdjestController>>,
 }
 
 #[tokio::main]
@@ -126,6 +128,8 @@ async fn main() -> Result<(), std::io::Error> {
         (config.cooldown_time_ms / config.update_interval_ms) as usize,
     );
 
+    let auto_adjust_controller = auto_adjust_controller::AutoAdjestController{};
+
     // State for our application
     let mut minijinja = Environment::new();
     minijinja
@@ -161,6 +165,7 @@ async fn main() -> Result<(), std::io::Error> {
         select_channel_blocked: Arc::new(Mutex::new(false)),
 
         predictor: Arc::new(Mutex::new(predictor)),
+        auto_adjust_ctrl: Arc::new(Mutex::new(auto_adjust_controller)),
     };
 
     // Build our application with some routes

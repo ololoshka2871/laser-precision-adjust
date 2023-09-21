@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::{
-    predict::{Fragment, Predictor},
-    AdjustConfig, AppEngine, ChannelState, DataPoint, IDataPoint,
+    auto_adjust_controller::AutoAdjestController, predict::Predictor, AdjustConfig, AppEngine,
+    ChannelState, DataPoint, IDataPoint,
 };
 
 #[derive(Deserialize, Debug)]
@@ -82,6 +82,9 @@ pub struct StateResult {
 
     #[serde(rename = "Aproximations")]
     aproximations: Vec<Vec<(f64, f64)>>,
+
+    #[serde(rename = "IsAutoAdjustBusy")]
+    is_auto_adjust_busy: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -217,6 +220,7 @@ pub(super) async fn handle_control(
     State(status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
+    State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
     Json(payload): Json<ControlRequest>,
 ) -> impl IntoResponse {
     let ok_result = Json(ControlResult {
@@ -443,18 +447,8 @@ pub(super) async fn handle_control(
             ok_result.into_response()
         }
         "scan-all" => {
-            {
-                let mut guard = select_channel_blocked.lock().await;
-                if *guard {
-                    return Json(ControlResult {
-                        success: false,
-                        error: Some("Операция в процессе, подождите".to_owned()),
-                        ..Default::default()
-                    })
-                    .into_response();
-                } else {
-                    *guard = true;
-                }
+            if let Err(e) = try_block_interface(&select_channel_blocked).await {
+                return e.into_response();
             }
 
             let channels_count = channels.lock().await.len();
@@ -519,10 +513,8 @@ pub(super) async fn handle_control(
                             channel.initial_freq = None;
                         } else {
                             channel.points.remove(channel.points.len() - points_to_read);
-                            let summ = channel.points
-                                .iter()
-                                .fold(0.0, |acc, dp| acc + dp.y);
-                            channel.initial_freq = Some(summ as f32 / channel.points.len() as f32);
+                            let median = BoxPlot::new(&channel.points.iter().map(|p| p.y()).collect::<Vec<_>>()).median();
+                            channel.initial_freq = Some(median as f32);
                         }
                     }
 
@@ -552,6 +544,38 @@ pub(super) async fn handle_control(
 
             axum_streams::StreamBodyAs::json_nl(stream).into_response()
         }
+        "auto-adjust" => {
+            if let Err(e) = try_block_interface(&select_channel_blocked).await {
+                return e.into_response();
+            }
+
+            if let Ok(mut status_channel) = auto_adjust_ctrl.lock().await.try_start() {
+                // current selected channel
+                let current_channel = status.current_channel;
+
+                let stream = async_stream::stream! {
+                    while let Some(msg) = status_channel.recv().await {
+                        yield 0
+                    }
+
+                    yield 1
+                };
+
+                axum_streams::StreamBodyAs::json_nl(stream).into_response()
+            } else if let Ok(_) = auto_adjust_ctrl.lock().await.cancel() {
+                Json(ControlResult {
+                    success: true,
+                    message: Some("Настройка отменена".to_owned()),
+                    ..Default::default()
+                }).into_response()
+            } else {
+                Json(ControlResult {
+                    success: false,
+                    error: Some("Неизвестная ошибка".to_owned()),
+                    ..Default::default()
+                }).into_response()
+            }
+        }
         _ => {
             tracing::error!("Unknown command: {}", path);
             Json(ControlResult {
@@ -564,6 +588,22 @@ pub(super) async fn handle_control(
     }
 }
 
+async fn try_block_interface(
+    select_channel_blocked: &Mutex<bool>,
+) -> Result<(), Json<ControlResult>> {
+    let mut guard = select_channel_blocked.lock().await;
+    if *guard {
+        return Err(Json(ControlResult {
+            success: false,
+            error: Some("Операция в процессе, подождите".to_owned()),
+            ..Default::default()
+        }));
+    } else {
+        *guard = true;
+    }
+    Ok(())
+}
+
 // Сюда будут поступать запросы на состояние от веб-интерфейса
 pub(super) async fn handle_state(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
@@ -572,6 +612,7 @@ pub(super) async fn handle_state(
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
     State(predictor): State<Arc<Mutex<crate::predict::Predictor<f64>>>>,
+    State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
 ) -> impl IntoResponse {
     let stream = async_stream::stream! {
         loop {
@@ -627,6 +668,8 @@ pub(super) async fn handle_state(
                 }
             };
 
+            let is_auto_adjust_busy = auto_adjust_ctrl.lock().await.current_state() != crate::auto_adjust_controller::State::Idle;
+
             yield StateResult {
                 timestamp,
                 seleced_channel: status.current_channel,
@@ -639,6 +682,7 @@ pub(super) async fn handle_state(
                 close_timestamp,
                 prediction,
                 aproximations,
+                is_auto_adjust_busy,
             };
         }
     };

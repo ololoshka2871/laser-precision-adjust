@@ -259,6 +259,7 @@ fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
 }
 
 fn aproximate_exp<T: Float>(x: &[T], y: &[T]) -> Result<(T, T), ()> {
+    // rusfun
     Ok((T::zero(), T::zero()))
 }
 
