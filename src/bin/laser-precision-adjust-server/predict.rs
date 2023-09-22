@@ -16,6 +16,7 @@ pub struct Prediction<T: Float> {
 pub struct Predictor<T> {
     fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
     forecast_config: ForecastConfig,
+    serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
     _t: PhantomData<T>,
 }
 
@@ -27,14 +28,17 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
         fragment_len: usize,
     ) -> Self {
         let fragments = Arc::new(Mutex::new(vec![vec![]; channels_count]));
+        let serie_data = Arc::new(Mutex::new(vec![]));
 
         {
             let fragments = fragments.clone();
-            tokio::spawn(Self::task(rx, fragments, fragment_len));
+            let serie_data = serie_data.clone();
+            tokio::spawn(Self::task(rx, fragments, fragment_len, serie_data));
         }
         Self {
             fragments,
             forecast_config,
+            serie_data,
             _t: PhantomData::<T>,
         }
     }
@@ -43,9 +47,9 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
         mut status_rx: Receiver<Status>,
         fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
         fragment_len: usize,
+        serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
     ) {
         let mut current_chanel = None;
-        let mut serie_data = vec![];
         loop {
             status_rx.changed().await.ok();
 
@@ -56,29 +60,32 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
                 current_chanel.replace(new_status.current_channel);
 
                 // Сбор прерван
-                if serie_data.len() > 3 {
-                    if let Err(_) = try_consume_fragment(
-                        &serie_data,
-                        new_status.current_channel as usize,
-                        &fragments,
-                    )
-                    .await
-                    {
-                        tracing::error!("Invalid fragment");
+                {
+                    let mut guard = serie_data.lock().await;
+                    if guard.len() > 3 {
+                        if let Err(_) = try_consume_fragment(
+                            &guard,
+                            new_status.current_channel as usize,
+                            &fragments,
+                        )
+                        .await
+                        {
+                            tracing::error!("Invalid fragment");
+                        }
                     }
+                    // drop data
+                    guard.clear();
                 }
-
-                // drop data
-                serie_data.clear();
             } else if current_chanel != Some(new_status.current_channel) {
                 // произошла смена канала, выстрелов не было, так что снимаем определенность канала.
                 current_chanel = None;
                 // drop data
-                serie_data.clear();
+                serie_data.lock().await.clear();
             } else {
                 // продолжаем обработку текущего окна
-                if current_chanel.is_some() && serie_data.len() < fragment_len {
-                    serie_data.push((
+                let mut guard = serie_data.lock().await;
+                if current_chanel.is_some() && guard.len() < fragment_len {
+                    guard.push((
                         new_status.since_start.as_millis(),
                         new_status.current_frequency,
                     ))
@@ -89,7 +96,7 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
                     current_chanel = None;
 
                     // Сбор закончен
-                    if let Err(_) = try_consume_fragment(&serie_data, cc, &fragments).await {
+                    if let Err(_) = try_consume_fragment(&guard, cc, &fragments).await {
                         tracing::error!("Failed to aproximate last fragment");
                     }
                 }
@@ -143,6 +150,10 @@ impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> 
                     + f_start,
             })
         }
+    }
+
+    pub async fn capture(&self) -> Vec<(u128, f32)> {
+        self.serie_data.lock().await.clone()
     }
 }
 

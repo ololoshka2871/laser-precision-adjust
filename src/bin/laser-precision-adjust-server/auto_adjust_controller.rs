@@ -6,12 +6,9 @@ use tokio::{
     time,
 };
 
-use laser_precision_adjust::{AutoAdjustLimits, PrecisionAdjust};
+use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits, PrecisionAdjust};
 
-use crate::{
-    predict::{Fragment, Predictor},
-    IDataPoint,
-};
+use crate::predict::Predictor;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum State {
@@ -187,11 +184,15 @@ async fn sleep_ms(ms: u64) {
     tokio::time::sleep(Duration::from_millis(ms)).await;
 }
 
-async fn get_last_fragment(
-    predictor: &Mutex<Predictor<f64>>,
-    channel: u32,
-) -> Option<Fragment<f64>> {
-    predictor.lock().await.get_last_fragment(channel).await
+async fn capture(predictor: &Mutex<Predictor<f64>>) -> Vec<f64> {
+    predictor
+        .lock()
+        .await
+        .capture()
+        .await
+        .iter()
+        .map(|d| d.1 as f64)
+        .collect()
 }
 
 async fn find_edge(
@@ -219,9 +220,6 @@ async fn find_edge(
 
     let mut current_step = 0;
 
-    let mut last_fragment_ts = get_last_fragment(predictor, channel)
-        .await
-        .map(|f| f.start_timestamp());
     loop {
         // Прожиг
         burn(precision_adjust).await?;
@@ -232,27 +230,13 @@ async fn find_edge(
         .await?;
         sleep_ms((update_interval_ms * 10) as u64).await;
 
-        // Ждем пока не появится новый фрагмент
-        let mut last_fragment: Option<Fragment<f64>> = None;
-        for _ in 0..5 {
-            sleep_ms(100).await;
-            last_fragment = get_last_fragment(predictor, channel).await;
-            if let Some(last_fragment) = &last_fragment {
-                if Some(last_fragment.start_timestamp()) != last_fragment_ts {
-                    // новый фрагмент появился
-                    last_fragment_ts.replace(last_fragment.start_timestamp());
-                    break;
-                }
-            }
-        }
-
         // поиск во фрагменте повышения частоты не менее чем на 0.2 Гц
-        if let Some(last_fragment) = &last_fragment {
-            let box_plot = last_fragment.box_plot();
-            let points = last_fragment.points();
+        {
+            let last_fragment = capture(predictor).await;
+            let box_plot = BoxPlot::new(&last_fragment);
             if box_plot.q3() - box_plot.q1() >= 0.2
-                && (points.first().map_or(box_plot.q1(), |p| p.y())
-                    - points.last().map_or(box_plot.q3(), |p| p.y()))
+                && (last_fragment.first().map_or(box_plot.q1(), |v| *v)
+                    - last_fragment.last().map_or(box_plot.q3(), |v| *v))
                 .abs()
                     >= 0.2
             {
