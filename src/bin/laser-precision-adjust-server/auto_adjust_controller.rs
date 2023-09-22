@@ -139,6 +139,8 @@ async fn adjust_task(
     traget_frequency: f64,
     precision_ppm: f64,
 ) -> anyhow::Result<()> {
+    const PRECISION_ADJ_ZAPAS: u32 = 3;
+
     // Стадия 1: поиск края
     *state.lock().await = State::DetctingEdge;
     display_progress(&status_report_q, "Поиск края".to_owned()).await?;
@@ -177,7 +179,7 @@ async fn adjust_task(
     };
 
     // Стадия 2: "Грубая" настройка
-    let (new_state, fast_forward_end_freq) = match fast_forward_adjust(
+    let (new_state, fast_forward_end_freq, total_steps_used) = match fast_forward_adjust(
         traget_frequency,
         precision_ppm,
         last_freq_boxplot,
@@ -186,16 +188,18 @@ async fn adjust_task(
         update_interval_ms,
         &predictor,
         channel,
+        config.max_forward_steps - PRECISION_ADJ_ZAPAS,
+        config.fast_forward_step_limit,
     )
     .await
     {
-        Ok((state, freq)) => {
+        Ok((state, freq, steps_used)) => {
             display_progress(
                 &status_report_q,
-                format!("Грубая настройка: {:.2} Гц", freq),
+                format!("Грубая настройка: {:.2} Гц ({} шага)", freq, steps_used),
             )
             .await?;
-            (state, freq)
+            (state, freq, steps_used)
         }
         Err(e) => {
             tracing::error!("Fast-forward failed: {}", e);
@@ -215,8 +219,8 @@ async fn adjust_task(
         let offset_ppm = (result - traget_frequency) / traget_frequency * 1_000_000.0;
         status_report_q
             .send(AutoAdjustStateReport::Finished(format!(
-                "Настройка завершена: {:.2} -> {:.2} -> {:.2} Гц ({:+.1} ppm)",
-                initial_freq, edge_freq, fast_forward_end_freq, offset_ppm
+                "Настройка завершена: {:.2} -> {:.2} -> {:.2} Гц ({:+.1} ppm) за {} шагов",
+                initial_freq, edge_freq, fast_forward_end_freq, offset_ppm, total_steps_used
             )))
             .await?;
     }
@@ -321,13 +325,13 @@ async fn find_edge(
 
             if box_plot.q1() < min_frequency {
                 Err(HardwareLogickError(format!(
-                    "Частота ниже минимально-допустимой ({} < {})",
+                    "Частота ниже минимально-допустимой ({} < {:.2})",
                     min_frequency,
                     box_plot.q1()
                 )))?
             } else if box_plot.q3() > max_frequency {
                 Err(HardwareLogickError(format!(
-                    "Частота выше максимально-допустимой ({} > {})",
+                    "Частота выше максимально-допустимой ({} > {:.2})",
                     max_frequency,
                     box_plot.q3()
                 )))?
@@ -369,19 +373,32 @@ async fn fast_forward_adjust(
     update_interval_ms: u32,
     predictor: &Mutex<Predictor<f64>>,
     channel: u32,
-) -> Result<(State, f64), anyhow::Error> {
+    max_forward_steps: u32,
+    step_limit: u32,
+) -> Result<(State, f64, u32), anyhow::Error> {
     let f_lower_baund = traget_frequency * (1.0 - precision_ppm / 1_000_000.0);
 
+    let mut total_step_counter: u32 = 0;
+    let mut step_limit_over = false;
+
     Ok(loop {
-        let forecast = last_freq_boxplot.upper_bound() + last_freq_boxplot.iqr();
+        let forecast = last_freq_boxplot.upper_bound();
 
         // определяем сколько шагов нужно сделать, но не менее 1
-        let steps_forecast = (forecast - traget_frequency as f64)
-            / (last_freq_boxplot.lower_bound() - last_freq_boxplot.upper_bound())
-            / 2.0;
-        if steps_forecast < 1.0 {
+        let mut steps_forecast = ((traget_frequency as f64 - forecast)
+            / predictor
+                .lock()
+                .await
+                .get_prediction(channel, 0.0)
+                .await
+                .unwrap()
+                .maximal)
+            .floor() as i32;
+        if steps_forecast < 1 {
             // переход к точной настройке
-            return Ok((State::PrecisionStepping, last_freq_boxplot.median()));
+            return Ok((State::PrecisionStepping, last_freq_boxplot.median(), total_step_counter));
+        } else if steps_forecast > step_limit as i32 {
+            steps_forecast = step_limit as i32;
         }
 
         // прожиг steps_forecast шагов
@@ -392,13 +409,23 @@ async fn fast_forward_adjust(
             )))
             .await?;
         let mut last_timestamp: Option<u128> = None;
-        for _ in 0..steps_forecast as u32 {
+
+        total_step_counter += steps_forecast as u32;
+        if total_step_counter > max_forward_steps {
+            steps_forecast -= (total_step_counter - max_forward_steps) as i32;
+            total_step_counter = max_forward_steps;
+            step_limit_over = true;
+        }
+
+        for _ in 0..steps_forecast {
             burn(&precision_adjust).await?;
-            sleep_ms((update_interval_ms * 2) as u64).await;
+            sleep_ms((update_interval_ms * 4) as u64).await;
             match step(&precision_adjust, 1).await {
                 Ok(_) => {
                     let (_, ts) = capture(&predictor).await;
-                    last_timestamp = ts;
+                    if let Some(ts) = ts {
+                        last_timestamp.replace(ts);
+                    }
                 }
                 Err(laser_precision_adjust::Error::Logick(_)) => {
                     Err(HardwareLogickError(
@@ -414,7 +441,7 @@ async fn fast_forward_adjust(
         // защита от "залипания"
         if last_timestamp.is_none() {
             Err(HardwareLogickError(
-                "Не удалось получить данные с лазера, аварийный останов".to_owned(),
+                "Не удалось получить данные с частотмера, аварийный останов".to_owned(),
             ))?;
         }
 
@@ -426,7 +453,7 @@ async fn fast_forward_adjust(
             sleep_ms(update_interval_ms as u64).await;
             let last_fragment = get_last_fragment(&predictor, channel).await;
             if let Some(fragment) = &last_fragment {
-                if fragment.start_timestamp() > last_timestamp.unwrap() as f64 {
+                if fragment.start_timestamp() >= last_timestamp.unwrap() as f64 {
                     break last_fragment.unwrap();
                 }
             }
@@ -437,12 +464,15 @@ async fn fast_forward_adjust(
 
         let forecast_ub = last_freq_boxplot.upper_bound();
         let median = last_freq_boxplot.median();
-        if forecast_ub > traget_frequency {
+        if step_limit_over {
+            // Достигнут лимит шагов, принудительно выходим
+            break (State::PrecisionStepping, median, total_step_counter);
+        } else if forecast_ub > traget_frequency {
             // прогноз показывает, что частота уже выше целевой, переходим к ReverseStepping
-            break (State::ReverseStepping, median);
+            break (State::ReverseStepping, median, total_step_counter);
         } else if forecast_ub > f_lower_baund {
             // достигнута нижняя граница, останов грубой настройки, переходим к PrecisionStepping
-            break (State::PrecisionStepping, median);
+            break (State::PrecisionStepping, median, total_step_counter);
         } else {
             // продолжаем грубую настройку
         }
