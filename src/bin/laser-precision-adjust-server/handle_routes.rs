@@ -240,6 +240,7 @@ pub(super) async fn handle_control(
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Json(payload): Json<ControlRequest>,
 ) -> impl IntoResponse {
     let ok_result = Json(ControlResult {
@@ -529,6 +530,7 @@ pub(super) async fn handle_control(
                     status.current_channel,
                     predictor.clone(),
                     precision_adjust.clone(),
+                    freqmeter_config.lock().await.target_freq,
                 )
                 .await
             {

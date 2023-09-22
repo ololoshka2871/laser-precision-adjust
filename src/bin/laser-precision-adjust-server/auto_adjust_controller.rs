@@ -73,6 +73,7 @@ impl AutoAdjestController {
         channel: u32,
         predictor: Arc<Mutex<Predictor<f64>>>,
         precision_adjust: Arc<Mutex<PrecisionAdjust>>,
+        traget_frequency: f32,
     ) -> Result<mpsc::Receiver<AutoAdjustStateReport>, &'static str> {
         if *self.state.lock().await == State::Idle {
             let (tx, rx) = mpsc::channel(1);
@@ -86,6 +87,7 @@ impl AutoAdjestController {
                 predictor,
                 precision_adjust,
                 self.config,
+                traget_frequency,
             )));
 
             Ok(rx)
@@ -131,10 +133,11 @@ async fn adjust_task(
     predictor: Arc<Mutex<Predictor<f64>>>,
     precision_adjust: Arc<Mutex<PrecisionAdjust>>,
     config: AutoAdjustLimits,
+    traget_frequency: f32,
 ) -> anyhow::Result<()> {
     // Стадия 1: поиск края
     *state.lock().await = State::DetctingEdge;
-    display_progress(&status_report_q, "Detecting edge".to_owned()).await?;
+    display_progress(&status_report_q, "Поиск края".to_owned()).await?;
 
     match find_edge(
         channel,
@@ -142,16 +145,21 @@ async fn adjust_task(
         &predictor,
         &precision_adjust,
         config.edge_detect_interval,
-        status_report_q,
+        status_report_q.clone(),
+        (traget_frequency - config.min_freq_offset).into(),
+        traget_frequency.into(),
     )
     .await
     {
         Ok(edge_pos) => {
             tracing::warn!("Edge found at step {}", edge_pos);
-            //*state.lock().await = State::DihotomyStepping;
+            *state.lock().await = State::DihotomyStepping;
         }
         Err(e) => {
             tracing::error!("Edge not found: {}", e);
+            status_report_q
+                .send(AutoAdjustStateReport::Error(e.to_string()))
+                .await?;
             *state.lock().await = State::Idle;
             return Ok(());
         }
@@ -202,6 +210,8 @@ async fn find_edge(
     precision_adjust: &Mutex<PrecisionAdjust>,
     edge_detect_interval: u32,
     status_report_q: mpsc::Sender<AutoAdjustStateReport>,
+    min_frequency: f64,
+    max_frequency: f64,
 ) -> anyhow::Result<u32> {
     use std::cmp::min;
 
@@ -234,7 +244,19 @@ async fn find_edge(
         {
             let last_fragment = capture(predictor).await;
             let box_plot = BoxPlot::new(&last_fragment);
-            if box_plot.q3() - box_plot.q1() >= 0.2
+            if box_plot.q1() < min_frequency {
+                Err(HardwareLogickError(format!(
+                    "Частота ниже минимально-допустимой ({} < {})",
+                    min_frequency,
+                    box_plot.q1()
+                )))?
+            } else if box_plot.q3() > max_frequency {
+                Err(HardwareLogickError(format!(
+                    "Частота выше максимально-допустимой ({} > {})",
+                    max_frequency,
+                    box_plot.q3()
+                )))?
+            } else if box_plot.q3() - box_plot.q1() >= 0.2
                 && (last_fragment.first().map_or(box_plot.q1(), |v| *v)
                     - last_fragment.last().map_or(box_plot.q3(), |v| *v))
                 .abs()
