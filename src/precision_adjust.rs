@@ -23,6 +23,16 @@ pub enum Error {
     Logick(String),
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Laser(e) => write!(f, "Laser error: {}", e),
+            Error::LaserSetup(e) => write!(f, "Laser setup error: {:?}", e),
+            Error::Logick(e) => write!(f, "Logick error: {}", e),
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct LaserCtrl {
     valve: Option<ValveState>,

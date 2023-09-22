@@ -131,6 +131,7 @@ async fn main() -> Result<(), std::io::Error> {
     let auto_adjust_controller = auto_adjust_controller::AutoAdjestController::new(
         config.auto_adjust_limits,
         config.update_interval_ms,
+        config.working_offset_ppm,
     );
 
     // State for our application

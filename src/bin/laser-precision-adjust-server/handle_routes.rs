@@ -546,8 +546,8 @@ pub(super) async fn handle_control(
                                 ControlResult::error(e)
 
                             },
-                            AutoAdjustStateReport::Finished => {
-                                 ControlResult::success(Some("Настройка завершена".to_owned()))
+                            AutoAdjustStateReport::Finished(msg) => {
+                                 ControlResult::success(Some(msg))
                             },
                         };
                     }

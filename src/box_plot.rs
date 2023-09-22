@@ -65,6 +65,10 @@ where
         self.q3
     }
 
+    pub fn iqr(&self) -> T {
+        self.iqr
+    }
+
     pub fn lower_bound(&self) -> T {
         self.lower_bound
     }
