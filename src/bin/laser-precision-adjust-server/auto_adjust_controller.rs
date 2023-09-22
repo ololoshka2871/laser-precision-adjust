@@ -198,7 +198,7 @@ async fn adjust_task(
         Ok((state, freq, steps_used)) => {
             display_progress(
                 &status_report_q,
-                format!("Грубая настройка: {:.2} Гц ({} шага)", freq, steps_used),
+                format!("Грубая настройка: -> {:.2} Гц ({} шага)", freq, steps_used),
             )
             .await?;
             (state, freq, steps_used)
@@ -233,7 +233,7 @@ async fn adjust_task(
                 Ok((state, freq, steps_used)) => {
                     display_progress(
                         &status_report_q,
-                        format!("Точная настройка: {:.2} Гц ({} шага)", freq, steps_used),
+                        format!("Точная настройка: -> {:.2} Гц ({} шага)", freq, steps_used),
                     )
                     .await?;
                     (state, Some(freq), steps_used)
@@ -269,7 +269,7 @@ async fn adjust_task(
             Ok((freq, steps_used)) => {
                 display_progress(
                     &status_report_q,
-                    format!("Обратный ход: {:.2} Гц ({} шага)", freq, steps_used),
+                    format!("Обратный ход: -> {:.2} Гц ({} шага)", freq, steps_used),
                 )
                 .await?;
                 (Some(freq), steps_used)
@@ -402,7 +402,7 @@ async fn find_edge(
                 start_freq.replace(box_plot.median());
             }
 
-            if box_plot.q1() < min_frequency {
+            if box_plot.q1() < min_frequency && current_step == 0 {
                 Err(HardwareLogickError(format!(
                     "Частота ниже минимально-допустимой ({} < {:.2})",
                     min_frequency,
@@ -574,7 +574,7 @@ async fn do_precision_adjust(
     predictor: &Mutex<Predictor<f64>>,
     channel: u32,
 ) -> Result<(State, f64, u32), anyhow::Error> {
-    let f_lower_baund = traget_frequency * (1.0 - precision_ppm / 1_000_000.0);
+    let f_lower_baund = traget_frequency * (1.0 - (precision_ppm / 2.0) / 1_000_000.0);
     let f_upper_baund = traget_frequency * (1.0 + precision_ppm / 1_000_000.0);
     let mut total_step_counter: u32 = 0;
 
@@ -622,7 +622,7 @@ async fn do_precision_adjust(
                     };
 
                     // обновляем текущую частоту
-                    current_freq = last_fragment.box_plot().upper_bound();
+                    current_freq = last_fragment.box_plot().q3();
                     display_progress(
                         &status_report_q,
                         format!("Текущая частота: ~{:.2} Гц", current_freq),
@@ -675,7 +675,7 @@ async fn do_backword_adjust(
             .await
             .ok_or(HardwareLogickError("Отсутвует прогноз!".to_owned()))?;
 
-        if forecast.median > traget_frequency || forecast.maximal >= f_upper_baund {
+        if forecast.minimal > traget_frequency || forecast.maximal >= f_upper_baund {
             break;
         }
 
