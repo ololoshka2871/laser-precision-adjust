@@ -676,13 +676,16 @@ pub(super) async fn handle_state(
 
 //-----------------------------------------------------------------------------
 
-async fn get_prediction<T: Float + num_traits::FromPrimitive + csaps::Real + 'static>(
+async fn get_prediction<T>(
     predictor: &Predictor<T>,
     channel: u32,
     f_start: T,
     start_offset: usize,
     start_timeestamp: f64,
-) -> (Vec<Vec<(T, T)>>, Option<Prediction>) {
+) -> (Vec<Vec<(T, T)>>, Option<Prediction>)
+where
+    T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + 'static,
+{
     let prediction = predictor
         .get_prediction(channel, f_start)
         .await

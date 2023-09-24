@@ -1,6 +1,6 @@
 [package]
 name = "laser-precision-adjust"
-version = "0.9.4"
+version = "0.9.5"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"
@@ -35,6 +35,8 @@ shellwords = "1.1"
 
 ndarray = "0.13"
 csaps = "0.3"
+varpro = "0.6"
+nalgebra = "0.32"
 
 ###
 

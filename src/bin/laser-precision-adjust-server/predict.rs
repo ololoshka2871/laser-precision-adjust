@@ -1,6 +1,7 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use laser_precision_adjust::{box_plot::BoxPlot, ForecastConfig, Status};
+use nalgebra::{DVector, Scalar};
 use num_traits::Float;
 use tokio::sync::{watch::Receiver, Mutex};
 
@@ -20,7 +21,10 @@ pub struct Predictor<T> {
     _t: PhantomData<T>,
 }
 
-impl<T: Float + num_traits::FromPrimitive + csaps::Real + 'static> Predictor<T> {
+impl<T> Predictor<T>
+where
+    T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + 'static,
+{
     pub fn new(
         rx: Receiver<Status>,
         forecast_config: ForecastConfig,
@@ -165,7 +169,14 @@ pub struct Fragment<T> {
     min_index: usize,
 }
 
-impl<T: Float + num_traits::FromPrimitive> Fragment<T> {
+impl<T> Fragment<T>
+where
+    T: Float
+        + num_traits::FromPrimitive
+        + nalgebra::Scalar
+        + std::ops::MulAssign
+        + std::ops::AddAssign,
+{
     // Создать фрагмент из набора точек
     // start_timestamp - время начала фрагмента
     // raw_points - набор точек
@@ -204,7 +215,26 @@ impl<T: Float + num_traits::FromPrimitive> Fragment<T> {
     // Рассчитать аппроксимированную кривую начинаи подвинуть
     // её в точку (x_start, y_offset)
     pub fn evaluate(&self) -> Vec<DataPoint<T>> {
-        self.raw_points.clone()
+        //self.raw_points.clone()
+
+        self.raw_points
+            .iter()
+            .take(self.min_index + 1)
+            .cloned()
+            .chain({
+                let x = nalgebra::DVector::<T>::from_iterator(
+                    self.raw_points.len() - self.min_index,
+                    self.raw_points.iter().skip(self.min_index + 1).map(|p| p.x),
+                );
+                let y = (f(&x, self.coeffs.1) * self.coeffs.1)
+                    .add_scalar(self.raw_points[self.min_index].y);
+
+                x.iter()
+                    .zip(y.iter())
+                    .map(|(x, y)| DataPoint::new(*x, *y))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     // Таймштамп начала фрагмента
@@ -288,9 +318,39 @@ fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
     }
 }
 
-fn aproximate_exp<T: Float>(_x: &[T], _y: &[T]) -> Result<(T, T), ()> {
-    // rusfun
-    todo!("make exponentioal aproximation")
+fn aproximate_exp<T>(x: &[T], y: &[T]) -> Result<(T, T), ()>
+where
+    T: Scalar + Float + nalgebra::ComplexField + nalgebra::RealField,
+{
+    use varpro::model::SeparableModel;
+    use varpro::prelude::*;
+    use varpro::solvers::levmar::{LevMarProblemBuilder, LevMarSolver};
+
+    // на вход требуются матрицы из vec![] придется делать копии
+    let x = nalgebra::DVector::<T>::from_vec(x.to_vec());
+    let y = nalgebra::DVector::<T>::from_vec(y.to_vec());
+
+    let model = SeparableModelBuilder::<T>::new(&["b"]) // названия параметров модели
+        .independent_variable(x) // переменная
+        .function(&["b"], f) // функция, которй будем апроксимировать
+        .partial_deriv("b", f_db) // частная производная по параметру b
+        .initial_parameters(vec![T::one()]) // начальные значения параметров
+        .build()
+        .unwrap();
+    // 2. Cast the fitting problem as a nonlinear least squares minimization problem
+    let problem = LevMarProblemBuilder::<SeparableModel<T>>::new(model)
+        .observations(y)
+        .build()
+        .unwrap();
+    // 3. Solve the fitting problem
+    let (solved_problem, report) = LevMarSolver::new().minimize(problem);
+    if !report.termination.was_successful() {
+        return Err(());
+    } else {
+        let b = solved_problem.params()[0];
+        let a = solved_problem.linear_coefficients().unwrap()[0];
+        Ok((a, b))
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -301,7 +361,12 @@ async fn try_consume_fragment<T>(
     fragments: &Mutex<Vec<Vec<Fragment<T>>>>,
 ) -> Result<(), ()>
 where
-    T: Float + num_traits::NumOps + num_traits::FromPrimitive + csaps::Real + Copy,
+    T: Float
+        + num_traits::NumOps
+        + num_traits::FromPrimitive
+        + csaps::Real
+        + nalgebra::RealField
+        + Copy,
 {
     let mut t = vec![];
     let mut f = vec![];
@@ -338,4 +403,70 @@ where
     }
 
     Err(())
+}
+
+//-----------------------------------------------------------------------------
+
+// Экспонента
+fn f<T: Scalar + Float>(x: &DVector<T>, b: T) -> DVector<T> {
+    x.map(|x| T::one() - (-x * b).exp())
+}
+
+// Производная df/db
+fn f_db<T: Scalar + Float>(dx: &DVector<T>, b: T) -> DVector<T> {
+    dx.map(|x| x * (-x * b).exp())
+}
+
+//-----------------------------------------------------------------------------
+
+#[cfg(test)]
+mod test {
+    use varpro::prelude::*;
+    use varpro::solvers::levmar::{LevMarProblemBuilder, LevMarSolver};
+
+    use super::*;
+
+    #[test]
+    fn fit() {
+        // оригинальная функция для апроксимации: a * (1 - exp(-x * b))
+        // однако, библиотака работает с функциями вида A1 * f1(x, ...) + A2 * f2(x, ...) + ...
+        // An - линейные коэфициенты, надо чтобы в fn их не было внутри, поэтому наша функция упрощаяется до 1 - exp(-x * b),
+        // а линейный коэфициент a == solved_problem.linear_coefficients()[0]
+
+        let orig_a = 1.0;
+        let orig_b = 0.01;
+
+        let x = nalgebra::DVector::<f64>::from_iterator(20, (0..200).step_by(10).map(|v| v as f64));
+        let y_origin = f(&x, orig_b) * orig_a;
+        let y_test = nalgebra::DVector::<f64>::from_iterator(
+            y_origin.len(),
+            y_origin
+                .iter()
+                .enumerate()
+                .map(|(i, y)| y + -1e-3 * (i % 2) as f64),
+        );
+
+        // 1. Создание модели для апроксимации
+        let model = SeparableModelBuilder::<f64>::new(&["b"]) // названия параметров модели
+            .independent_variable(x) // переменная
+            .function(&["b"], f) // функция, которй будем апроксимировать
+            .partial_deriv("b", f_db) // частная производная по параметру b
+            .initial_parameters(vec![1.0]) // начальные значения параметров
+            .build()
+            .unwrap();
+        // 2. Cast the fitting problem as a nonlinear least squares minimization problem
+        let problem = LevMarProblemBuilder::new(model)
+            .observations(y_test)
+            .build()
+            .unwrap();
+        // 3. Solve the fitting problem
+        let (solved_problem, report) = LevMarSolver::new().minimize(problem);
+        assert!(report.termination.was_successful());
+        // 4. obtain the nonlinear parameters after fitting
+        let alpha = solved_problem.params();
+        print!("{alpha}");
+        // 5. obtain the linear parameters
+        let c = solved_problem.linear_coefficients().unwrap();
+        print!("{c}")
+    }
 }
