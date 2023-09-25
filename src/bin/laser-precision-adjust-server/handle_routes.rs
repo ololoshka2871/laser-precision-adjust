@@ -616,7 +616,7 @@ pub(super) async fn handle_state(
             };
 
             const MEDIAN_LEN: usize = 5;
-            let (aproximations, prediction) = if points.len() > MEDIAN_LEN {
+            let (aproximations, mut prediction) = if points.len() > MEDIAN_LEN {
                 let median = BoxPlot::new(&points[(points.len() - MEDIAN_LEN)..].iter().map(|p| p.y()).collect::<Vec<_>>()).median();
                 get_prediction(predictor.lock().await.borrow(),
                                status.current_channel,
@@ -653,6 +653,17 @@ pub(super) async fn handle_state(
                 .await
                 .current_state()
                 .await != crate::auto_adjust_controller::State::Idle;
+
+            let points = if points.len() < config.display_points_count {
+                let mut p = vec![DataPoint::<f64>::nan(); config.display_points_count as usize];
+                p[config.display_points_count - points.len()..].copy_from_slice(&points);
+                p
+            } else {
+                points
+            };
+
+            // update start offset
+            prediction.as_mut().map(|p| p.start_offset = config.display_points_count - MEDIAN_LEN);
 
             yield StateResult {
                 timestamp,

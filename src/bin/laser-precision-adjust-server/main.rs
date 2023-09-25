@@ -43,6 +43,13 @@ impl<T: num_traits::Float> DataPoint<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
+
+    pub fn nan() -> Self {
+        Self {
+            x: T::nan(),
+            y: T::nan(),
+        }
+    }
 }
 
 impl<T: num_traits::Float> IDataPoint<T> for DataPoint<T> {

@@ -278,7 +278,6 @@ $(() => {
     oboe('/state')
         .node('!.', (state: IState) => {
             // state - это весь JSON объект, который пришел с сервера
-            const angle = state.TimesTamp;
             const current_freq = state.CurrentFreq;
 
             const target = state.TargetFreq;
@@ -295,7 +294,10 @@ $(() => {
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
             var plot_max = upperLimit;
-            var plot_min = Math.min(...chart.data.datasets[2].data as number[]) - 1.0;
+            var sl = chart.data.datasets[2].data.filter((v?: number) => v !== null) as number[];
+            sl = sl.slice(0, Math.min(5, sl.length));
+            const data_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
+            var plot_min = Math.min(data_min_avg, lowerLimit) - 1.0;
 
             // prediction
             if (state.Prediction !== null && state.Points.length > 5) {
@@ -305,7 +307,7 @@ $(() => {
                 chart.data.datasets[6].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.minimal, offset)
 
                 plot_max = Math.max(plot_max, state.Prediction.maximal);
-                plot_min = Math.max(plot_min, state.Prediction.minimal) - (state.Prediction.maximal - state.Prediction.minimal);
+                //plot_min = Math.max(plot_min, state.Prediction.minimal) - (state.Prediction.maximal - state.Prediction.minimal);
             } else {
                 chart.data.datasets[4].data = []
                 chart.data.datasets[5].data = []
