@@ -324,6 +324,7 @@ $(() => {
                         chart.data.datasets[7].data[res_index_offset + j] = d[j][1];
                     }
                 }
+                plot_min = Math.min(plot_min, Math.min(...(<number[]>chart.data.datasets[7].data).filter((v) => v !== null && !isNaN(v))))
             }
 
             // Y-axis limits

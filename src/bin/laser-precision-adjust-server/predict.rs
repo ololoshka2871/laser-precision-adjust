@@ -21,7 +21,7 @@ pub struct Predictor<T> {
     _t: PhantomData<T>,
 }
 
-const NORMAL_T: f64 = 100.0;
+const NORMAL_T: f64 = 1000.0;
 
 impl<T> Predictor<T>
 where
@@ -347,7 +347,7 @@ where
         .independent_variable(x) // переменная
         .function(&["b"], f) // функция, которй будем апроксимировать
         .partial_deriv("b", f_db) // частная производная по параметру b
-        .initial_parameters(vec![T::one()]) // начальные значения параметров
+        .initial_parameters(vec![unsafe { T::from_f64(1e-5).unwrap_unchecked() }]) // начальные значения параметров
         .build()
         .unwrap();
     // 2. Cast the fitting problem as a nonlinear least squares minimization problem
@@ -362,7 +362,6 @@ where
     } else {
         let b = solved_problem.params()[0];
         let a = solved_problem.linear_coefficients().unwrap()[0];
-        tracing::trace!("Aprox fragment: a={}, b={}", a, b);
         Ok((a, b))
     }
 }
@@ -395,7 +394,7 @@ where
 
     // сглаживающая фильтрация
     if let Ok(filtred_f) = smooth_filter(&t, &f) {
-        if let Some((f_min_index, min_f)) = find_min(&f) {
+        if let Some((f_min_index, min_f)) = find_min(&filtred_f) {
             let fz = filtred_f
                 .iter()
                 .skip(f_min_index)
@@ -411,6 +410,8 @@ where
                     .collect::<Vec<_>>(),
                 &fz,
             ) {
+                tracing::trace!("Aprox fragment: a={}, b={}", coeffs.0, coeffs.1);
+
                 let mut guard = fragments.lock().await;
                 let serie = guard.get_mut(channel).unwrap();
                 let data = t
@@ -420,6 +421,8 @@ where
                     .collect::<Vec<_>>();
                 serie.push(Fragment::new(serie_data[0].0, &data, coeffs, f_min_index));
                 return Ok(());
+            } else {
+                tracing::warn!("Fragment approximation failed!");
             }
         }
     }
