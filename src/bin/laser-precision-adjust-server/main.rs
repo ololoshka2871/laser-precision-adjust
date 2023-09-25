@@ -33,7 +33,7 @@ pub trait IDataPoint<T> {
     fn y(&self) -> T;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct DataPoint<T> {
     x: T,
     y: T,
@@ -66,7 +66,6 @@ impl<T: num_traits::Float> IDataPoint<T> for DataPoint<T> {
 struct ChannelState {
     current_step: u32,
     initial_freq: Option<f32>,
-    current_freq: f32,
 
     points: Vec<DataPoint<f64>>,
 }
@@ -164,7 +163,6 @@ async fn main() -> Result<(), std::io::Error> {
             ChannelState {
                 current_step: 0,
                 initial_freq: None,
-                current_freq: 0.0,
                 points: vec![],
             };
             config.resonator_placement.len()

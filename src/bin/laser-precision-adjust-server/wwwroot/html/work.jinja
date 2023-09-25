@@ -118,15 +118,35 @@
                                     <th scope="col">Шаг</th>
                                     <th scope="col">F исх.</th>
                                     <th scope="col">F тек.</th>
+                                    <th scope="col" class="text-warning"><i class="fas fa-star"></i></th>
                                 </tr>
                             </thead>
                             <tbody>
+                                {% macro status2icon(status='') -%}
+                                {% if status == 'unknown' -%}
+                                <td type="freq-status-icon" status={{status}} class="text-primary"><i
+                                        class="fa fa-minus"></i></td>
+                                {% elif status == 'upper' -%}
+                                <td type="freq-status-icon" status={{status}} class="text-danger"><i
+                                        class="fas fa-caret-square-up"></i></td>
+                                {% elif status == 'ok' -%}
+                                <td type="freq-status-icon" status={{status}} class="text-success"><i
+                                        class="fas fa-check"></i></td>
+                                {% elif status == 'lower' -%}
+                                <td type="freq-status-icon" status={{status}} class="text-warning"><i
+                                        class="fas fa-caret-square-down"></i></td>
+                                {% else -%}
+                                <td type="freq-status-icon" status={{status}} class="text-danger"><i
+                                        class="fa fa-caret-square-down"></i></td>
+                                {% endif -%}
+                                {% endmacro -%}
                                 {% for rez in resonators -%}
                                 <tr class="clickableRow" id="rez-{{ loop.index }}-row" row-index="{{ loop.index }}">
                                     <th scope="row">{{ loop.index }}</th>
                                     <td type="step"><code class="text-dark">{{ rez.current_step }}</code></td>
                                     <td type="freq-initial"><code class="text-dark">{{ rez.initial_freq }}</code></td>
                                     <td type="freq-current"><code class="text-dark">{{ rez.current_freq }}</code></td>
+                                    {{ status2icon(rez.status) }}
                                 </tr>
                                 {% endfor -%}
                             </tbody>

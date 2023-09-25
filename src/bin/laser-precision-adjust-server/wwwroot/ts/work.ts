@@ -31,6 +31,7 @@ interface IState {
     CloseTimestamp?: number,
     Aproximations: Array<Array<[number, number]>>,
     IsAutoAdjustBusy: boolean,
+    StatusCode: string,
 }
 
 interface IControlResult {

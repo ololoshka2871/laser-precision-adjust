@@ -103,6 +103,9 @@ pub struct StateResult {
 
     #[serde(rename = "IsAutoAdjustBusy")]
     is_auto_adjust_busy: bool,
+
+    #[serde(rename = "StatusCode")]
+    status_code: RezStatus,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -114,11 +117,48 @@ pub struct UpdateConfigValues {
     work_offset_hz: Option<f32>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+enum RezStatus {
+    #[serde(rename = "unknown")]
+    Unknown,
+    #[serde(rename = "upper")]
+    UpperBound,
+    #[serde(rename = "ok")]
+    Ok,
+    #[serde(rename = "lower")]
+    LowerBound,
+    #[serde(rename = "lowerest")]
+    LowerLimit,
+}
+
+struct Limits {
+    upper_limit: f32,
+    lower_limit: f32,
+    ultra_low_limit: f32,
+}
+
+impl Limits {
+    pub fn to_status(&self, f: f32) -> RezStatus {
+        if f.is_nan() || f == 0.0 {
+            RezStatus::Unknown
+        } else if f < self.ultra_low_limit {
+            RezStatus::LowerLimit
+        } else if f < self.lower_limit {
+            RezStatus::LowerBound
+        } else if f > self.upper_limit {
+            RezStatus::UpperBound
+        } else {
+            RezStatus::Ok
+        }
+    }
+}
+
 pub(super) async fn handle_work(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(engine): State<AppEngine>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
+    State(config): State<Config>,
 ) -> impl IntoResponse {
     #[derive(Serialize)]
     struct RezData {
@@ -126,6 +166,7 @@ pub(super) async fn handle_work(
         initial_freq: String,
         current_freq: String,
         points: Vec<(f64, f64)>,
+        status: RezStatus,
     }
 
     #[derive(Serialize)]
@@ -143,6 +184,13 @@ pub(super) async fn handle_work(
         (guard.target_freq, guard.work_offset_hz)
     };
 
+    let ppm2hz = config.target_freq_center * config.working_offset_ppm / 1_000_000.0;
+    let limits = Limits {
+        upper_limit: config.target_freq_center + ppm2hz,
+        lower_limit: config.target_freq_center - ppm2hz,
+        ultra_low_limit: config.target_freq_center - config.auto_adjust_limits.min_freq_offset,
+    };
+
     RenderHtml(
         Key("work".to_owned()),
         engine,
@@ -151,15 +199,18 @@ pub(super) async fn handle_work(
                 .lock()
                 .await
                 .iter()
-                .map(|r| RezData {
-                    current_step: r.current_step,
-                    initial_freq: if let Some(initial_freq) = r.initial_freq {
-                        format!("{:.2}", initial_freq)
-                    } else {
-                        "".to_owned()
-                    },
-                    current_freq: format!("{:.2}", r.current_freq),
-                    points: r.points.iter().map(|p| (p.x, p.y)).collect(),
+                .map(|r| {
+                    let current_freq = r.points.last().cloned().unwrap_or_default().y() as f32;
+                    RezData {
+                        current_step: r.current_step,
+                        initial_freq: r
+                            .initial_freq
+                            .map(|f| format!("{:.2}", f))
+                            .unwrap_or("0".to_owned()),
+                        current_freq: format!("{:.2}", current_freq),
+                        points: r.points.iter().map(|p| (p.x, p.y)).collect(),
+                        status: limits.to_status(current_freq),
+                    }
                 })
                 .collect(),
             target_freq: format!("{:.2}", target_freq),
@@ -701,6 +752,14 @@ pub(super) async fn handle_state(
             // update start offset
             prediction.as_mut().map(|p| p.start_offset = config.display_points_count - MEDIAN_LEN);
 
+            // status code
+            let ppm2hz = config.target_freq_center * config.working_offset_ppm / 1_000_000.0;
+            let limits = Limits {
+                upper_limit: config.target_freq_center + ppm2hz,
+                lower_limit: config.target_freq_center - ppm2hz,
+                ultra_low_limit: config.target_freq_center - config.auto_adjust_limits.min_freq_offset,
+            };
+
             yield StateResult {
                 timestamp,
                 seleced_channel: status.current_channel,
@@ -714,6 +773,7 @@ pub(super) async fn handle_state(
                 prediction,
                 aproximations,
                 is_auto_adjust_busy,
+                status_code: limits.to_status(status.current_frequency + work_offset_hz),
             };
         }
     };
