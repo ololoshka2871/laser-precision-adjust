@@ -243,6 +243,8 @@ pub(super) async fn handle_control(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Json(payload): Json<ControlRequest>,
 ) -> impl IntoResponse {
+    const POINTS_TO_AVG: usize = 15;
+
     let ok_result = Json(ControlResult {
         success: true,
         error: None,
@@ -436,7 +438,6 @@ pub(super) async fn handle_control(
             let current_channel = status.current_channel;
 
             let stream = async_stream::stream! {
-                const POINTS_TO_AVG: usize = 15;
                 for i in 0..channels_count {
                     yield ControlResult::success(Some(format!("Сканирование канала: {}", i + 1)));
 
@@ -521,6 +522,41 @@ pub(super) async fn handle_control(
                     Err(e) => Json(ControlResult::error(format!("Неизвестная ошибка: {e}"))),
                 }
                 .into_response();
+            }
+
+            // update start freq
+            {
+                let mut guard = channels.lock().await;
+                let channel = &mut guard[status.current_channel as usize];
+                let avalable_points_count = if channel.points.len() == 0 {
+                    0
+                } else {
+                    channel.points.len() - 1
+                };
+                let points_to_read = std::cmp::min(avalable_points_count, POINTS_TO_AVG);
+                if points_to_read < POINTS_TO_AVG / 2
+                    || (channel
+                        .points
+                        .iter()
+                        .rev()
+                        .take(points_to_read)
+                        .map(|v| v.y.to_string())
+                        .collect::<HashSet<_>>()
+                        .len()
+                        < POINTS_TO_AVG / 5)
+                {
+                    channel.initial_freq = None;
+                } else {
+                    channel.points.remove(channel.points.len() - points_to_read);
+                    let median = BoxPlot::new(
+                        &channel.points[..channel.points.len() - points_to_read]
+                            .iter()
+                            .map(|p| p.y())
+                            .collect::<Vec<_>>(),
+                    )
+                    .median();
+                    channel.initial_freq = Some(median as f32);
+                }
             }
 
             if let Ok(mut status_channel) = auto_adjust_ctrl
