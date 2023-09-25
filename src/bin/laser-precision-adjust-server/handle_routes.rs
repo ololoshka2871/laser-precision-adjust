@@ -608,7 +608,7 @@ pub(super) async fn handle_state(
             let (initial_freq, points) = {
                 let mut channels = channels.lock().await;
                 let channel = channels.get_mut(status.current_channel as usize).unwrap();
-                channel.points.push(DataPoint::new(timestamp as f64, status.current_frequency as f64));
+                channel.points.push(DataPoint::new(timestamp as f64, (status.current_frequency + work_offset_hz) as f64));
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }

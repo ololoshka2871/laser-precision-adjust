@@ -5,7 +5,7 @@ use nalgebra::{DVector, Scalar};
 use num_traits::Float;
 use tokio::sync::{watch::Receiver, Mutex};
 
-use crate::{DataPoint, IDataPoint};
+use crate::{AdjustConfig, DataPoint, IDataPoint};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Prediction<T: Float> {
@@ -21,6 +21,8 @@ pub struct Predictor<T> {
     _t: PhantomData<T>,
 }
 
+const NORMAL_T: f64 = 100.0;
+
 impl<T> Predictor<T>
 where
     T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + 'static,
@@ -30,6 +32,7 @@ where
         forecast_config: ForecastConfig,
         channels_count: usize,
         fragment_len: usize,
+        freqmeter_config: Arc<Mutex<AdjustConfig>>,
     ) -> Self {
         let fragments = Arc::new(Mutex::new(vec![vec![]; channels_count]));
         let serie_data = Arc::new(Mutex::new(vec![]));
@@ -37,7 +40,13 @@ where
         {
             let fragments = fragments.clone();
             let serie_data = serie_data.clone();
-            tokio::spawn(Self::task(rx, fragments, fragment_len, serie_data));
+            tokio::spawn(Self::task(
+                rx,
+                fragments,
+                fragment_len,
+                serie_data,
+                freqmeter_config,
+            ));
         }
         Self {
             fragments,
@@ -52,12 +61,15 @@ where
         fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
         fragment_len: usize,
         serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
+        freqmeter_config: Arc<Mutex<AdjustConfig>>,
     ) {
         let mut current_chanel = None;
         loop {
             status_rx.changed().await.ok();
 
             let new_status = status_rx.borrow().clone();
+
+            let work_offset_hz = freqmeter_config.lock().await.work_offset_hz;
 
             if new_status.shot_mark {
                 // выстрел - фиксируем канал
@@ -91,7 +103,7 @@ where
                 if current_chanel.is_some() && guard.len() < fragment_len {
                     guard.push((
                         new_status.since_start.as_millis(),
-                        new_status.current_frequency,
+                        new_status.current_frequency + work_offset_hz,
                     ))
                 } else {
                     let cc = current_chanel.unwrap() as usize;
@@ -215,7 +227,7 @@ where
     // Рассчитать аппроксимированную кривую начинаи подвинуть
     // её в точку (x_start, y_offset)
     pub fn evaluate(&self) -> Vec<DataPoint<T>> {
-        //self.raw_points.clone()
+        let normal_t = unsafe { T::from_f64(NORMAL_T).unwrap_unchecked() };
 
         self.raw_points
             .iter()
@@ -224,14 +236,15 @@ where
             .chain({
                 let x = nalgebra::DVector::<T>::from_iterator(
                     self.raw_points.len() - self.min_index,
-                    self.raw_points.iter().skip(self.min_index + 1).map(|p| p.x),
+                    self.raw_points.iter().skip(self.min_index).map(|p| p.x),
                 );
-                let y = (f(&x, self.coeffs.1) * self.coeffs.1)
+                let y = (f(&x, self.coeffs.1) * self.coeffs.0)
                     .add_scalar(self.raw_points[self.min_index].y);
 
+                let x_start = self.raw_points[self.min_index].x;
                 x.iter()
                     .zip(y.iter())
-                    .map(|(x, y)| DataPoint::new(*x, *y))
+                    .map(|(x, y)| DataPoint::new(x_start + (*x) * normal_t, *y))
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -318,7 +331,7 @@ fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
     }
 }
 
-fn aproximate_exp<T>(x: &[T], y: &[T]) -> Result<(T, T), ()>
+fn aproximate_exp<T>(x: Vec<T>, y: &[T]) -> Result<(T, T), ()>
 where
     T: Scalar + Float + nalgebra::ComplexField + nalgebra::RealField,
 {
@@ -327,7 +340,7 @@ where
     use varpro::solvers::levmar::{LevMarProblemBuilder, LevMarSolver};
 
     // на вход требуются матрицы из vec![] придется делать копии
-    let x = nalgebra::DVector::<T>::from_vec(x.to_vec());
+    let x = nalgebra::DVector::<T>::from_vec(x);
     let y = nalgebra::DVector::<T>::from_vec(y.to_vec());
 
     let model = SeparableModelBuilder::<T>::new(&["b"]) // названия параметров модели
@@ -349,6 +362,7 @@ where
     } else {
         let b = solved_problem.params()[0];
         let a = solved_problem.linear_coefficients().unwrap()[0];
+        tracing::trace!("Aprox fragment: a={}, b={}", a, b);
         Ok((a, b))
     }
 }
@@ -368,6 +382,7 @@ where
         + nalgebra::RealField
         + Copy,
 {
+    let normal_t = unsafe { T::from_f64(NORMAL_T).unwrap_unchecked() };
     let mut t = vec![];
     let mut f = vec![];
     serie_data.iter().for_each(|v| {
@@ -388,7 +403,14 @@ where
                 .collect::<Vec<_>>();
 
             // Апроксимация экспонентой
-            if let Ok(coeffs) = aproximate_exp(&t[f_min_index..], &fz) {
+            let t_zero = t[f_min_index];
+            if let Ok(coeffs) = aproximate_exp(
+                t[f_min_index..]
+                    .iter()
+                    .map(move |t| (*t - t_zero) / normal_t)
+                    .collect::<Vec<_>>(),
+                &fz,
+            ) {
                 let mut guard = fragments.lock().await;
                 let serie = guard.get_mut(channel).unwrap();
                 let data = t
@@ -468,5 +490,40 @@ mod test {
         // 5. obtain the linear parameters
         let c = solved_problem.linear_coefficients().unwrap();
         print!("{c}")
+    }
+
+    #[test]
+    fn fit_real_data() {
+        let x =
+            nalgebra::DVector::<f64>::from_vec(vec![0., 105.0, 211., 317., 423., 528., 633., 738.])
+                / NORMAL_T;
+        let y = nalgebra::DVector::<f64>::from_vec(vec![
+            0.0,
+            0.03125,
+            0.162109375,
+            0.26171875,
+            0.29296875,
+            0.359375,
+            0.435546875,
+            0.435546876,
+        ]);
+
+        let model = SeparableModelBuilder::<f64>::new(&["b"]) // названия параметров модели
+            .independent_variable(x) // переменная
+            .function(&["b"], f) // функция, которй будем апроксимировать
+            .partial_deriv("b", f_db) // частная производная по параметру b
+            .initial_parameters(vec![1.0]) // начальные значения параметров
+            .build()
+            .unwrap();
+        let problem = LevMarProblemBuilder::new(model)
+            .observations(y)
+            .build()
+            .unwrap();
+
+        let (solved_problem, report) = LevMarSolver::new().minimize(problem);
+        assert!(report.termination.was_successful());
+        let b = solved_problem.params()[0];
+        let a = solved_problem.linear_coefficients().unwrap()[0];
+        println!("a = {a}, b = {b}")
     }
 }

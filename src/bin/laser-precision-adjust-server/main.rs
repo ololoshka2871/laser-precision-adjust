@@ -72,7 +72,7 @@ struct ChannelState {
 }
 
 #[derive(Clone)]
-struct AdjustConfig {
+pub struct AdjustConfig {
     target_freq: f32,
     work_offset_hz: f32,
 }
@@ -128,11 +128,17 @@ async fn main() -> Result<(), std::io::Error> {
     let status_rx = precision_adjust.start_monitoring(emulate_freq).await;
     precision_adjust.reset().await.expect("Can't reset laser!");
 
+    let freqmeter_config = Arc::new(Mutex::new(AdjustConfig {
+        target_freq: config.target_freq_center,
+        work_offset_hz: config.freqmeter_offset,
+    }));
+
     let predictor = predict::Predictor::new(
         status_rx.clone(),
         config.forecast_config,
         config.resonator_placement.len(),
         (config.cooldown_time_ms / config.update_interval_ms) as usize,
+        freqmeter_config.clone(),
     );
 
     let auto_adjust_controller = auto_adjust_controller::AutoAdjestController::new(
@@ -163,10 +169,7 @@ async fn main() -> Result<(), std::io::Error> {
             };
             config.resonator_placement.len()
         ])),
-        freqmeter_config: Arc::new(Mutex::new(AdjustConfig {
-            target_freq: config.target_freq_center,
-            work_offset_hz: config.freqmeter_offset,
-        })),
+        freqmeter_config: freqmeter_config,
         engine: Engine::from(minijinja),
         config,
         config_file,
