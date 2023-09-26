@@ -42,7 +42,7 @@ interface IControlResult {
 
 // ---------------------------------------------------------------------------------------------
 
-let scan_noty: Noty = null;
+let present_noty: Noty = null;
 
 // on page loaded jquery
 $(() => {
@@ -90,7 +90,14 @@ $(() => {
     });
 
     $('.camera-ctrl').on('click', (ev) => {
-        const action = $(ev.target).attr('ctrl-request');
+        var action: string;
+        if (ev.target.tagName === 'path') {
+            action = $(ev.target).parent().parent().attr('ctrl-request');
+        } else if (ev.target.tagName === 'svg') {
+            action = $(ev.target).parent().attr('ctrl-request');
+        } else {
+            action = $(ev.target).attr('ctrl-request');
+        }
         $.ajax({
             url: '/control/camera',
             method: 'POST',
@@ -113,12 +120,12 @@ $(() => {
             body: {}
         }).node('!.', (state: IControlResult) => {
             if (state.success) {
-                if (state.message === 'Finished' && scan_noty !== null) {
-                    scan_noty.close();
-                } else if (scan_noty !== null) {
-                    scan_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);
+                if (state.message === 'Finished' && present_noty !== null) {
+                    present_noty.close();
+                } else if (present_noty !== null) {
+                    present_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);
                 } else {
-                    scan_noty = noty({
+                    present_noty = noty({
                         type: "information",
                         text: "<i class='fas fa-spinner fa-pulse'></i> " + state.message,
                     });
@@ -139,8 +146,23 @@ $(() => {
         }).node('!.', (state: IControlResult) => {
             if (state.success) {
                 console.log(state.message);
+
+                if (state.message.startsWith('Настройка завершена') && present_noty !== null) {
+                    present_noty.close();
+                } else if (present_noty !== null) {
+                    present_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);
+                } else {
+                    present_noty = noty({
+                        type: "information",
+                        text: "<i class='fas fa-spinner fa-pulse'></i> " + state.message,
+                    });
+                }
             } else {
                 console.log(state.error);
+                if (present_noty !== null) {
+                    present_noty.close();
+                }
+                noty_error(state.error);
             }
         });
 
