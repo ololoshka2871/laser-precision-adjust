@@ -147,7 +147,7 @@ $(() => {
             if (state.success) {
                 console.log(state.message);
 
-                if (state.message.startsWith('Настройка завершена') && present_noty !== null) {
+                if ((state.message.startsWith('Настройка завершена') || state.message.startsWith('Настройка отменена')) && present_noty !== null) {
                     present_noty.close();
                 } else if (present_noty !== null) {
                     present_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);

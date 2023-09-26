@@ -313,7 +313,7 @@ impl PrecisionAdjust {
             })
         }
 
-        fn genetare_fake_freq(center: f32) -> f32 {
+        fn generate_fake_freq(center: f32) -> f32 {
             let angle = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
@@ -327,14 +327,14 @@ impl PrecisionAdjust {
             loop {
                 let res = {
                     let mut guard = dev.lock().await;
-                    Self::i2c_read(guard.deref_mut(), freq_meter_i2c_addr, 0x00, 4).await
+                    Self::i2c_read(guard.deref_mut(), freq_meter_i2c_addr, 0x08, 4).await
                 };
 
                 match res {
                     Ok(r) => {
                         if r.len() == std::mem::size_of::<f32>() {
                             let f = if let Some(fake_freq) = emulate_center {
-                                genetare_fake_freq(fake_freq)
+                                generate_fake_freq(fake_freq)
                             } else {
                                 let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
                                 f32::from_le_bytes(byte_array)
