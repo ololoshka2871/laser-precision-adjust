@@ -205,7 +205,8 @@ where
         + num_traits::FromPrimitive
         + nalgebra::Scalar
         + std::ops::MulAssign
-        + std::ops::AddAssign,
+        + std::ops::AddAssign
+        + std::ops::DivAssign,
 {
     // Создать фрагмент из набора точек
     // start_timestamp - время начала фрагмента
@@ -249,24 +250,23 @@ where
 
         self.raw_points
             .iter()
-            .take(self.min_index + 1)
+            .take(self.min_index)
             .cloned()
             .chain({
                 let x_start = self.raw_points[self.min_index].x;
-                let x = nalgebra::DVector::<T>::from_iterator(
+                let mut x = nalgebra::DVector::<T>::from_iterator(
                     self.raw_points.len() - self.min_index,
-                    self.raw_points
-                        .iter()
-                        .skip(self.min_index)
-                        .map(|p| (p.x - x_start) / normal_t),
+                    self.raw_points.iter().skip(self.min_index).map(|p| p.x),
                 );
+                x.add_scalar_mut(-x_start);
+                x /= normal_t;
                 let y = (limit_exp(&x, self.coeffs.1) * self.coeffs.0)
                     .add_scalar(self.raw_points[self.min_index].y);
 
-                self.raw_points
+                x
                     .iter()
                     .zip(y.iter())
-                    .map(|(p, y)| DataPoint::new(p.x, *y))
+                    .map(|(x, y)| DataPoint::new(x_start + (*x) * normal_t, *y))
                     .collect::<Vec<_>>()
             })
             .collect()
