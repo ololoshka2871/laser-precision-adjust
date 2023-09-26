@@ -7,16 +7,15 @@ use axum::{
     Json,
 };
 use axum_template::{Key, RenderHtml};
-use laser_precision_adjust::{box_plot::BoxPlot, Config, PrecisionAdjust};
+use laser_precision_adjust::{
+    box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust,
+};
 
 use num_traits::Float;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use crate::{
-    auto_adjust_controller::AutoAdjestController, predict::Predictor, AdjustConfig, AppEngine,
-    ChannelState, DataPoint, IDataPoint,
-};
+use crate::{auto_adjust_controller::AutoAdjestController, AdjustConfig, AppEngine, ChannelState};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -208,7 +207,7 @@ pub(super) async fn handle_work(
                             .map(|f| format!("{:.2}", f))
                             .unwrap_or("0".to_owned()),
                         current_freq: format!("{:.2}", current_freq),
-                        points: r.points.iter().map(|p| (p.x, p.y)).collect(),
+                        points: r.points.iter().map(|p| (p.x(), p.y())).collect(),
                         status: limits.to_status(current_freq),
                     }
                 })
@@ -535,7 +534,7 @@ pub(super) async fn handle_control(
                         if points_to_read < POINTS_TO_AVG / 3 ||
                             (channel.points[(channel.points.len() - points_to_read)..]
                                 .iter()
-                                .map(|v| v.y.to_string())
+                                .map(|v| v.y().to_string())
                                 .collect::<HashSet<_>>().len() < POINTS_TO_AVG / 5
                         ) {
                             channel.initial_freq = None;
@@ -593,7 +592,7 @@ pub(super) async fn handle_control(
                 if points_to_read < POINTS_TO_AVG / 2
                     || (channel.points[(channel.points.len() - points_to_read)..]
                         .iter()
-                        .map(|v| v.y.to_string())
+                        .map(|v| v.y().to_string())
                         .collect::<HashSet<_>>()
                         .len()
                         < POINTS_TO_AVG / 5)
@@ -770,7 +769,7 @@ pub(super) async fn handle_state(
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
                 initial_freq,
-                points: points.iter().map(|p| (p.x, p.y)).collect(),
+                points: points.iter().map(|p| (p.x(), p.y())).collect(),
                 close_timestamp,
                 prediction,
                 aproximations,

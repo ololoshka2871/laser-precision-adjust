@@ -1,6 +1,5 @@
 mod auto_adjust_controller;
 mod handle_routes;
-mod predict;
 mod static_files;
 
 use std::{net::SocketAddr, sync::Arc};
@@ -11,7 +10,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use laser_precision_adjust::PrecisionAdjust;
+use laser_precision_adjust::{predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust};
 
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
@@ -28,52 +27,12 @@ use crate::handle_routes::{
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
-pub trait IDataPoint<T> {
-    fn x(&self) -> T;
-    fn y(&self) -> T;
-}
-
-#[derive(Clone, Copy, Default, serde::Serialize)]
-pub struct DataPoint<T: serde::Serialize> {
-    x: T,
-    y: T,
-}
-
-impl<T: num_traits::Float + serde::Serialize> DataPoint<T> {
-    pub fn new(x: T, y: T) -> Self {
-        Self { x, y }
-    }
-
-    pub fn nan() -> Self {
-        Self {
-            x: T::nan(),
-            y: T::nan(),
-        }
-    }
-}
-
-impl<T: num_traits::Float + serde::Serialize> IDataPoint<T> for DataPoint<T> {
-    fn x(&self) -> T {
-        self.x
-    }
-
-    fn y(&self) -> T {
-        self.y
-    }
-}
-
 #[derive(Clone)]
 struct ChannelState {
     current_step: u32,
     initial_freq: Option<f32>,
 
     points: Vec<DataPoint<f64>>,
-}
-
-#[derive(Clone)]
-pub struct AdjustConfig {
-    target_freq: f32,
-    work_offset_hz: f32,
 }
 
 #[derive(Clone, FromRef)]
@@ -90,7 +49,7 @@ struct AppState {
     close_timestamp: Arc<Mutex<Option<u128>>>,
     select_channel_blocked: Arc<Mutex<bool>>,
 
-    predictor: Arc<Mutex<predict::Predictor<f64>>>,
+    predictor: Arc<Mutex<Predictor<f64>>>,
     auto_adjust_ctrl: Arc<Mutex<auto_adjust_controller::AutoAdjestController>>,
 }
 
@@ -132,7 +91,7 @@ async fn main() -> Result<(), std::io::Error> {
         work_offset_hz: config.freqmeter_offset,
     }));
 
-    let predictor = predict::Predictor::new(
+    let predictor = Predictor::new(
         status_rx.clone(),
         config.forecast_config,
         config.resonator_placement.len(),

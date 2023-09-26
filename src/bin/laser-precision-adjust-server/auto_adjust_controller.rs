@@ -6,9 +6,11 @@ use tokio::{
     time,
 };
 
-use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits, PrecisionAdjust};
-
-use crate::predict::{Fragment, Predictor};
+use laser_precision_adjust::{
+    box_plot::BoxPlot,
+    predict::{Fragment, Predictor},
+    AutoAdjustLimits, PrecisionAdjust,
+};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum State {

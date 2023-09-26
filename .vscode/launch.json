@@ -65,17 +65,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "denoize",
+            "name": "try_approximate",
             "args": [
-                "-s", "0.1",
-                "-N", "11",
-                "find_shot/data/freq_11-09-2023_13h-05m.log"
+                "find_shot_v2/data/freq_26-09-2023_10h-11m.log-fragments.json"
             ],
             "cwd": "${workspaceFolder}",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=denoize"
+                    "--bin=try_approximate"
                 ],
                 "filter": {
                     "kind": "bin"

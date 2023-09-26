@@ -1,12 +1,11 @@
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
-use laser_precision_adjust::{box_plot::BoxPlot, ForecastConfig, Status};
 use nalgebra::{DVector, Scalar};
 use num_traits::Float;
 use serde::Serialize;
 use tokio::sync::{watch::Receiver, Mutex};
 
-use crate::{AdjustConfig, DataPoint, IDataPoint};
+use crate::{box_plot::BoxPlot, AdjustConfig, DataPoint, ForecastConfig, IDataPoint, Status};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Prediction<T: Float> {
@@ -22,7 +21,7 @@ pub struct Predictor<T: Serialize> {
     _t: PhantomData<T>,
 }
 
-const NORMAL_T: f64 = 1000.0;
+pub const NORMAL_T: f64 = 1000.0;
 
 impl<T> Predictor<T>
 where
@@ -192,7 +191,7 @@ where
     }
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Fragment<T: Serialize> {
     start_timestamp: f64,
     raw_points: Vec<DataPoint<T>>,
@@ -253,17 +252,21 @@ where
             .take(self.min_index + 1)
             .cloned()
             .chain({
+                let x_start = self.raw_points[self.min_index].x;
                 let x = nalgebra::DVector::<T>::from_iterator(
                     self.raw_points.len() - self.min_index,
-                    self.raw_points.iter().skip(self.min_index).map(|p| p.x),
+                    self.raw_points
+                        .iter()
+                        .skip(self.min_index)
+                        .map(|p| (p.x - x_start) / normal_t),
                 );
-                let y = (f(&x, self.coeffs.1) * self.coeffs.0)
+                let y = (limit_exp(&x, self.coeffs.1) * self.coeffs.0)
                     .add_scalar(self.raw_points[self.min_index].y);
 
-                let x_start = self.raw_points[self.min_index].x;
-                x.iter()
+                self.raw_points
+                    .iter()
                     .zip(y.iter())
-                    .map(|(x, y)| DataPoint::new(x_start + (*x) * normal_t, *y))
+                    .map(|(p, y)| DataPoint::new(p.x, *y))
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -336,7 +339,7 @@ where
     Ok(y)
 }
 
-fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
+pub fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
     if let Some((mut min, mut minindex)) = data.first().map(|d0| (*d0, 0)) {
         data.iter().enumerate().for_each(|(i, v)| {
             if *v < min {
@@ -350,7 +353,7 @@ fn find_min<T: Float>(data: &[T]) -> Option<(usize, T)> {
     }
 }
 
-fn aproximate_exp<T>(x: Vec<T>, y: &[T]) -> Result<(T, T), ()>
+pub fn aproximate_exp<T>(x: Vec<T>, y: &[T]) -> Result<(T, T), ()>
 where
     T: Scalar + Float + nalgebra::ComplexField + nalgebra::RealField,
 {
@@ -364,8 +367,8 @@ where
 
     let model = SeparableModelBuilder::<T>::new(&["b"]) // названия параметров модели
         .independent_variable(x) // переменная
-        .function(&["b"], f) // функция, которй будем апроксимировать
-        .partial_deriv("b", f_db) // частная производная по параметру b
+        .function(&["b"], limit_exp) // функция, которй будем апроксимировать
+        .partial_deriv("b", dlimit_exp_db) // частная производная по параметру b
         .initial_parameters(vec![unsafe { T::from_f64(1e-5).unwrap_unchecked() }]) // начальные значения параметров
         .build()
         .unwrap();
@@ -430,8 +433,11 @@ where
                     .collect::<Vec<_>>(),
                 &fz,
             ) {
-                if coeffs.0 > T::one() {
-                    coeffs.0 = T::one();
+                const LIMIT_A: f64 = 5.0;
+                if coeffs.0 > unsafe { T::from_f64(LIMIT_A).unwrap_unchecked() }
+                    || coeffs.0 < T::zero()
+                {
+                    coeffs.0 = unsafe { T::from_f64(LIMIT_A).unwrap_unchecked() };
                     tracing::trace!("Aprox fragment: a={}(corrected), b={}", coeffs.0, coeffs.1);
                 } else {
                     tracing::trace!("Aprox fragment: a={}, b={}", coeffs.0, coeffs.1);
@@ -458,12 +464,12 @@ where
 //-----------------------------------------------------------------------------
 
 // Экспонента
-fn f<T: Scalar + Float>(x: &DVector<T>, b: T) -> DVector<T> {
+pub fn limit_exp<T: Scalar + Float>(x: &DVector<T>, b: T) -> DVector<T> {
     x.map(|x| T::one() - (-x * b).exp())
 }
 
-// Производная df/db
-fn f_db<T: Scalar + Float>(dx: &DVector<T>, b: T) -> DVector<T> {
+// Производная d(limit_exp)/db
+pub fn dlimit_exp_db<T: Scalar + Float>(dx: &DVector<T>, b: T) -> DVector<T> {
     dx.map(|x| x * (-x * b).exp())
 }
 
@@ -487,7 +493,7 @@ mod test {
         let orig_b = 0.01;
 
         let x = nalgebra::DVector::<f64>::from_iterator(20, (0..200).step_by(10).map(|v| v as f64));
-        let y_origin = f(&x, orig_b) * orig_a;
+        let y_origin = limit_exp(&x, orig_b) * orig_a;
         let y_test = nalgebra::DVector::<f64>::from_iterator(
             y_origin.len(),
             y_origin
@@ -499,8 +505,8 @@ mod test {
         // 1. Создание модели для апроксимации
         let model = SeparableModelBuilder::<f64>::new(&["b"]) // названия параметров модели
             .independent_variable(x) // переменная
-            .function(&["b"], f) // функция, которй будем апроксимировать
-            .partial_deriv("b", f_db) // частная производная по параметру b
+            .function(&["b"], limit_exp) // функция, которй будем апроксимировать
+            .partial_deriv("b", dlimit_exp_db) // частная производная по параметру b
             .initial_parameters(vec![1.0]) // начальные значения параметров
             .build()
             .unwrap();
@@ -538,8 +544,8 @@ mod test {
 
         let model = SeparableModelBuilder::<f64>::new(&["b"]) // названия параметров модели
             .independent_variable(x) // переменная
-            .function(&["b"], f) // функция, которй будем апроксимировать
-            .partial_deriv("b", f_db) // частная производная по параметру b
+            .function(&["b"], limit_exp) // функция, которй будем апроксимировать
+            .partial_deriv("b", dlimit_exp_db) // частная производная по параметру b
             .initial_parameters(vec![1.0]) // начальные значения параметров
             .build()
             .unwrap();
