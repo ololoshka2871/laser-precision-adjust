@@ -59,9 +59,16 @@ $(() => {
             channel_to_select = parseInt($(ev.target)
                 .parent()
                 .attr('row-index')) - 1;
-        } else {
-            // <td><code></td>
+        } else if ((ev.target.tagName === 'CODE') || (ev.target.tagName === 'svg')) {
+            // <td><code></td> / <td><svg></td>
             channel_to_select = parseInt($(ev.target)
+                .parent()
+                .parent()
+                .attr('row-index')) - 1;
+        } else if (ev.target.tagName === 'path') {
+            // <td><svg><path></svg></td>
+            channel_to_select = parseInt($(ev.target)
+                .parent()
                 .parent()
                 .parent()
                 .attr('row-index')) - 1;
@@ -395,6 +402,34 @@ function update_rezonator_table(state: IState): void {
     newly_selected.children('[type=step]').children().text(state.CurrentStep);
     newly_selected.children('[type=freq-current]').children().text(round_to_2_digits(state.CurrentFreq));
     newly_selected.children('[type=freq-initial]').children().text(round_to_2_digits(state.InitialFreq));
+
+    const icon_td = newly_selected.children('[type=freq-status-icon]');
+    if (icon_td.prop('status') != state.StatusCode) {
+        icon_td.prop('status', state.StatusCode);
+        icon_td.removeClass();
+        switch (state.StatusCode) {
+            case "upper":
+                icon_td.removeClass().addClass('text-danger');
+                icon_td.html('<i class="fas fa-caret-square-up"></i>');
+                break;
+            case "ok":
+                icon_td.removeClass().addClass('text-success');
+                icon_td.html('<i class="fas fa-check"></i>');
+                break;
+            case "lower":
+                icon_td.removeClass().addClass('text-warning');
+                icon_td.html('<i class="fas fa-caret-square-down"></i>');
+                break;
+            case "lowerest":
+                icon_td.removeClass().addClass('text-danger');
+                icon_td.html('<i class="fa fa-caret-square-down"></i>');
+                break;
+            default:
+                icon_td.removeClass().addClass('text-primary');
+                icon_td.html('<i class="fa fa-minus"></i>');
+                break;
+        }
+    }
 }
 
 function burn(): void {

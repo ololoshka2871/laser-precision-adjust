@@ -113,11 +113,11 @@
                         {{ table_row_simple('Длина истории на графике', 'DisplayPointsCount', config.DisplayPointsCount,
                         'шт.')}}
                         {{ table_row_simple('Минимальное ожидаемое изменение частоты', 'ForecastConfig.MinFreqGrow',
-                        ForecastConfig.MinFreqGrow, 'Гц') }}
+                        config.ForecastConfig.MinFreqGrow, 'Гц') }}
                         {{ table_row_simple('Максимальное ожидаемое изменение частоты', 'ForecastConfig.MaxFreqGrow',
-                        ForecastConfig.MaxFreqGrow, 'Гц') }}
+                        config.ForecastConfig.MaxFreqGrow, 'Гц') }}
                         {{ table_row_simple('Медианное ожидаемое изменение частоты', 'ForecastConfig.MedianFreqGrow',
-                        ForecastConfig.MedianFreqGrow, 'Гц') }}
+                        config.ForecastConfig.MedianFreqGrow, 'Гц') }}
                         {{ table_row_simple('Время остывания', 'CooldownTimeMs', config.CooldownTimeMs, 'мс.') }}
 
                         {{ table_row_simple('Максимально-возможнная настройка в автоматическом режиме',
