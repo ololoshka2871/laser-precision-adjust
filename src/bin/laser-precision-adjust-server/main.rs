@@ -33,13 +33,13 @@ pub trait IDataPoint<T> {
     fn y(&self) -> T;
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct DataPoint<T> {
+#[derive(Clone, Copy, Default, serde::Serialize)]
+pub struct DataPoint<T: serde::Serialize> {
     x: T,
     y: T,
 }
 
-impl<T: num_traits::Float> DataPoint<T> {
+impl<T: num_traits::Float + serde::Serialize> DataPoint<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
@@ -52,7 +52,7 @@ impl<T: num_traits::Float> DataPoint<T> {
     }
 }
 
-impl<T: num_traits::Float> IDataPoint<T> for DataPoint<T> {
+impl<T: num_traits::Float + serde::Serialize> IDataPoint<T> for DataPoint<T> {
     fn x(&self) -> T {
         self.x
     }

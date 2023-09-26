@@ -3,6 +3,7 @@ use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use laser_precision_adjust::{box_plot::BoxPlot, ForecastConfig, Status};
 use nalgebra::{DVector, Scalar};
 use num_traits::Float;
+use serde::Serialize;
 use tokio::sync::{watch::Receiver, Mutex};
 
 use crate::{AdjustConfig, DataPoint, IDataPoint};
@@ -14,7 +15,7 @@ pub struct Prediction<T: Float> {
     pub median: T,
 }
 
-pub struct Predictor<T> {
+pub struct Predictor<T: Serialize> {
     fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
     forecast_config: ForecastConfig,
     serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
@@ -25,7 +26,7 @@ const NORMAL_T: f64 = 1000.0;
 
 impl<T> Predictor<T>
 where
-    T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + 'static,
+    T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + Serialize + 'static,
 {
     pub fn new(
         rx: Receiver<Status>,
@@ -54,6 +55,24 @@ where
             serie_data,
             _t: PhantomData::<T>,
         }
+    }
+
+    pub async fn save(&self, path: Option<std::path::PathBuf>) -> std::io::Result<()> {
+        if let Some(data_log_file_name) = path {
+            let file = std::fs::File::create({
+                let now = chrono::offset::Local::now();
+                let path_main = now.format(data_log_file_name.to_str().unwrap()).to_string();
+                format!("{path_main}-fragments.json")
+            })?;
+
+            let fragments = self.fragments.lock().await;
+            serde_json::to_writer_pretty::<_, Vec<Vec<Fragment<T>>>>(file, fragments.as_ref())?;
+        }
+        Ok(())
+    }
+
+    pub async fn reset(&mut self) {
+        self.fragments.lock().await.clear()
     }
 
     async fn task(
@@ -173,15 +192,15 @@ where
     }
 }
 
-#[derive(Clone)]
-pub struct Fragment<T> {
+#[derive(Clone, serde::Serialize)]
+pub struct Fragment<T: Serialize> {
     start_timestamp: f64,
     raw_points: Vec<DataPoint<T>>,
     coeffs: (T, T),
     min_index: usize,
 }
 
-impl<T> Fragment<T>
+impl<T: Serialize> Fragment<T>
 where
     T: Float
         + num_traits::FromPrimitive
@@ -260,7 +279,7 @@ where
     }
 }
 
-unsafe impl<T: Float> Send for Fragment<T> {}
+unsafe impl<T: Float + Serialize> Send for Fragment<T> {}
 
 //-----------------------------------------------------------------------------
 
@@ -379,7 +398,8 @@ where
         + num_traits::FromPrimitive
         + csaps::Real
         + nalgebra::RealField
-        + Copy,
+        + Copy
+        + Serialize,
 {
     let normal_t = unsafe { T::from_f64(NORMAL_T).unwrap_unchecked() };
     let mut t = vec![];
@@ -403,14 +423,19 @@ where
 
             // Апроксимация экспонентой
             let t_zero = t[f_min_index];
-            if let Ok(coeffs) = aproximate_exp(
+            if let Ok(mut coeffs) = aproximate_exp(
                 t[f_min_index..]
                     .iter()
                     .map(move |t| (*t - t_zero) / normal_t)
                     .collect::<Vec<_>>(),
                 &fz,
             ) {
-                tracing::trace!("Aprox fragment: a={}, b={}", coeffs.0, coeffs.1);
+                if coeffs.0 > T::one() {
+                    coeffs.0 = T::one();
+                    tracing::trace!("Aprox fragment: a={}(corrected), b={}", coeffs.0, coeffs.1);
+                } else {
+                    tracing::trace!("Aprox fragment: a={}, b={}", coeffs.0, coeffs.1);
+                }
 
                 let mut guard = fragments.lock().await;
                 let serie = guard.get_mut(channel).unwrap();

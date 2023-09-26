@@ -374,6 +374,13 @@ pub(super) async fn handle_control(
                             )))
                             .into_response();
                         } else {
+                            {
+                                let mut guard = predictor.lock().await;
+                                if let Err(e) = guard.save(config.data_log_file).await {
+                                    tracing::error!("Save fragments error: {}", e);
+                                }
+                                guard.reset().await;
+                            }
                             ok_result.into_response()
                         }
                     }
@@ -525,11 +532,9 @@ pub(super) async fn handle_control(
                         let channel = &mut guard[i];
                         let avalable_points_count = if channel.points.len() == 0 { 0 } else { channel.points.len() - 1  };
                         let points_to_read = std::cmp::min(avalable_points_count, POINTS_TO_AVG);
-                        if points_to_read < POINTS_TO_AVG / 2 ||
-                            (channel.points
+                        if points_to_read < POINTS_TO_AVG / 3 ||
+                            (channel.points[(channel.points.len() - points_to_read)..]
                                 .iter()
-                                .rev()
-                                .take(points_to_read)
                                 .map(|v| v.y.to_string())
                                 .collect::<HashSet<_>>().len() < POINTS_TO_AVG / 5
                         ) {
@@ -586,11 +591,8 @@ pub(super) async fn handle_control(
                 };
                 let points_to_read = std::cmp::min(avalable_points_count, POINTS_TO_AVG);
                 if points_to_read < POINTS_TO_AVG / 2
-                    || (channel
-                        .points
+                    || (channel.points[(channel.points.len() - points_to_read)..]
                         .iter()
-                        .rev()
-                        .take(points_to_read)
                         .map(|v| v.y.to_string())
                         .collect::<HashSet<_>>()
                         .len()
@@ -791,7 +793,7 @@ async fn get_prediction<T>(
     start_timeestamp: f64,
 ) -> (Vec<Vec<(T, T)>>, Option<Prediction>)
 where
-    T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + 'static,
+    T: Float + num_traits::FromPrimitive + csaps::Real + nalgebra::RealField + Serialize + 'static,
 {
     let prediction = predictor
         .get_prediction(channel, f_start)
