@@ -39,12 +39,7 @@ where
         {
             let fragments = fragments.clone();
             let serie_data = serie_data.clone();
-            tokio::spawn(Self::task(
-                rx,
-                fragments,
-                fragment_len,
-                serie_data,
-            ));
+            tokio::spawn(Self::task(rx, fragments, fragment_len, serie_data));
         }
         Self {
             fragments,
@@ -69,7 +64,11 @@ where
     }
 
     pub async fn reset(&mut self) {
-        self.fragments.lock().await.clear()
+        self.fragments
+            .lock()
+            .await
+            .iter_mut()
+            .for_each(|ch| ch.clear());
     }
 
     async fn task(
@@ -258,8 +257,7 @@ where
                 let y = (limit_exp(&x, self.coeffs.1) * self.coeffs.0)
                     .add_scalar(self.raw_points[self.min_index].y);
 
-                x
-                    .iter()
+                x.iter()
                     .zip(y.iter())
                     .map(|(x, y)| DataPoint::new(x_start + (*x) * normal_t, *y))
                     .collect::<Vec<_>>()
@@ -421,7 +419,7 @@ where
 
             // Апроксимация экспонентой
             let t_zero = t[f_min_index];
-            if let Ok(mut coeffs) = aproximate_exp(
+            if let Ok(coeffs) = aproximate_exp(
                 t[f_min_index..]
                     .iter()
                     .map(move |t| (*t - t_zero) / normal_t)
@@ -429,11 +427,12 @@ where
                 &fz,
             ) {
                 const LIMIT_A: f64 = 5.0;
+
                 if coeffs.0 > unsafe { T::from_f64(LIMIT_A).unwrap_unchecked() }
                     || coeffs.0 < T::zero()
+                    || coeffs.1 < T::zero()
                 {
-                    coeffs.0 = unsafe { T::from_f64(LIMIT_A).unwrap_unchecked() };
-                    tracing::trace!("Aprox fragment: a={}(corrected), b={}", coeffs.0, coeffs.1);
+                    Err(())?;
                 } else {
                     tracing::trace!("Aprox fragment: a={}, b={}", coeffs.0, coeffs.1);
                 }

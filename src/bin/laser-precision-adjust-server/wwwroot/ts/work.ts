@@ -122,6 +122,7 @@ $(() => {
             if (state.success) {
                 if (state.message === 'Finished' && present_noty !== null) {
                     present_noty.close();
+                    present_noty = null;
                 } else if (present_noty !== null) {
                     present_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);
                 } else {
@@ -149,6 +150,7 @@ $(() => {
 
                 if ((state.message.startsWith('Настройка завершена') || state.message.startsWith('Настройка отменена')) && present_noty !== null) {
                     present_noty.close();
+                    present_noty = null;
                 } else if (present_noty !== null) {
                     present_noty.setText("<i class='fas fa-spinner fa-pulse'></i> " + state.message);
                 } else {
@@ -161,6 +163,7 @@ $(() => {
                 console.log(state.error);
                 if (present_noty !== null) {
                     present_noty.close();
+                    present_noty = null;
                 }
                 noty_error(state.error);
             }
@@ -404,9 +407,14 @@ $(() => {
 
 function round_to_2_digits(x: number): string {
     const s = (Math.round(x * 100) / 100).toString();
-    return (s.indexOf('.') < 0) 
-        ? s + '.00'
-        : s
+    const dot_index = s.indexOf('.');
+    if (dot_index < 0) {
+        return s + '.00';
+    } else if (dot_index == s.length - 2) {
+        return s + '0'
+    } else {
+        return s
+    }
 }
 
 function update_f_re_display(cfg): void {

@@ -278,7 +278,7 @@ pub(super) async fn handle_stat(
     )
 }
 
-pub(super) async fn handle_stat_rez(Path(rez_id): Path<usize>) -> impl IntoResponse {
+pub(super) async fn handle_stat_rez(Path(_rez_id): Path<usize>) -> impl IntoResponse {
     Json({})
 }
 
