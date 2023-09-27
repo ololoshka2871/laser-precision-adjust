@@ -5,7 +5,7 @@ use num_traits::Float;
 use serde::Serialize;
 use tokio::sync::{watch::Receiver, Mutex};
 
-use crate::{box_plot::BoxPlot, AdjustConfig, DataPoint, ForecastConfig, IDataPoint, Status};
+use crate::{box_plot::BoxPlot, DataPoint, ForecastConfig, IDataPoint, Status};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Prediction<T: Float> {
@@ -32,7 +32,6 @@ where
         forecast_config: ForecastConfig,
         channels_count: usize,
         fragment_len: usize,
-        freqmeter_config: Arc<Mutex<AdjustConfig>>,
     ) -> Self {
         let fragments = Arc::new(Mutex::new(vec![vec![]; channels_count]));
         let serie_data = Arc::new(Mutex::new(vec![]));
@@ -45,7 +44,6 @@ where
                 fragments,
                 fragment_len,
                 serie_data,
-                freqmeter_config,
             ));
         }
         Self {
@@ -79,15 +77,12 @@ where
         fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
         fragment_len: usize,
         serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
-        freqmeter_config: Arc<Mutex<AdjustConfig>>,
     ) {
         let mut current_chanel = None;
         loop {
             status_rx.changed().await.ok();
 
             let new_status = status_rx.borrow().clone();
-
-            let work_offset_hz = freqmeter_config.lock().await.work_offset_hz;
 
             if new_status.shot_mark {
                 // выстрел - фиксируем канал
@@ -121,7 +116,7 @@ where
                 if current_chanel.is_some() && guard.len() < fragment_len {
                     guard.push((
                         new_status.since_start.as_millis(),
-                        new_status.current_frequency + work_offset_hz,
+                        new_status.current_frequency,
                     ))
                 } else {
                     let cc = current_chanel.unwrap() as usize;

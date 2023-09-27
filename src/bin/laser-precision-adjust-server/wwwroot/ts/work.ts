@@ -324,10 +324,15 @@ $(() => {
             chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
 
             var plot_max = upperLimit;
-            var sl = chart.data.datasets[2].data.filter((v?: number) => v !== null) as number[];
-            sl = sl.slice(0, Math.min(5, sl.length));
-            const data_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
-            var plot_min = Math.min(data_min_avg, lowerLimit) - 1.0;
+            var plot_min: number;
+            {
+                var data_not_nan = chart.data.datasets[2].data.filter((v?: number) => v !== null) as number[];
+                var sl = data_not_nan.slice(0, Math.min(5, data_not_nan.length));
+                const data_start_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
+                sl = data_not_nan.slice(data_not_nan.length - Math.min(5, data_not_nan.length), data_not_nan.length);
+                const data_end_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
+                plot_min = Math.min(data_start_min_avg, data_end_min_avg, lowerLimit) - 1.0;
+            }
 
             // prediction
             if (state.Prediction !== null && state.Points.length > 5) {

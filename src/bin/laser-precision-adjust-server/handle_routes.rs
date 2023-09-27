@@ -687,16 +687,13 @@ pub(super) async fn handle_state(
             status_rx.changed().await.ok();
 
             let status = status_rx.borrow().clone();
-            let (freq_target, work_offset_hz) = {
-                let guard = freqmeter_config.lock().await;
-                (guard.target_freq, guard.work_offset_hz)
-            };
+            let freq_target = freqmeter_config.lock().await.target_freq;
 
             let timestamp = status.since_start.as_millis();
             let (initial_freq, points) = {
                 let mut channels = channels.lock().await;
                 let channel = channels.get_mut(status.current_channel as usize).unwrap();
-                channel.points.push(DataPoint::new(timestamp as f64, (status.current_frequency + work_offset_hz) as f64));
+                channel.points.push(DataPoint::new(timestamp as f64, status.current_frequency as f64));
                 if channel.points.len() > config.display_points_count {
                     channel.points.remove(0);
                 }
@@ -764,7 +761,7 @@ pub(super) async fn handle_state(
             yield StateResult {
                 timestamp,
                 seleced_channel: status.current_channel,
-                current_freq: status.current_frequency + work_offset_hz,
+                current_freq: status.current_frequency,
                 target_freq: freq_target,
                 work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
@@ -774,7 +771,7 @@ pub(super) async fn handle_state(
                 prediction,
                 aproximations,
                 is_auto_adjust_busy,
-                status_code: limits.to_status(status.current_frequency + work_offset_hz),
+                status_code: limits.to_status(status.current_frequency),
             };
         }
     };

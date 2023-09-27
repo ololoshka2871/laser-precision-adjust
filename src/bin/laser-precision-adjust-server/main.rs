@@ -96,7 +96,6 @@ async fn main() -> Result<(), std::io::Error> {
         config.forecast_config,
         config.resonator_placement.len(),
         (config.cooldown_time_ms / config.update_interval_ms) as usize,
-        freqmeter_config.clone(),
     );
 
     let auto_adjust_controller = auto_adjust_controller::AutoAdjestController::new(
