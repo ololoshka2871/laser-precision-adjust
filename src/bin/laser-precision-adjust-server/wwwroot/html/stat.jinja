@@ -64,7 +64,30 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                
+                                {% macro ppm(status='', ppm='') -%}
+                                {% if status == 'unknown' -%}
+                                <td type="freq-ppm" status={{status}} class="text-primary"><i class="fa fa-minus"></i>
+                                </td>
+                                {% elif status == 'upper' -%}
+                                <td type="freq-ppm" status={{status}}><code class="text-danger">{{ppm}}</code></td>
+                                {% elif status == 'ok' -%}
+                                <td type="freq-ppm" status={{status}}><code class="text-success">{{ppm}}</code></td>
+                                {% elif status == 'lower' -%}
+                                <td type="freq-ppm" status={{status}}><code class="text-warning">{{ppm}}</code></td>
+                                {% else -%}
+                                <td type="freq-status-icon" status={{status}} class="text-danger"><i
+                                        class="fa fa-caret-square-down"></i></td>
+                                {% endif -%}
+                                {% endmacro -%}
+                                {% for rez in rezonators -%}
+                                <tr class="clickableRow" id="rez-{{ loop.index }}-row" row-index="{{ loop.index }}">
+                                    <th scope="row">{{ loop.index }}</th>
+                                    <td type="step"><code class="text-dark">{{ rez.current_step }}</code></td>
+                                    <td type="freq-initial"><code class="text-dark">{{ rez.initial_freq }}</code></td>
+                                    <td type="freq-current"><code class="text-dark">{{ rez.current_freq }}</code></td>
+                                    {{ ppm(rez.status, rez.ppm) }}
+                                </tr>
+                                {% endfor -%}
                             </tbody>
                         </table>
                     </div>
@@ -73,7 +96,7 @@
                         <div class="chart-container" style="position: relative;">
                             <canvas id="adj-history-plot"></canvas>
                         </div>
-                        <hr/>
+                        <hr />
                         <h6>Прогноз</h6>
                         <div class="chart-container" style="position: relative;">
                             <canvas id="forecast-plot"></canvas>
@@ -92,6 +115,7 @@
     <script src="static/js/common.js"></script>
 
     <!-- Specific scripts -->
+    <script src="lib/chart.js/Chart.bundle.min.js"></script>
     <script src="static/js/stat.js"></script>
 </body>
 

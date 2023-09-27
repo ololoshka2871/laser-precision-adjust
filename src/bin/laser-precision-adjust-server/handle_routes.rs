@@ -150,6 +150,20 @@ impl Limits {
             RezStatus::Ok
         }
     }
+
+    pub fn ppm(&self, f: f32) -> f32 {
+        let f_center = (self.lower_limit + self.upper_limit) / 2.0;
+        (f - f_center) / f_center * 1_000_000.0
+    }
+
+    pub fn from_config(config: &Config) -> Self {
+        let ppm2hz = config.target_freq_center * config.working_offset_ppm / 1_000_000.0;
+        Self {
+            upper_limit: config.target_freq_center + ppm2hz,
+            lower_limit: config.target_freq_center - ppm2hz,
+            ultra_low_limit: config.target_freq_center - config.auto_adjust_limits.min_freq_offset,
+        }
+    }
 }
 
 pub(super) async fn handle_work(
@@ -170,7 +184,7 @@ pub(super) async fn handle_work(
 
     #[derive(Serialize)]
     struct Model {
-        resonators: Vec<RezData>,
+        rezonators: Vec<RezData>,
         target_freq: String,
         work_offset_hz: String,
     }
@@ -183,18 +197,13 @@ pub(super) async fn handle_work(
         (guard.target_freq, guard.work_offset_hz)
     };
 
-    let ppm2hz = config.target_freq_center * config.working_offset_ppm / 1_000_000.0;
-    let limits = Limits {
-        upper_limit: config.target_freq_center + ppm2hz,
-        lower_limit: config.target_freq_center - ppm2hz,
-        ultra_low_limit: config.target_freq_center - config.auto_adjust_limits.min_freq_offset,
-    };
+    let limits = Limits::from_config(&config);
 
     RenderHtml(
         Key("work".to_owned()),
         engine,
         Model {
-            resonators: channels
+            rezonators: channels
                 .lock()
                 .await
                 .iter()
@@ -204,9 +213,9 @@ pub(super) async fn handle_work(
                         current_step: r.current_step,
                         initial_freq: r
                             .initial_freq
-                            .map(|f| format!("{:.2}", f))
+                            .map(|f| format2digits(f))
                             .unwrap_or("0".to_owned()),
-                        current_freq: format!("{:.2}", current_freq),
+                        current_freq: format2digits(current_freq),
                         points: r.points.iter().map(|p| (p.x(), p.y())).collect(),
                         status: limits.to_status(current_freq),
                     }
@@ -218,13 +227,58 @@ pub(super) async fn handle_work(
     )
 }
 
-pub(super) async fn handle_stat(State(engine): State<AppEngine>) -> impl IntoResponse {
-    RenderHtml(Key("stat".to_owned()), engine, ())
+pub(super) async fn handle_stat(
+    State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
+    State(config): State<Config>,
+    State(_precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
+    State(engine): State<AppEngine>,
+) -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct RezData {
+        current_step: u32,
+        initial_freq: String,
+        current_freq: String,
+        status: RezStatus,
+        ppm: String,
+    }
+
+    #[derive(Serialize)]
+    struct Model {
+        rezonators: Vec<RezData>,
+    }
+
+    // maybe?
+    // _precision_adjust.lock().await.select_channel(None);
+
+    let limits = Limits::from_config(&config);
+
+    RenderHtml(
+        Key("stat".to_owned()),
+        engine,
+        Model {
+            rezonators: channels
+                .lock()
+                .await
+                .iter()
+                .map(|r| {
+                    let current_freq = r.points.last().cloned().unwrap_or_default().y() as f32;
+                    RezData {
+                        current_step: r.current_step,
+                        initial_freq: r
+                            .initial_freq
+                            .map(|f| format2digits(f))
+                            .unwrap_or("0".to_owned()),
+                        current_freq: format2digits(current_freq),
+                        status: limits.to_status(current_freq),
+                        ppm: format2digits(limits.ppm(current_freq)),
+                    }
+                })
+                .collect(),
+        },
+    )
 }
 
-pub(super) async fn handle_stat_rez(
-    Path(rez_id): Path<usize>,
-) -> impl IntoResponse {
+pub(super) async fn handle_stat_rez(Path(rez_id): Path<usize>) -> impl IntoResponse {
     Json({})
 }
 
@@ -823,4 +877,8 @@ where
         .collect();
 
     (fragments, prediction)
+}
+
+fn format2digits(v: f32) -> String {
+    format!("{:.2}", v)
 }
