@@ -222,6 +222,12 @@ pub(super) async fn handle_stat(State(engine): State<AppEngine>) -> impl IntoRes
     RenderHtml(Key("stat".to_owned()), engine, ())
 }
 
+pub(super) async fn handle_stat_rez(
+    Path(rez_id): Path<usize>,
+) -> impl IntoResponse {
+    Json({})
+}
+
 pub(super) async fn handle_config(
     State(engine): State<AppEngine>,
     State(config): State<Config>,

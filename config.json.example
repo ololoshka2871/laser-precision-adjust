@@ -22,8 +22,8 @@
     "DisplayPointsCount": 100,
     "ForecastConfig": {
         "MinFreqGrow": 0.1,
-        "MaxFreqGrow": 1.0,
-        "MedianFreqGrow": 0.45
+        "MaxFreqGrow": 2.0,
+        "MedianFreqGrow": 0.75
     },
     "CooldownTimeMs": 2500,
     "AutoAdjustLimits": {

@@ -402,8 +402,11 @@ $(() => {
     });
 });
 
-function round_to_2_digits(x: number): number {
-    return Math.round(x * 100) / 100;
+function round_to_2_digits(x: number): string {
+    const s = (Math.round(x * 100) / 100).toString();
+    return (s.indexOf('.') < 0) 
+        ? s + '.00'
+        : s
 }
 
 function update_f_re_display(cfg): void {

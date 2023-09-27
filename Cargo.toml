@@ -1,6 +1,6 @@
 [package]
 name = "laser-precision-adjust"
-version = "0.10.1"
+version = "0.11.0"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"

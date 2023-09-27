@@ -22,7 +22,8 @@ use axum_template::engine::Engine;
 use minijinja::Environment;
 
 use crate::handle_routes::{
-    handle_config, handle_control, handle_stat, handle_state, handle_update_config, handle_work,
+    handle_config, handle_control, handle_stat, handle_stat_rez, handle_state,
+    handle_update_config, handle_work,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -145,6 +146,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/state", get(handle_state))
         .route("/work", get(handle_work))
         .route("/stat", get(handle_stat))
+        .route("/stat/:rez_id", get(handle_stat_rez))
         .route("/config", get(handle_config).patch(handle_update_config))
         .route("/static/:path/:file", get(static_files::handle_static))
         .route("/lib/*path", get(static_files::handle_lib))
