@@ -416,11 +416,11 @@ async fn find_edge(
                     max_frequency,
                     box_plot.q3()
                 )))?
-            } else if box_plot.q3() - box_plot.q1() >= 0.2
+            } else if box_plot.q3() - box_plot.q1() >= 0.35
                 && (last_fragment.first().map_or(box_plot.q1(), |v| *v)
                     - last_fragment.last().map_or(box_plot.q3(), |v| *v))
                 .abs()
-                    >= 0.2
+                    >= 0.35
             {
                 // нашли
                 display_progress(&status_report_q, format!("Реакция обнаружена!")).await?;
