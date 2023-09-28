@@ -91,15 +91,8 @@ where
                 {
                     let mut guard = serie_data.lock().await;
                     if guard.len() > 3 {
-                        if let Err(_) = try_consume_fragment(
-                            &guard,
-                            new_status.current_channel as usize,
-                            &fragments,
-                        )
-                        .await
-                        {
-                            tracing::error!("Invalid fragment");
-                        }
+                        consume_fragment(&guard, new_status.current_channel as usize, &fragments)
+                            .await;
                     }
                     // drop data
                     guard.clear();
@@ -124,9 +117,7 @@ where
                     current_chanel = None;
 
                     // Сбор закончен
-                    if let Err(_) = try_consume_fragment(&guard, cc, &fragments).await {
-                        tracing::error!("Failed to aproximate last fragment");
-                    }
+                    consume_fragment(&guard, cc, &fragments).await;
                 }
             }
         }
@@ -189,7 +180,7 @@ where
 pub struct Fragment<T: Serialize> {
     start_timestamp: f64,
     raw_points: Vec<DataPoint<T>>,
-    coeffs: (T, T),
+    coeffs: Option<(T, T)>,
     min_index: usize,
 }
 
@@ -210,7 +201,7 @@ where
     pub fn new(
         start_timestamp: u128,
         raw_points: &[DataPoint<T>],
-        coeffs: (T, T),
+        coeffs: Option<(T, T)>,
         min_index: usize,
     ) -> Self {
         Self {
@@ -219,6 +210,10 @@ where
             coeffs,
             min_index,
         }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.coeffs.is_some()
     }
 
     pub fn points(&self) -> &[DataPoint<T>] {
@@ -233,36 +228,53 @@ where
     // Коэффициенты аппроксимации функцией y = A * (1 - exp(-x * B))
     // Принимается, что исходная кривя смещена таким образом, что минимум
     // находится в точке (0, 0)
-    pub fn aprox_coeffs(&self) -> (T, T) {
+    pub fn aprox_coeffs(&self) -> Option<(T, T)> {
         self.coeffs
     }
 
     // Рассчитать аппроксимированную кривую начинаи подвинуть
     // её в точку (x_start, y_offset)
     pub fn evaluate(&self) -> Vec<DataPoint<T>> {
-        let normal_t = unsafe { T::from_f64(NORMAL_T).unwrap_unchecked() };
+        if let Some(coeffs) = &self.coeffs {
+            let normal_t = unsafe { T::from_f64(NORMAL_T).unwrap_unchecked() };
 
-        self.raw_points
-            .iter()
-            .take(self.min_index)
-            .cloned()
-            .chain({
-                let x_start = self.raw_points[self.min_index].x;
-                let mut x = nalgebra::DVector::<T>::from_iterator(
-                    self.raw_points.len() - self.min_index,
-                    self.raw_points.iter().skip(self.min_index).map(|p| p.x),
-                );
-                x.add_scalar_mut(-x_start);
-                x /= normal_t;
-                let y = (limit_exp(&x, self.coeffs.1) * self.coeffs.0)
-                    .add_scalar(self.raw_points[self.min_index].y);
+            self.raw_points
+                .iter()
+                .take(self.min_index)
+                .cloned()
+                .chain({
+                    let x_start = self.raw_points[self.min_index].x;
+                    let mut x = nalgebra::DVector::<T>::from_iterator(
+                        self.raw_points.len() - self.min_index,
+                        self.raw_points.iter().skip(self.min_index).map(|p| p.x),
+                    );
+                 
+                    // let x_start = self.raw_points[self.min_index].x;
+                    // let interval = self.raw_points.iter().fold(T::zero(), |a, p| a + p.y())
+                        // / unsafe { T::from_usize(self.raw_points.len()).unwrap_unchecked() };
+                    // let len = (self.raw_points.len() - self.min_index) * 2;
+                    // let start = self.raw_points[self.min_index].x();
+                    // let mut x = nalgebra::DVector::<T>::from_iterator(
+                        // (self.raw_points.len() - self.min_index) * 2,
+                        // (0..len).map(|i| unsafe {
+                            // start + T::from_usize(i).unwrap_unchecked() * interval
+                        // }),
+                    // );
 
-                x.iter()
-                    .zip(y.iter())
-                    .map(|(x, y)| DataPoint::new(x_start + (*x) * normal_t, *y))
-                    .collect::<Vec<_>>()
-            })
-            .collect()
+                    x.add_scalar_mut(-x_start);
+                    x /= normal_t;
+                    let y = (limit_exp(&x, coeffs.1) * coeffs.0)
+                        .add_scalar(self.raw_points[self.min_index].y);
+
+                    x.iter()
+                        .zip(y.iter())
+                        .map(|(x, y)| DataPoint::new(x_start + (*x) * normal_t, *y))
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        } else {
+            self.raw_points.clone()
+        }
     }
 
     // Таймштамп начала фрагмента
@@ -383,12 +395,11 @@ where
 
 //-----------------------------------------------------------------------------
 
-async fn try_consume_fragment<T>(
+async fn consume_fragment<T>(
     serie_data: &[(u128, f32)],
     channel: usize,
     fragments: &Mutex<Vec<Vec<Fragment<T>>>>,
-) -> Result<(), ()>
-where
+) where
     T: Float
         + num_traits::NumOps
         + num_traits::FromPrimitive
@@ -428,14 +439,16 @@ where
             ) {
                 const LIMIT_A: f64 = 5.0;
 
-                if coeffs.0 > unsafe { T::from_f64(LIMIT_A).unwrap_unchecked() }
+                let coeffs = if coeffs.0 > unsafe { T::from_f64(LIMIT_A).unwrap_unchecked() }
                     || coeffs.0 < T::zero()
                     || coeffs.1 < T::zero()
                 {
-                    Err(())?;
+                    tracing::error!("Aprox fragment failed!");
+                    None
                 } else {
                     tracing::trace!("Aprox fragment: a={}, b={}", coeffs.0, coeffs.1);
-                }
+                    Some(coeffs)
+                };
 
                 let mut guard = fragments.lock().await;
                 let serie = guard.get_mut(channel).unwrap();
@@ -445,14 +458,12 @@ where
                     .map(|(t, f)| DataPoint::new(*t, f))
                     .collect::<Vec<_>>();
                 serie.push(Fragment::new(serie_data[0].0, &data, coeffs, f_min_index));
-                return Ok(());
+                return;
             } else {
                 tracing::warn!("Fragment approximation failed!");
             }
         }
     }
-
-    Err(())
 }
 
 //-----------------------------------------------------------------------------

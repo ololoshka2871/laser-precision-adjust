@@ -33,13 +33,17 @@ async fn main() -> Result<(), std::io::Error> {
                     .collect::<Vec<_>>();
 
                 if let Ok(coeffs) = aproximate_exp(tz, &fz) {
-                    let orig_coeffs = shot.aprox_coeffs();
+                    let orig_coeffs = shot.aprox_coeffs().unwrap();
                     println!(
                         "Coeffs:;{};{};;{};{}",
                         coeffs.0, coeffs.1, orig_coeffs.0, orig_coeffs.1
                     );
-                    let new_fragment =
-                        Fragment::new(shot.start_timestamp() as u128, &data, coeffs, f_min_index);
+                    let new_fragment = Fragment::new(
+                        shot.start_timestamp() as u128,
+                        &data,
+                        Some(coeffs),
+                        f_min_index,
+                    );
                     let orig_model_data = shot.evaluate();
                     let new_data = new_fragment.evaluate();
                     for (((i, p), pm), pnm) in
