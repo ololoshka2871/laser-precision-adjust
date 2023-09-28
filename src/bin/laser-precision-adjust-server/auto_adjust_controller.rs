@@ -450,7 +450,7 @@ async fn find_edge(
 async fn do_fast_forward_adjust(
     traget_frequency: f64,
     precision_ppm: f64,
-    mut last_freq_boxplot: BoxPlot<f64>,
+    last_freq_boxplot: BoxPlot<f64>,
     status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
     precision_adjust: &Mutex<PrecisionAdjust>,
     update_interval_ms: u32,
@@ -464,9 +464,9 @@ async fn do_fast_forward_adjust(
     let mut total_step_counter: u32 = 0;
     let mut step_limit_over = false;
 
-    Ok(loop {
-        let forecast = last_freq_boxplot.upper_bound();
+    let mut forecast = last_freq_boxplot.upper_bound();
 
+    Ok(loop {
         // определяем сколько шагов нужно сделать, но не менее 1
         let mut steps_forecast = ((traget_frequency as f64 - forecast)
             / predictor
@@ -477,13 +477,27 @@ async fn do_fast_forward_adjust(
                 .unwrap()
                 .maximal)
             .floor() as i32;
-        if steps_forecast < 1 {
+        if steps_forecast <= 1 {
+            // ожидание + переизмеренть частоту
+            sleep_ms((update_interval_ms * 5) as u64).await;
+            let current_freq = reread_freq(predictor).await;
+
+            // ложное срабатывание?
+            if predictor
+                .lock()
+                .await
+                .get_prediction(channel, current_freq)
+                .await
+                .unwrap()
+                .maximal
+                < f_lower_baund
+            {
+                forecast = current_freq;
+                continue;
+            }
+
             // переход к точной настройке
-            return Ok((
-                State::PrecisionStepping,
-                last_freq_boxplot.median(),
-                total_step_counter,
-            ));
+            return Ok((State::PrecisionStepping, current_freq, total_step_counter));
         } else if steps_forecast > step_limit as i32 {
             steps_forecast = step_limit as i32;
         }
@@ -545,19 +559,16 @@ async fn do_fast_forward_adjust(
         };
 
         // обновляем прогноз
-        last_freq_boxplot = last_fragment.box_plot();
-
-        let forecast_ub = last_freq_boxplot.upper_bound();
-        let median = last_freq_boxplot.median();
+        forecast = last_fragment.target();
         if step_limit_over {
             // Достигнут лимит шагов, принудительно выходим
-            break (State::PrecisionStepping, median, total_step_counter);
-        } else if forecast_ub > traget_frequency {
+            break (State::PrecisionStepping, forecast, total_step_counter);
+        } else if forecast > traget_frequency {
             // прогноз показывает, что частота уже выше целевой, переходим к ReverseStepping
-            break (State::ReverseStepping, median, total_step_counter);
-        } else if forecast_ub > f_lower_baund {
+            break (State::ReverseStepping, forecast, total_step_counter);
+        } else if forecast > f_lower_baund {
             // достигнута нижняя граница, останов грубой настройки, переходим к PrecisionStepping
-            break (State::PrecisionStepping, median, total_step_counter);
+            break (State::PrecisionStepping, forecast, total_step_counter);
         } else {
             // продолжаем грубую настройку
         }
@@ -624,12 +635,17 @@ async fn do_precision_adjust(
                     };
 
                     // обновляем текущую частоту
-                    current_freq = last_fragment.box_plot().q3();
+                    current_freq = last_fragment.target();
                     display_progress(
                         &status_report_q,
                         format!("Текущая частота: ~{:.2} Гц", current_freq),
                     )
                     .await?;
+                    if current_freq > f_lower_baund {
+                        // на всякий случай
+                        sleep_ms((update_interval_ms * 5) as u64).await;
+                        current_freq = reread_freq(predictor).await;
+                    }
                 } else {
                     Err(HardwareLogickError(
                         "Не удалось получить данные с частотмера, аварийный останов".to_owned(),
@@ -646,6 +662,10 @@ async fn do_precision_adjust(
             )))?,
         }
     };
+
+    // ожидание + переизмеренть частоту
+    sleep_ms((update_interval_ms * 5) as u64).await;
+    current_freq = reread_freq(predictor).await;
 
     Ok((target_state, current_freq, total_step_counter))
 }
@@ -711,7 +731,7 @@ async fn do_backword_adjust(
                     };
 
                     // обновляем текущую частоту
-                    current_freq = last_fragment.box_plot().upper_bound();
+                    current_freq = last_fragment.target();
                     display_progress(
                         &status_report_q,
                         format!("Текущая частота: ~{:.2} Гц", current_freq),
@@ -735,4 +755,8 @@ async fn do_backword_adjust(
     }
 
     Ok((current_freq, total_step_counter))
+}
+
+async fn reread_freq(predictor: &Mutex<Predictor<f64>>) -> f64 {
+    predictor.lock().await.capture_next_point().await as f64
 }

@@ -18,6 +18,7 @@ pub struct Predictor<T: Serialize> {
     fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
     forecast_config: ForecastConfig,
     serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
+    status_rx: Receiver<Status>,
     _t: PhantomData<T>,
 }
 
@@ -39,12 +40,13 @@ where
         {
             let fragments = fragments.clone();
             let serie_data = serie_data.clone();
-            tokio::spawn(Self::task(rx, fragments, fragment_len, serie_data));
+            tokio::spawn(Self::task(rx.clone(), fragments, fragment_len, serie_data));
         }
         Self {
             fragments,
             forecast_config,
             serie_data,
+            status_rx: rx,
             _t: PhantomData::<T>,
         }
     }
@@ -174,6 +176,11 @@ where
     pub async fn capture(&self) -> Vec<(u128, f32)> {
         self.serie_data.lock().await.clone()
     }
+
+    pub async fn capture_next_point(&mut self) -> f32 {
+        self.status_rx.changed().await.ok();
+        self.status_rx.borrow().current_frequency
+    }
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -244,24 +251,27 @@ where
                 .cloned()
                 .chain({
                     let x_start = self.raw_points[self.min_index].x;
-                    let mut x = nalgebra::DVector::<T>::from_iterator(
-                        self.raw_points.len() - self.min_index,
-                        self.raw_points.iter().skip(self.min_index).map(|p| p.x),
-                    );
-                 
-                    // let x_start = self.raw_points[self.min_index].x;
-                    // let interval = self.raw_points.iter().fold(T::zero(), |a, p| a + p.y())
-                        // / unsafe { T::from_usize(self.raw_points.len()).unwrap_unchecked() };
-                    // let len = (self.raw_points.len() - self.min_index) * 2;
-                    // let start = self.raw_points[self.min_index].x();
-                    // let mut x = nalgebra::DVector::<T>::from_iterator(
-                        // (self.raw_points.len() - self.min_index) * 2,
-                        // (0..len).map(|i| unsafe {
-                            // start + T::from_usize(i).unwrap_unchecked() * interval
-                        // }),
-                    // );
 
-                    x.add_scalar_mut(-x_start);
+                    // let mut x = nalgebra::DVector::<T>::from_iterator(
+                    //     self.raw_points.len() - self.min_index,
+                    //     self.raw_points.iter().skip(self.min_index).map(|p| p.x),
+                    // );
+                    //x.add_scalar_mut(-x_start);
+
+                    let interval = self.raw_points[self.min_index..]
+                        .iter()
+                        .fold(T::zero(), |_a, p| p.x() - x_start)
+                        / unsafe {
+                            T::from_usize(self.raw_points[self.min_index..].len())
+                                .unwrap_unchecked()
+                        };
+                    assert!(interval >= T::zero());
+                    let len = (self.raw_points.len() - self.min_index) * 2;
+                    let mut x = nalgebra::DVector::<T>::from_iterator(
+                        len,
+                        (0..len).map(|i| unsafe { T::from_usize(i).unwrap_unchecked() * interval }),
+                    );
+
                     x /= normal_t;
                     let y = (limit_exp(&x, coeffs.1) * coeffs.0)
                         .add_scalar(self.raw_points[self.min_index].y);
@@ -284,6 +294,15 @@ where
 
     pub fn box_plot(&self) -> BoxPlot<T> {
         BoxPlot::new(&self.raw_points.iter().map(|p| p.y()).collect::<Vec<_>>())
+    }
+
+    // Предсказать конечную частоту после охлаждения
+    pub fn target(&self) -> T {
+        if let Some((a, _)) = self.coeffs {
+            self.raw_points[self.min_index].y() + a
+        } else {
+            self.box_plot().upper_bound()
+        }
     }
 }
 
