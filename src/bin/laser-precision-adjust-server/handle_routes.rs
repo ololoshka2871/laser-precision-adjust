@@ -156,12 +156,12 @@ impl Limits {
         (f - f_center) / f_center * 1_000_000.0
     }
 
-    pub fn from_config(config: &Config) -> Self {
-        let ppm2hz = config.target_freq_center * config.working_offset_ppm / 1_000_000.0;
+    pub fn from_config(target: f32, config: &Config) -> Self {
+        let ppm2hz = target * config.working_offset_ppm / 1_000_000.0;
         Self {
-            upper_limit: config.target_freq_center + ppm2hz,
-            lower_limit: config.target_freq_center - ppm2hz,
-            ultra_low_limit: config.target_freq_center - config.auto_adjust_limits.min_freq_offset,
+            upper_limit: target + ppm2hz,
+            lower_limit: target - ppm2hz,
+            ultra_low_limit: target - config.auto_adjust_limits.min_freq_offset,
         }
     }
 }
@@ -197,7 +197,7 @@ pub(super) async fn handle_work(
         (guard.target_freq, guard.work_offset_hz)
     };
 
-    let limits = Limits::from_config(&config);
+    let limits = Limits::from_config(target_freq, &config);
 
     RenderHtml(
         Key("work".to_owned()),
@@ -231,6 +231,7 @@ pub(super) async fn handle_stat(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(config): State<Config>,
     State(_precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(engine): State<AppEngine>,
 ) -> impl IntoResponse {
     #[derive(Serialize)]
@@ -250,7 +251,7 @@ pub(super) async fn handle_stat(
     // maybe?
     // _precision_adjust.lock().await.select_channel(None);
 
-    let limits = Limits::from_config(&config);
+    let limits = Limits::from_config(freqmeter_config.lock().await.target_freq, &config);
 
     RenderHtml(
         Key("stat".to_owned()),
@@ -811,12 +812,7 @@ pub(super) async fn handle_state(
             prediction.as_mut().map(|p| p.start_offset = config.display_points_count - MEDIAN_LEN);
 
             // status code
-            let ppm2hz = config.target_freq_center * config.working_offset_ppm / 1_000_000.0;
-            let limits = Limits {
-                upper_limit: config.target_freq_center + ppm2hz,
-                lower_limit: config.target_freq_center - ppm2hz,
-                ultra_low_limit: config.target_freq_center - config.auto_adjust_limits.min_freq_offset,
-            };
+            let limits = Limits::from_config(freq_target, &config);
 
             yield StateResult {
                 timestamp,
