@@ -212,7 +212,6 @@ $(() => {
                         fill: 'top',
                         backgroundColor: 'rgba(240, 81, 81, 0.5)',
                         borderColor: 'rgb(240, 81, 81)',
-                        yAxisID: 'A',
                     },
                     { // 1
                         label: 'Lower Limit',
@@ -221,7 +220,6 @@ $(() => {
                         fill: 'bottom', // заполнить область до графика 1
                         backgroundColor: 'rgba(204, 167, 80, 0.5)',
                         borderColor: 'rgb(204, 167, 80)',
-                        yAxisID: 'A',
                     },
                     { // 2
                         label: 'Actual',
@@ -230,7 +228,6 @@ $(() => {
                         fill: false,
                         showLine: false,
                         borderColor: 'rgba(75, 148, 204, 30)',
-                        yAxisID: 'A',
                     },
                     { // 3
                         label: 'Target',
@@ -238,7 +235,6 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(8, 150, 38)',
-                        yAxisID: 'A',
                     },
                     { // 4
                         label: 'Median_predict',
@@ -246,7 +242,6 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'rgb(25, 133, 29, 0.6)',
-                        yAxisID: 'A',
                     },
                     { // 5
                         label: 'Upper_predict',
@@ -254,7 +249,6 @@ $(() => {
                         pointRadius: 0,
                         fill: 4,
                         borderColor: 'rgb(133, 21, 42, 0.6)',
-                        yAxisID: 'A',
                     },
                     { // 6
                         label: 'Lower_predict',
@@ -262,7 +256,6 @@ $(() => {
                         pointRadius: 0,
                         fill: 4,
                         borderColor: 'rgb(133, 21, 42, 0.6)',
-                        yAxisID: 'A',
                     },
                     { // 7
                         label: 'aproximation',
@@ -270,7 +263,6 @@ $(() => {
                         pointRadius: 0,
                         fill: false,
                         borderColor: 'green',
-                        yAxisID: 'A',
                     }
                 ]
             },
@@ -294,16 +286,9 @@ $(() => {
                         }
                     }],
                     yAxes: [{
-                        id: 'A',
                         type: 'linear',
                         position: 'left',
-                    },
-                        /*{
-                            id: 'B',
-                            type: 'linear',
-                            position: 'right',
-                        }*/
-                    ]
+                    }]
                 }
             }
         });
@@ -404,18 +389,6 @@ $(() => {
         move_rel(-1);
     });
 });
-
-function round_to_2_digits(x: number): string {
-    const s = (Math.round(x * 100) / 100).toString();
-    const dot_index = s.indexOf('.');
-    if (dot_index < 0) {
-        return s + '.00';
-    } else if (dot_index == s.length - 2) {
-        return s + '0'
-    } else {
-        return s
-    }
-}
 
 function update_f_re_display(cfg): void {
     const value = round_to_2_digits(cfg.freq);

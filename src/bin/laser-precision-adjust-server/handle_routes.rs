@@ -13,6 +13,7 @@ use laser_precision_adjust::{
 
 use num_traits::Float;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::sync::Mutex;
 
 use crate::{auto_adjust_controller::AutoAdjestController, AdjustConfig, AppEngine, ChannelState};
@@ -279,8 +280,100 @@ pub(super) async fn handle_stat(
     )
 }
 
-pub(super) async fn handle_stat_rez(Path(_rez_id): Path<usize>) -> impl IntoResponse {
-    Json({})
+pub(super) async fn handle_stat_rez(
+    State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
+    State(config): State<Config>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    Path(rez_id): Path<u32>,
+) -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct DisplayFragment {
+        points: Vec<DataPoint<f64>>,
+        color_code_rgba: String,
+    }
+
+    #[derive(Serialize)]
+    struct HystogramFragment {
+        start: f64,
+        end: f64,
+        count: usize,
+    }
+
+    #[derive(Serialize)]
+    struct DrawLimits {
+        #[serde(rename = "UpperLimit")]
+        upper_limit: f32,
+        #[serde(rename = "LowerLimit")]
+        lower_limit: f32,
+        #[serde(rename = "Target")]
+        target: f32,
+    }
+
+    impl DrawLimits {
+        pub fn new(l: Limits, target: f32) -> Self {
+            Self {
+                upper_limit: l.upper_limit,
+                lower_limit: l.lower_limit,
+                target,
+            }
+        }
+    }
+
+    let limits = {
+        let target = freqmeter_config.lock().await.target_freq;
+        DrawLimits::new(Limits::from_config(target, &config), target)
+    };
+
+    let fragments = predictor.lock().await.get_fragments(rez_id, None).await;
+
+    let mut display_fragments: Vec<DisplayFragment> = vec![];
+    let mut adj_values: Vec<f64> = vec![];
+    for (i, fragment) in fragments.iter().enumerate() {
+        let opacity = 0.25 + ((1.0 - 0.25) / fragments.len() as f32 * (i + 1) as f32);
+        display_fragments.push(DisplayFragment {
+            points: fragment.points().to_vec(),
+            color_code_rgba: format!("rgba(103, 145, 102, {opacity:.2})"),
+        });
+
+        adj_values.push(if let Some((a, _)) = fragment.aprox_coeffs() {
+            fragment.points()[fragment.minimum_index()].y() + a - fragment.points()[0].y()
+        } else {
+            let box_plot = fragment.box_plot();
+            box_plot.upper_bound() - fragment.points()[0].y()
+        });
+    }
+
+    let interval_count = ((adj_values.len() as f64).log(10.0) * 3.0 + 1.0).floor() as u32;
+    let hystogramm = if interval_count > 1 {
+        adj_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let start = adj_values.first().unwrap_or(&0.0);
+        let step = adj_values
+            .last()
+            .map(|v| *v - start)
+            .map(|v| v / interval_count as f64)
+            .unwrap();
+
+        (0..interval_count)
+            .map(|interval_n| {
+                let start = start + interval_n as f64 * step;
+                let end = start + step;
+
+                let count = adj_values
+                    .iter()
+                    .filter(|v| **v >= start && **v <= end)
+                    .count();
+                HystogramFragment { start, end, count }
+            })
+            .collect::<Vec<_>>()
+    } else {
+        vec![]
+    };
+
+    Json(json!({
+            "DisplayFragments": display_fragments,
+            "Hystogramm": hystogramm,
+            "Limits": limits,
+    }))
 }
 
 pub(super) async fn handle_config(
