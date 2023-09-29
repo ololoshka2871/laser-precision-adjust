@@ -1,6 +1,7 @@
 mod auto_adjust_controller;
 mod handle_routes;
 mod static_files;
+mod into_body;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -23,7 +24,7 @@ use minijinja::Environment;
 
 use crate::handle_routes::{
     handle_config, handle_control, handle_stat, handle_stat_rez, handle_state,
-    handle_update_config, handle_work,
+    handle_update_config, handle_work, handle_generate_report,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -116,6 +117,9 @@ async fn main() -> Result<(), std::io::Error> {
     minijinja
         .add_template("config", include_str!("wwwroot/html/config.jinja"))
         .unwrap();
+    minijinja
+        .add_template("report", include_str!("report-template.md"))
+        .unwrap();
 
     let app_state = AppState {
         channels: Arc::new(Mutex::new(vec![
@@ -147,6 +151,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/work", get(handle_work))
         .route("/stat", get(handle_stat))
         .route("/stat/:rez_id", get(handle_stat_rez))
+        .route("/report/:part_id", get(handle_generate_report))
         .route("/config", get(handle_config).patch(handle_update_config))
         .route("/static/:path/:file", get(static_files::handle_static))
         .route("/lib/*path", get(static_files::handle_lib))

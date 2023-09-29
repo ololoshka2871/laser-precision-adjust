@@ -1,7 +1,6 @@
-use std::{collections::HashMap, io::Cursor};
+use std::collections::HashMap;
 
 use axum::{
-    body::StreamBody,
     extract::Path,
     http::{header, StatusCode},
     response::IntoResponse,
@@ -10,36 +9,9 @@ use axum::{
 use maplit::hashmap;
 
 use mime_guess::mime;
-use tokio_util::io::ReaderStream;
 use typescript_converter_macro::include_ts_relative;
 
-trait IntoBody<T> {
-    fn into_body(self) -> StreamBody<ReaderStream<Cursor<T>>>;
-}
-
-impl IntoBody<&'static str> for &'static str {
-    fn into_body(self) -> StreamBody<ReaderStream<Cursor<&'static str>>> {
-        let stream = Cursor::new(self);
-        let stream = ReaderStream::new(stream);
-        StreamBody::new(stream)
-    }
-}
-
-impl IntoBody<&'static [u8]> for &'static [u8] {
-    fn into_body(self) -> StreamBody<ReaderStream<Cursor<&'static [u8]>>> {
-        let stream = Cursor::new(self);
-        let stream = ReaderStream::new(stream);
-        StreamBody::new(stream)
-    }
-}
-
-impl IntoBody<String> for String {
-    fn into_body(self) -> StreamBody<ReaderStream<Cursor<String>>> {
-        let stream = Cursor::new(self);
-        let stream = ReaderStream::new(stream);
-        StreamBody::new(stream)
-    }
-}
+use crate::into_body::IntoBody;
 
 lazy_static::lazy_static! {
     // js with map

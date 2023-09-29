@@ -6,14 +6,14 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use axum_template::{Key, RenderHtml};
+use axum_template::{Key, RenderHtml, TemplateEngine};
 use laser_precision_adjust::{
     box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust,
 };
 
 use num_traits::Float;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+
 use tokio::sync::Mutex;
 
 use crate::{auto_adjust_controller::AutoAdjestController, AdjustConfig, AppEngine, ChannelState};
@@ -152,6 +152,20 @@ impl Limits {
         }
     }
 
+    pub fn to_status_icon(&self, f: f32) -> &'static str {
+        if f.is_nan() || f == 0.0 {
+            "-"
+        } else if f < self.ultra_low_limit {
+            "▼"
+        } else if f < self.lower_limit {
+            "▽"
+        } else if f > self.upper_limit {
+            "▲"
+        } else {
+            "◇"
+        }
+    }
+
     pub fn ppm(&self, f: f32) -> f32 {
         let f_center = (self.lower_limit + self.upper_limit) / 2.0;
         (f - f_center) / f_center * 1_000_000.0
@@ -286,6 +300,8 @@ pub(super) async fn handle_stat_rez(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Path(rez_id): Path<u32>,
 ) -> impl IntoResponse {
+    use serde_json::json;
+
     #[derive(Serialize)]
     struct DisplayFragment {
         points: Vec<DataPoint<f64>>,
@@ -926,6 +942,89 @@ pub(super) async fn handle_state(
     };
 
     axum_streams::StreamBodyAs::json_nl(stream)
+}
+
+// генерация отчета
+pub(super) async fn handle_generate_report(
+    State(engine): State<AppEngine>,
+    State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
+    State(config): State<Config>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    Path(part_id): Path<String>,
+) -> impl IntoResponse {
+    use crate::into_body::IntoBody;
+
+    #[derive(Serialize)]
+    struct RezInfo {
+        start: String,
+        end: String,
+        ppm: String,
+        ok: String,
+    }
+
+    #[derive(Serialize)]
+    struct Model {
+        part_id: String,
+
+        freq_target: String,
+        ppm: String,
+        f_min: String,
+        f_max: String,
+        work_offset_hz: String,
+
+        rezonators: Vec<RezInfo>,
+    }
+
+    let (freq_target, work_offset_hz) = {
+        let guard = freqmeter_config.lock().await;
+        (guard.target_freq, guard.work_offset_hz)
+    };
+
+    let limits = Limits::from_config(freq_target, &config);
+
+    let model = Model {
+        part_id: part_id.clone(),
+
+        freq_target: format2digits(freq_target),
+        ppm: format2digits(config.working_offset_ppm),
+        f_min: format2digits(limits.lower_limit),
+        f_max: format2digits(limits.upper_limit),
+        work_offset_hz: format2digits(work_offset_hz),
+
+        rezonators: channels
+            .lock()
+            .await
+            .iter()
+            .map(|r| {
+                let current_freq = r.points.last().cloned().unwrap_or_default().y() as f32;
+                RezInfo {
+                    start: format2digits(0.0),
+                    end: format2digits(0.0),
+                    ppm: format2digits(limits.ppm(current_freq)),
+                    ok: limits.to_status_icon(current_freq).to_owned(),
+                }
+            })
+            .collect(),
+    };
+
+    match engine.render("report", model) {
+        Ok(md) => {
+            let mut cfg = p4d_mdproof::Config::default();
+            cfg.title = part_id;
+
+            match p4d_mdproof::markdown_to_pdf(&md, &cfg) {
+                Ok(pdf) => {
+                    let bytes = pdf.save_to_bytes().unwrap();
+                    let mime_type = mime_guess::mime::APPLICATION_PDF;
+                    let headers = [(axum::http::header::CONTENT_TYPE, mime_type.as_ref())];
+
+                    (headers, bytes.into_body()).into_response()
+                }
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            }
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
 
 //-----------------------------------------------------------------------------
