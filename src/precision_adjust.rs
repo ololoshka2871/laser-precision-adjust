@@ -327,7 +327,7 @@ impl PrecisionAdjust {
             loop {
                 let res = {
                     let mut guard = dev.lock().await;
-                    Self::i2c_read(guard.deref_mut(), freq_meter_i2c_addr, 0x08, 4).await
+                    Self::i2c_read(guard.deref_mut(), freq_meter_i2c_addr, 0x08, std::mem::size_of::<f32>()).await
                 };
 
                 match res {

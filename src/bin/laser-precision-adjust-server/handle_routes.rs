@@ -6,7 +6,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use axum_template::{Key, RenderHtml, TemplateEngine};
+use axum_template::{Key, Render, RenderHtml, TemplateEngine};
 use laser_precision_adjust::{
     box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust,
 };
@@ -1007,23 +1007,27 @@ pub(super) async fn handle_generate_report(
             .collect(),
     };
 
-    match engine.render("report", model) {
-        Ok(md) => {
-            let mut cfg = p4d_mdproof::Config::default();
-            cfg.title = part_id;
+    if false {
+        match engine.render("report", model) {
+            Ok(md) => {
+                let mut cfg = p4d_mdproof::Config::default();
+                cfg.title = format!("Precission adjust {part_id}");
 
-            match p4d_mdproof::markdown_to_pdf(&md, &cfg) {
-                Ok(pdf) => {
-                    let bytes = pdf.save_to_bytes().unwrap();
-                    let mime_type = mime_guess::mime::APPLICATION_PDF;
-                    let headers = [(axum::http::header::CONTENT_TYPE, mime_type.as_ref())];
+                match p4d_mdproof::markdown_to_pdf(&md, &cfg) {
+                    Ok(pdf) => {
+                        let bytes = pdf.save_to_bytes().unwrap();
+                        let mime_type = mime_guess::mime::APPLICATION_PDF;
+                        let headers = [(axum::http::header::CONTENT_TYPE, mime_type.as_ref())];
 
-                    (headers, bytes.into_body()).into_response()
+                        (headers, bytes.into_body()).into_response()
+                    }
+                    Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
                 }
-                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
             }
+            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
         }
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    } else {
+        Render(Key("report".to_owned()), engine, model).into_response()
     }
 }
 
