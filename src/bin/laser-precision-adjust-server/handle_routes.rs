@@ -998,8 +998,11 @@ pub(super) async fn handle_generate_report(
             .map(|r| {
                 let current_freq = r.points.last().cloned().unwrap_or_default().y() as f32;
                 RezInfo {
-                    start: format2digits(0.0),
-                    end: format2digits(0.0),
+                    start: r
+                        .initial_freq
+                        .map(|f| format2digits(f))
+                        .unwrap_or("-".to_owned()),
+                    end: format2digits(current_freq),
                     ppm: format2digits(limits.ppm(current_freq)),
                     ok: limits.to_status_icon(current_freq).to_owned(),
                 }
@@ -1007,25 +1010,31 @@ pub(super) async fn handle_generate_report(
             .collect(),
     };
 
-    if false {
+    if true {
+        /*
         match engine.render("report", model) {
             Ok(md) => {
-                let mut cfg = p4d_mdproof::Config::default();
-                cfg.title = format!("Precission adjust {part_id}");
+                // TODO: wkhtmltopdf. tempfile.md
 
-                match p4d_mdproof::markdown_to_pdf(&md, &cfg) {
-                    Ok(pdf) => {
-                        let bytes = pdf.save_to_bytes().unwrap();
-                        let mime_type = mime_guess::mime::APPLICATION_PDF;
-                        let headers = [(axum::http::header::CONTENT_TYPE, mime_type.as_ref())];
-
-                        (headers, bytes.into_body()).into_response()
-                    }
-                    Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-                }
+                // let mut cfg = p4d_mdproof::Config::default();
+                // cfg.title = format!("Precission adjust {part_id}");
+                //
+                // match p4d_mdproof::markdown_to_pdf(&md, &cfg) {
+                // Ok(pdf) => {
+                // let bytes = pdf.save_to_bytes().unwrap();
+                // let mime_type = mime_guess::mime::APPLICATION_PDF;
+                // let headers = [(axum::http::header::CONTENT_TYPE, mime_type.as_ref())];
+                //
+                // (headers, bytes.into_body()).into_response()
+                // }
+                // Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+                // }
+                (StatusCode::NOT_FOUND, "not implemented").into_response(),
             }
             Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
         }
+        */
+        RenderHtml(Key("report.html".to_owned()), engine, model).into_response()
     } else {
         Render(Key("report".to_owned()), engine, model).into_response()
     }

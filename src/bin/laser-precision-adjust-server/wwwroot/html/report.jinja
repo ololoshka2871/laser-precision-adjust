@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Отчет по партии {{part_id}}</title>
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+
+    <!-- Common styles -->
+    <link rel="stylesheet" href="/lib/bootstrap/css/bootstrap.css" />
+    <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css" />
+
+    <!-- specific styles -->
+    <link rel="stylesheet" href="/static/css/docs.min.css" />
+
+    <!-- main style -->
+    <link rel="stylesheet" href="/static/css/site.css" />
+</head>
+
+<body>
+    <div class="container">
+        <main role="main" class="pb-3">
+            <div class="container">
+                <h2>Отчет о точной настройке</h2>
+                <h3>Партия {{part_id}}</h3>
+                <hr />
+                <h3>Настройки</h3>
+                <ul>
+                    <li><b>Диопазон</b>: {{ freq_target }} ± {{ ppm }} ppm: {{ f_min }} - {{ f_max }} Гц.</li>
+                    <li><b>Поправка частотомера</b>: {{ work_offset_hz }} Гц.</li>
+                </ul>
+                <hr />
+                <h3>Резонаторы</h3>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th scope="col">№</th>
+                            <th scope="col">Частота исх.</th>
+                            <th scope="col">Частота настр.</th>
+                            <th scope="col">ppm</th>
+                            <th scope="col">ok?</th>
+                            <th scope="col">Частота корп.</th>
+                            <th scope="col">ppm</th>
+                            <th scope="col">Годн?</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% macro table_row(number, start, end, ppm, ok) -%}
+                        <tr>
+                            <th scope="row">{{ number }}</th>
+                            <td>{{ start }}</td>
+                            <td>{{ end }}</td>
+                            <td>{{ ppm }}</td>
+                            <td>{{ ok }}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                        {% endmacro -%}
+                        {% for rez in rezonators -%}
+                        {{ table_row(loop.index, rez.start, rez.end, rez.ppm, rez.ok) -}}
+                        {% endfor -%}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- Common scripts -->
+    <script src="/lib/jquery/jquery.min.js"></script>
+    <script src="/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="lib/jquery-noty/packaged/jquery.noty.packaged.min.js"></script>
+    <script src="/lib/font-awesome/js/all.min.js"></script>
+    <script src="/static/js/common.js"></script>
+
+    <!-- Specific scripts -->
+</body>
+
+</html>

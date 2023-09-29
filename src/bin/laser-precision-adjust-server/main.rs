@@ -120,6 +120,9 @@ async fn main() -> Result<(), std::io::Error> {
     minijinja
         .add_template("report", include_str!("report-template.md"))
         .unwrap();
+    minijinja
+        .add_template("report.html", include_str!("wwwroot/html/report.jinja"))
+        .unwrap();
 
     let app_state = AppState {
         channels: Arc::new(Mutex::new(vec![
