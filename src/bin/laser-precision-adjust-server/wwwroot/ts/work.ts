@@ -323,8 +323,8 @@ $(() => {
             }
 
             // prediction
-            if (state.Prediction !== null && state.Points.length > 5) {
-                const offset = state.Prediction.start_offset;
+            if (state.Prediction !== undefined && state.Points.length > 5) {
+                const offset = state.Prediction.start_offset || 0;
                 chart.data.datasets[4].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.median, offset)
                 chart.data.datasets[5].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.maximal, offset)
                 chart.data.datasets[6].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.minimal, offset)
@@ -387,6 +387,12 @@ $(() => {
     hotkeys('right', (event, _handler) => {
         event.preventDefault();
         move_rel(-1);
+    });
+
+    // report
+    $('#gen-report').on('click', (ev) => {
+        let report_id = prompt('Введите номер партии:');
+        gen_report(report_id);
     });
 });
 

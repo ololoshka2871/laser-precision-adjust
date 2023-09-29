@@ -31,3 +31,16 @@ function round_to_2_digits(x?: number): string {
         }
     }
 }
+
+function gen_report(report_id: string) {
+    if (report_id && report_id.length > 0) {
+        const win = window.open('/report/' + report_id, '_blank');
+        if (win) {
+            //Browser has allowed it to be opened
+            win.focus();
+        } else {
+            //Browser has blocked it
+            alert('Please allow popups for this website');
+        }
+    }
+}

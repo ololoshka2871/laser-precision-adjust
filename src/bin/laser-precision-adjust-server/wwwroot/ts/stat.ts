@@ -59,6 +59,12 @@ $(() => {
 
         select_row_table(channel_to_select);
     });
+
+    // report
+    $('#gen-report').on('click', (ev) => {
+        let report_id = prompt('Введите номер партии:');
+        gen_report(report_id);
+    });
 });
 
 
