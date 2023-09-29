@@ -248,6 +248,7 @@ impl PrecisionAdjust {
             #[derive(Serialize)]
             struct LogEntry {
                 channel: u32,
+                #[serde(serialize_with = "crate::serialize_float_2dgt")]
                 f: f32,
                 shot_mark: bool,
             }

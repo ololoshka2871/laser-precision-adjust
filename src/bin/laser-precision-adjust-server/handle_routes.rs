@@ -1,4 +1,10 @@
-use std::{borrow::Borrow, cmp::min, collections::HashSet, sync::Arc, time::Duration};
+use std::{
+    borrow::Borrow,
+    cmp::min,
+    collections::HashSet,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use axum::{
     extract::{Path, State},
@@ -6,9 +12,10 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use axum_template::{Key, Render, RenderHtml, TemplateEngine};
+use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::{
-    box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust,
+    box_plot::BoxPlot, predict::Predictor, serialize_float_2dgt, Config, DataPoint, IDataPoint,
+    PrecisionAdjust,
 };
 
 use num_traits::Float;
@@ -20,16 +27,16 @@ use crate::{auto_adjust_controller::AutoAdjestController, AdjustConfig, AppEngin
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
-    #[serde(rename = "Channel")]
+    #[serde(rename = "Channel", skip_serializing_if = "Option::is_none")]
     channel: Option<u32>,
 
-    #[serde(rename = "CameraAction")]
+    #[serde(rename = "CameraAction", skip_serializing_if = "Option::is_none")]
     camera_action: Option<String>,
 
-    #[serde(rename = "TargetPosition")]
+    #[serde(rename = "TargetPosition", skip_serializing_if = "Option::is_none")]
     target_position: Option<i32>,
 
-    #[serde(rename = "MoveOffset")]
+    #[serde(rename = "MoveOffset", skip_serializing_if = "Option::is_none")]
     move_offset: Option<i32>,
 }
 
@@ -61,8 +68,11 @@ impl ControlResult {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Prediction {
     pub start_offset: usize,
+    #[serde(serialize_with = "serialize_float_2dgt")]
     pub minimal: f64,
+    #[serde(serialize_with = "serialize_float_2dgt")]
     pub maximal: f64,
+    #[serde(serialize_with = "serialize_float_2dgt")]
     pub median: f64,
 }
 
@@ -74,16 +84,16 @@ pub struct StateResult {
     #[serde(rename = "SelectedChannel")]
     seleced_channel: u32,
 
-    #[serde(rename = "CurrentFreq")]
+    #[serde(rename = "CurrentFreq", serialize_with = "serialize_float_2dgt")]
     current_freq: f32,
 
-    #[serde(rename = "TargetFreq")]
+    #[serde(rename = "TargetFreq", serialize_with = "serialize_float_2dgt")]
     target_freq: f32,
 
-    #[serde(rename = "InitialFreq")]
+    #[serde(rename = "InitialFreq", skip_serializing_if = "Option::is_none")]
     initial_freq: Option<f32>,
 
-    #[serde(rename = "WorkOffsetHz")]
+    #[serde(rename = "WorkOffsetHz", serialize_with = "serialize_float_2dgt")]
     work_offset_hz: f32,
 
     #[serde(rename = "CurrentStep")]
@@ -92,10 +102,10 @@ pub struct StateResult {
     #[serde(rename = "Points")]
     points: Vec<(f64, f64)>,
 
-    #[serde(rename = "Prediction")]
+    #[serde(rename = "Prediction", skip_serializing_if = "Option::is_none")]
     prediction: Option<Prediction>,
 
-    #[serde(rename = "CloseTimestamp")]
+    #[serde(rename = "CloseTimestamp", skip_serializing_if = "Option::is_none")]
     close_timestamp: Option<u128>,
 
     #[serde(rename = "Aproximations")]
@@ -110,10 +120,10 @@ pub struct StateResult {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UpdateConfigValues {
-    #[serde(rename = "TargetFreq")]
+    #[serde(rename = "TargetFreq", skip_serializing_if = "Option::is_none")]
     target_freq: Option<f32>,
 
-    #[serde(rename = "WorkOffsetHz")]
+    #[serde(rename = "WorkOffsetHz", skip_serializing_if = "Option::is_none")]
     work_offset_hz: Option<f32>,
 }
 
@@ -237,7 +247,7 @@ pub(super) async fn handle_work(
                 })
                 .collect(),
             target_freq: format!("{:.2}", target_freq),
-            work_offset_hz: format!("{:.2}", work_offset_hz),
+            work_offset_hz: format!("{:+.2}", work_offset_hz),
         },
     )
 }
@@ -310,18 +320,20 @@ pub(super) async fn handle_stat_rez(
 
     #[derive(Serialize)]
     struct HystogramFragment {
+        #[serde(serialize_with = "serialize_float_2dgt")]
         start: f64,
+        #[serde(serialize_with = "serialize_float_2dgt")]
         end: f64,
         count: usize,
     }
 
     #[derive(Serialize)]
     struct DrawLimits {
-        #[serde(rename = "UpperLimit")]
+        #[serde(rename = "UpperLimit", serialize_with = "serialize_float_2dgt")]
         upper_limit: f32,
-        #[serde(rename = "LowerLimit")]
+        #[serde(rename = "LowerLimit", serialize_with = "serialize_float_2dgt")]
         lower_limit: f32,
-        #[serde(rename = "Target")]
+        #[serde(rename = "Target", serialize_with = "serialize_float_2dgt")]
         target: f32,
     }
 
@@ -952,7 +964,7 @@ pub(super) async fn handle_generate_report(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Path(part_id): Path<String>,
 ) -> impl IntoResponse {
-    use crate::into_body::IntoBody;
+    use chrono::{DateTime, Local};
 
     #[derive(Serialize)]
     struct RezInfo {
@@ -965,6 +977,7 @@ pub(super) async fn handle_generate_report(
     #[derive(Serialize)]
     struct Model {
         part_id: String,
+        date: String,
 
         freq_target: String,
         ppm: String,
@@ -984,6 +997,11 @@ pub(super) async fn handle_generate_report(
 
     let model = Model {
         part_id: part_id.clone(),
+        date: {
+            let system_time = SystemTime::now();
+            let datetime: DateTime<Local> = system_time.into();
+            datetime.format("%d.%m.%Y %T").to_string()
+        },
 
         freq_target: format2digits(freq_target),
         ppm: format2digits(config.working_offset_ppm),
@@ -1010,34 +1028,7 @@ pub(super) async fn handle_generate_report(
             .collect(),
     };
 
-    if true {
-        /*
-        match engine.render("report", model) {
-            Ok(md) => {
-                // TODO: wkhtmltopdf. tempfile.md
-
-                // let mut cfg = p4d_mdproof::Config::default();
-                // cfg.title = format!("Precission adjust {part_id}");
-                //
-                // match p4d_mdproof::markdown_to_pdf(&md, &cfg) {
-                // Ok(pdf) => {
-                // let bytes = pdf.save_to_bytes().unwrap();
-                // let mime_type = mime_guess::mime::APPLICATION_PDF;
-                // let headers = [(axum::http::header::CONTENT_TYPE, mime_type.as_ref())];
-                //
-                // (headers, bytes.into_body()).into_response()
-                // }
-                // Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-                // }
-                (StatusCode::NOT_FOUND, "not implemented").into_response(),
-            }
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-        }
-        */
-        RenderHtml(Key("report.html".to_owned()), engine, model).into_response()
-    } else {
-        Render(Key("report".to_owned()), engine, model).into_response()
-    }
+    RenderHtml(Key("report.html".to_owned()), engine, model).into_response()
 }
 
 //-----------------------------------------------------------------------------

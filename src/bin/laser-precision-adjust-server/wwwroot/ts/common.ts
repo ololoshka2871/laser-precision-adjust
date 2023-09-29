@@ -16,14 +16,18 @@ function noty_success(text: string = "Операция выполнена усп
     });
 }
 
-function round_to_2_digits(x: number): string {
-    const s = (Math.round(x * 100) / 100).toString();
-    const dot_index = s.indexOf('.');
-    if (dot_index < 0) {
-        return s + '.00';
-    } else if (dot_index == s.length - 2) {
-        return s + '0'
+function round_to_2_digits(x?: number): string {
+    if (x === undefined) {
+        return "0"
     } else {
-        return s
+        const s = (Math.round(x * 100) / 100).toString();
+        const dot_index = s.indexOf('.');
+        if (dot_index < 0) {
+            return s + '.00';
+        } else if (dot_index == s.length - 2) {
+            return s + '0'
+        } else {
+            return s
+        }
     }
 }

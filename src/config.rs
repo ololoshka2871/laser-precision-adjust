@@ -4,16 +4,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct ResonatroPlacement {
-    #[serde(rename = "Xcenter")]
+    #[serde(rename = "Xcenter", serialize_with = "crate::serialize_float_2dgt")]
     pub x: f32,
 
-    #[serde(rename = "Ycenter")]
+    #[serde(rename = "Ycenter", serialize_with = "crate::serialize_float_2dgt")]
     pub y: f32,
 
-    #[serde(rename = "Width")]
+    #[serde(rename = "Width", serialize_with = "crate::serialize_float_2dgt")]
     pub w: f32,
 
-    #[serde(rename = "Height")]
+    #[serde(rename = "Height", serialize_with = "crate::serialize_float_2dgt")]
     pub h: f32,
 }
 
@@ -31,19 +31,19 @@ pub struct AxisConfig {
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct ForecastConfig {
-    #[serde(rename = "MinFreqGrow")]
+    #[serde(rename = "MinFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
     pub min_freq_grow: f32,
 
-    #[serde(rename = "MaxFreqGrow")]
+    #[serde(rename = "MaxFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
     pub max_freq_grow: f32,
 
-    #[serde(rename = "MedianFreqGrow")]
+    #[serde(rename = "MedianFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
     pub median_freq_grow: f32,
 }
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct AutoAdjustLimits {
-    #[serde(rename = "MinFreqOffset")]
+    #[serde(rename = "MinFreqOffset", serialize_with = "crate::serialize_float_2dgt")]
     pub min_freq_offset: f32,
 
     #[serde(rename = "MaxForwardSteps")]
@@ -82,28 +82,28 @@ pub struct Config {
     #[serde(rename = "AxisConfig")]
     pub axis_config: AxisConfig,
 
-    #[serde(rename = "BurnLaserS")]
+    #[serde(rename = "BurnLaserS", serialize_with = "crate::serialize_float_2dgt")]
     pub burn_laser_pump_power: f32,
 
-    #[serde(rename = "BurnLaserA")]
+    #[serde(rename = "BurnLaserA", serialize_with = "crate::serialize_float_2dgt")]
     pub burn_laser_power: f32,
 
     #[serde(rename = "BurnLaserB")]
     pub burn_laser_frequency: u32,
 
-    #[serde(rename = "BurnLaserF")]
+    #[serde(rename = "BurnLaserF", serialize_with = "crate::serialize_float_2dgt")]
     pub burn_laser_feedrate: f32,
 
     #[serde(rename = "TotalVerticalSteps")]
     pub total_vertical_steps: u32,
 
-    #[serde(rename = "FreqmeterOffset")]
+    #[serde(rename = "FreqmeterOffset", serialize_with = "crate::serialize_float_2dgt")]
     pub freqmeter_offset: f32,
 
-    #[serde(rename = "WorkingOffsetPPM")]
+    #[serde(rename = "WorkingOffsetPPM", serialize_with = "crate::serialize_float_2dgt")]
     pub working_offset_ppm: f32,
 
-    #[serde(rename = "TargetFreqCenter")]
+    #[serde(rename = "TargetFreqCenter", serialize_with = "crate::serialize_float_2dgt")]
     pub target_freq_center: f32,
 
     #[serde(rename = "UpdateIntervalMs")]

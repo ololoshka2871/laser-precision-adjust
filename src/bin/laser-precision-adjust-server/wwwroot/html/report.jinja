@@ -22,12 +22,13 @@
     <div class="container">
         <main role="main" class="pb-3">
             <div class="container">
-                <h2>Отчет о точной настройке</h2>
-                <h3>Партия {{part_id}}</h3>
+                <hr style="margin-top: 40px;" />
+                <h2>Отчет о точной настройке от {{ date }}</h2>
+                <h3>Партия: __<b>{{part_id}}</b>__</h3>
                 <hr />
-                <h3>Настройки</h3>
+                <h4>Настройки</h4>
                 <ul>
-                    <li><b>Диопазон</b>: {{ freq_target }} ± {{ ppm }} ppm: {{ f_min }} - {{ f_max }} Гц.</li>
+                    <li><b>Диопазон</b>: {{ freq_target }} ± {{ ppm }} ppm: ({{ f_min }} - {{ f_max }}) Гц.</li>
                     <li><b>Поправка частотомера</b>: {{ work_offset_hz }} Гц.</li>
                 </ul>
                 <hr />
@@ -53,9 +54,9 @@
                             <td>{{ end }}</td>
                             <td>{{ ppm }}</td>
                             <td>{{ ok }}</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
+                            <td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                            <td>&nbsp;&nbsp;&nbsp;&nbsp;</td>
+                            <td>&nbsp;&nbsp;&nbsp;</td>
                         </tr>
                         {% endmacro -%}
                         {% for rez in rezonators -%}

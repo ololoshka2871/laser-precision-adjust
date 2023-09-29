@@ -1,4 +1,5 @@
 mod config;
+mod limit_float_precission;
 mod precision_adjust;
 
 pub mod predict;
@@ -8,7 +9,10 @@ pub mod coordinates;
 pub(crate) mod gcode_codec;
 pub(crate) mod gcode_ctrl;
 
+use num_traits::Float;
+
 pub use config::{AutoAdjustLimits, Config, ForecastConfig};
+pub use limit_float_precission::serialize_float_2dgt;
 pub use precision_adjust::{Error, PrecisionAdjust, Status};
 
 #[derive(Clone)]
@@ -23,12 +27,14 @@ pub trait IDataPoint<T> {
 }
 
 #[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
-pub struct DataPoint<T: serde::Serialize> {
+pub struct DataPoint<T: Float + serde::Serialize> {
+    #[serde(serialize_with = "serialize_float_2dgt")]
     x: T,
+    #[serde(serialize_with = "serialize_float_2dgt")]
     y: T,
 }
 
-impl<T: num_traits::Float + serde::Serialize> DataPoint<T> {
+impl<T: Float + serde::Serialize> DataPoint<T> {
     pub fn new(x: T, y: T) -> Self {
         Self { x, y }
     }
@@ -41,7 +47,7 @@ impl<T: num_traits::Float + serde::Serialize> DataPoint<T> {
     }
 }
 
-impl<T: num_traits::Float + serde::Serialize> IDataPoint<T> for DataPoint<T> {
+impl<T: Float + serde::Serialize> IDataPoint<T> for DataPoint<T> {
     fn x(&self) -> T {
         self.x
     }

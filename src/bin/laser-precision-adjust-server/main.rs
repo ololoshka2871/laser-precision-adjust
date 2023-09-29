@@ -118,9 +118,6 @@ async fn main() -> Result<(), std::io::Error> {
         .add_template("config", include_str!("wwwroot/html/config.jinja"))
         .unwrap();
     minijinja
-        .add_template("report", include_str!("report-template.md"))
-        .unwrap();
-    minijinja
         .add_template("report.html", include_str!("wwwroot/html/report.jinja"))
         .unwrap();
 

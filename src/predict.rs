@@ -14,7 +14,7 @@ pub struct Prediction<T: Float> {
     pub median: T,
 }
 
-pub struct Predictor<T: Serialize> {
+pub struct Predictor<T: Float + Serialize> {
     fragments: Arc<Mutex<Vec<Vec<Fragment<T>>>>>,
     forecast_config: ForecastConfig,
     serie_data: Arc<Mutex<Vec<(u128, f32)>>>,
@@ -184,7 +184,7 @@ where
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct Fragment<T: Serialize> {
+pub struct Fragment<T: Float + Serialize> {
     start_timestamp: f64,
     raw_points: Vec<DataPoint<T>>,
     coeffs: Option<(T, T)>,
