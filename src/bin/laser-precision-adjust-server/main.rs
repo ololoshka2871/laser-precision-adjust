@@ -1,7 +1,10 @@
+#![feature(async_iterator)]
+
 mod auto_adjust_controller;
 mod handle_routes;
 mod static_files;
 mod into_body;
+mod far_long_iterator;
 
 use std::{net::SocketAddr, sync::Arc};
 
