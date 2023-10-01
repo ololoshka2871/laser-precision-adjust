@@ -1,5 +1,6 @@
 use num_traits::{Float, FromPrimitive, NumOps};
 
+#[derive(Clone, Copy, Debug)]
 pub struct BoxPlot<T> {
     median: T,
     q1: T,

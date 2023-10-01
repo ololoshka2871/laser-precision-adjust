@@ -121,6 +121,9 @@ pub struct Config {
     #[serde(rename = "AutoAdjustLimits")]
     pub auto_adjust_limits: AutoAdjustLimits,
 
+    #[serde(rename = "StableVal", serialize_with = "crate::serialize_float_2dgt")]
+    pub stable_val: f32,
+
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
 }
@@ -187,6 +190,8 @@ impl std::fmt::Display for Config {
         writeln!(f, "  MaxRetreatSteps: {}", self.auto_adjust_limits.max_retreat_steps)?;
         writeln!(f, "  FastForwardStepLimit: {}", self.auto_adjust_limits.fast_forward_step_limit)?;
         writeln!(f, "  EdgeDetectSintervalSt: {}", self.auto_adjust_limits.edge_detect_interval)?;
+
+        writeln!(f, "StableVal: {}", self.stable_val)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;
