@@ -1,5 +1,4 @@
 mod config;
-mod limit_float_precission;
 mod precision_adjust;
 mod measure_sanitizer;
 
@@ -13,7 +12,6 @@ pub(crate) mod gcode_ctrl;
 use num_traits::Float;
 
 pub use config::{AutoAdjustLimits, Config, ForecastConfig};
-pub use limit_float_precission::{serialize_float_2dgt, serialize_opt_float_2dgt};
 pub use precision_adjust::{Error, PrecisionAdjust, Status};
 pub use measure_sanitizer::{CoollingDownInfo, MeasureSanitizer, MeasureSanitizerState};
 
@@ -30,9 +28,7 @@ pub trait IDataPoint<T> {
 
 #[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct DataPoint<T: Float + serde::Serialize> {
-    #[serde(serialize_with = "serialize_float_2dgt")]
     x: T,
-    #[serde(serialize_with = "serialize_float_2dgt")]
     y: T,
 }
 

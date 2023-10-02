@@ -4,29 +4,29 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct ResonatroPlacement {
-    #[serde(rename = "Xcenter", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "Xcenter")]
     pub x: f32,
 
-    #[serde(rename = "Ycenter", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "Ycenter")]
     pub y: f32,
 
-    #[serde(rename = "Width", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "Width")]
     pub w: f32,
 
-    #[serde(rename = "Height", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "Height")]
     pub h: f32,
 
     /// Следующие параметры необязательные модификации паарметорв лажера для канала
-    #[serde(rename = "MulS", serialize_with = "crate::serialize_opt_float_2dgt")]
+    #[serde(rename = "MulS")]
     pub mul_laser_pump_power: Option<f32>,
 
-    #[serde(rename = "MulA", serialize_with = "crate::serialize_opt_float_2dgt")]
+    #[serde(rename = "MulA")]
     pub mul_laser_power: Option<f32>,
 
-    #[serde(rename = "MulB", serialize_with = "crate::serialize_opt_float_2dgt")]
+    #[serde(rename = "MulB")]
     pub mul_laser_pwm: Option<f32>,
 
-    #[serde(rename = "MulF", serialize_with = "crate::serialize_opt_float_2dgt")]
+    #[serde(rename = "MulF")]
     pub mul_laser_feedrate: Option<f32>,
 }
 
@@ -44,25 +44,19 @@ pub struct AxisConfig {
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct ForecastConfig {
-    #[serde(rename = "MinFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "MinFreqGrow")]
     pub min_freq_grow: f32,
 
-    #[serde(rename = "MaxFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "MaxFreqGrow")]
     pub max_freq_grow: f32,
 
-    #[serde(
-        rename = "MedianFreqGrow",
-        serialize_with = "crate::serialize_float_2dgt"
-    )]
+    #[serde(rename = "MedianFreqGrow")]
     pub median_freq_grow: f32,
 }
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct AutoAdjustLimits {
-    #[serde(
-        rename = "MinFreqOffset",
-        serialize_with = "crate::serialize_float_2dgt"
-    )]
+    #[serde(rename = "MinFreqOffset")]
     pub min_freq_offset: f32,
 
     #[serde(rename = "MaxForwardSteps")]
@@ -101,37 +95,28 @@ pub struct Config {
     #[serde(rename = "AxisConfig")]
     pub axis_config: AxisConfig,
 
-    #[serde(rename = "BurnLaserS", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "BurnLaserS")]
     pub burn_laser_pump_power: f32,
 
-    #[serde(rename = "BurnLaserA", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "BurnLaserA")]
     pub burn_laser_power: f32,
 
     #[serde(rename = "BurnLaserB")]
     pub burn_laser_frequency: u32,
 
-    #[serde(rename = "BurnLaserF", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "BurnLaserF")]
     pub burn_laser_feedrate: f32,
 
     #[serde(rename = "TotalVerticalSteps")]
     pub total_vertical_steps: u32,
 
-    #[serde(
-        rename = "FreqmeterOffset",
-        serialize_with = "crate::serialize_float_2dgt"
-    )]
+    #[serde(rename = "FreqmeterOffset")]
     pub freqmeter_offset: f32,
 
-    #[serde(
-        rename = "WorkingOffsetPPM",
-        serialize_with = "crate::serialize_float_2dgt"
-    )]
+    #[serde(rename = "WorkingOffsetPPM")]
     pub working_offset_ppm: f32,
 
-    #[serde(
-        rename = "TargetFreqCenter",
-        serialize_with = "crate::serialize_float_2dgt"
-    )]
+    #[serde(rename = "TargetFreqCenter")]
     pub target_freq_center: f32,
 
     #[serde(rename = "UpdateIntervalMs")]
@@ -149,7 +134,7 @@ pub struct Config {
     #[serde(rename = "AutoAdjustLimits")]
     pub auto_adjust_limits: AutoAdjustLimits,
 
-    #[serde(rename = "StableVal", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(rename = "StableVal")]
     pub stable_val: f32,
 
     #[serde(rename = "ResonatorsPlacement")]
@@ -247,8 +232,14 @@ impl std::fmt::Display for Config {
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;
-        writeln!(f, "  Center\t| Width\t| Height\t| MulS\t| MulA\t| MulB\t| MulF")?;
-        writeln!(f, "  ------\t| -----\t| ------\t| ----\t| ----\t| ----\t| ----")?;
+        writeln!(
+            f,
+            "  Center\t| Width\t| Height\t| MulS\t| MulA\t| MulB\t| MulF"
+        )?;
+        writeln!(
+            f,
+            "  ------\t| -----\t| ------\t| ----\t| ----\t| ----\t| ----"
+        )?;
         for placement in &self.resonator_placement {
             writeln!(
                 f,

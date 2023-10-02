@@ -14,8 +14,7 @@ use axum::{
 };
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::{
-    box_plot::BoxPlot, predict::Predictor, serialize_float_2dgt, Config, DataPoint, IDataPoint,
-    PrecisionAdjust,
+    box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust,
 };
 
 use num_traits::Float;
@@ -68,11 +67,11 @@ impl ControlResult {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Prediction {
     pub start_offset: usize,
-    #[serde(serialize_with = "serialize_float_2dgt")]
+
     pub minimal: f64,
-    #[serde(serialize_with = "serialize_float_2dgt")]
+
     pub maximal: f64,
-    #[serde(serialize_with = "serialize_float_2dgt")]
+
     pub median: f64,
 }
 
@@ -84,16 +83,16 @@ pub struct StateResult {
     #[serde(rename = "SelectedChannel")]
     seleced_channel: u32,
 
-    #[serde(rename = "CurrentFreq", serialize_with = "serialize_float_2dgt")]
+    #[serde(rename = "CurrentFreq")]
     current_freq: f32,
 
-    #[serde(rename = "TargetFreq", serialize_with = "serialize_float_2dgt")]
+    #[serde(rename = "TargetFreq")]
     target_freq: f32,
 
     #[serde(rename = "InitialFreq", skip_serializing_if = "Option::is_none")]
     initial_freq: Option<f32>,
 
-    #[serde(rename = "WorkOffsetHz", serialize_with = "serialize_float_2dgt")]
+    #[serde(rename = "WorkOffsetHz")]
     work_offset_hz: f32,
 
     #[serde(rename = "CurrentStep")]
@@ -320,20 +319,18 @@ pub(super) async fn handle_stat_rez(
 
     #[derive(Serialize)]
     struct HystogramFragment {
-        #[serde(serialize_with = "serialize_float_2dgt")]
         start: f64,
-        #[serde(serialize_with = "serialize_float_2dgt")]
         end: f64,
         count: usize,
     }
 
     #[derive(Serialize)]
     struct DrawLimits {
-        #[serde(rename = "UpperLimit", serialize_with = "serialize_float_2dgt")]
+        #[serde(rename = "UpperLimit")]
         upper_limit: f32,
-        #[serde(rename = "LowerLimit", serialize_with = "serialize_float_2dgt")]
+        #[serde(rename = "LowerLimit")]
         lower_limit: f32,
-        #[serde(rename = "Target", serialize_with = "serialize_float_2dgt")]
+        #[serde(rename = "Target")]
         target: f32,
     }
 
