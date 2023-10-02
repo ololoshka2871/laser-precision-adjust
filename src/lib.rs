@@ -13,7 +13,7 @@ pub(crate) mod gcode_ctrl;
 use num_traits::Float;
 
 pub use config::{AutoAdjustLimits, Config, ForecastConfig};
-pub use limit_float_precission::serialize_float_2dgt;
+pub use limit_float_precission::{serialize_float_2dgt, serialize_opt_float_2dgt};
 pub use precision_adjust::{Error, PrecisionAdjust, Status};
 pub use measure_sanitizer::{CoollingDownInfo, MeasureSanitizer, MeasureSanitizerState};
 

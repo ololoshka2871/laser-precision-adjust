@@ -328,7 +328,13 @@ impl PrecisionAdjust {
             loop {
                 let res = {
                     let mut guard = dev.lock().await;
-                    Self::i2c_read(guard.deref_mut(), freq_meter_i2c_addr, 0x08, std::mem::size_of::<f32>()).await
+                    Self::i2c_read(
+                        guard.deref_mut(),
+                        freq_meter_i2c_addr,
+                        0x08,
+                        std::mem::size_of::<f32>(),
+                    )
+                    .await
                 };
 
                 match res {
@@ -404,6 +410,44 @@ impl PrecisionAdjust {
         Ok(())
     }
 
+    pub async fn configure_position(&mut self, position: u32) -> Result<(), Error> {
+        let mut a = self.burn_laser_power;
+        let mut b = self.burn_laser_frequency;
+
+        if let Some(pos) = self.positions.get(position as usize) {
+            tracing::debug!(
+                "Position {} config: MulS={:?}, MulA={:?}, MulB={:?}, MulF={:?}",
+                position,
+                pos.mul_laser_pump_power,
+                pos.mul_laser_power,
+                pos.mul_laser_pwm,
+                pos.mul_laser_feedrate,
+            );
+
+            if let Some(mula) = pos.mul_laser_power {
+                a *= mula;
+            }
+            if let Some(mulb) = pos.mul_laser_pwm {
+                b = (b as f32 * mulb) as u32;
+            }
+
+            let status = self.current_status().await;
+
+            self.execute_gcode(status, move |s, _| {
+                let mut commands = vec![];
+
+                commands.push(GCodeCtrl::Setup { a, b });
+
+                (s, commands)
+            })
+            .await?;
+
+            Ok(())
+        } else {
+            Err(Error::Logick("Invalid channel number".to_owned()))
+        }
+    }
+
     pub async fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
         if channel >= self.positions.len() as u32 {
             return Err(Error::Logick(format!(
@@ -414,7 +458,7 @@ impl PrecisionAdjust {
         }
 
         {
-            // disable kosa update while changing channel
+            // disable freqmeter update while changing channel
             let mut guard = self.laser_setup.lock().await;
 
             guard
@@ -428,6 +472,8 @@ impl PrecisionAdjust {
             // sleep 200 ms to let laser setup to change channel
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
+
+        self.configure_position(channel).await?;
 
         let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
@@ -572,39 +618,56 @@ impl PrecisionAdjust {
     pub async fn burn(&mut self) -> Result<(), Error> {
         let ax_conf = self.axis_config;
         let total_vertical_steps = self.total_vertical_steps;
-        let burn_laser_power = self.burn_laser_pump_power;
-        let f = self.burn_laser_feedrate;
+
         let status = self.current_status().await;
 
-        let new_status = self
-            .execute_gcode(status, move |mut status, workspace| {
-                let mut commands = vec![];
+        let ch_cfg = self.positions[status.current_channel as usize];
 
-                status.current_side = status.current_side.mirrored();
-                status.shot_requested = true;
+        let s = self.burn_laser_pump_power * ch_cfg.mul_laser_power.unwrap_or(1.0);
+        let f = self.burn_laser_feedrate * ch_cfg.mul_laser_feedrate.unwrap_or(1.0);
 
-                let new_abs_coordinates = workspace.to_abs(
-                    &ax_conf,
-                    status.current_step,
-                    status.current_side,
-                    total_vertical_steps,
-                );
+        let mut trys = 2;
+        let new_status = loop {
+            match self
+                .execute_gcode(status, move |mut status, workspace| {
+                    let mut commands = vec![];
 
-                let cmd = GCodeCtrl::G1 {
-                    x: new_abs_coordinates.0,
-                    y: new_abs_coordinates.1,
-                    f,
-                };
+                    status.current_side = status.current_side.mirrored();
+                    status.shot_requested = true;
 
-                commands.push(GCodeCtrl::M3 {
-                    s: burn_laser_power,
-                });
-                commands.push(cmd);
-                commands.push(GCodeCtrl::M5);
+                    let new_abs_coordinates = workspace.to_abs(
+                        &ax_conf,
+                        status.current_step,
+                        status.current_side,
+                        total_vertical_steps,
+                    );
 
-                (status, commands)
-            })
-            .await?;
+                    let cmd = GCodeCtrl::G1 {
+                        x: new_abs_coordinates.0,
+                        y: new_abs_coordinates.1,
+                        f,
+                    };
+
+                    commands.push(GCodeCtrl::M3 { s });
+                    commands.push(cmd);
+                    commands.push(GCodeCtrl::M5);
+
+                    (status, commands)
+                })
+                .await
+            {
+                Ok(s) => break s,
+                Err(Error::Logick(e)) => return Err(Error::Logick(e)),
+                Err(e) => {
+                    trys -= 1;
+                    if trys == 0 {
+                        return Err(e);
+                    } else {
+                        tracing::warn!("Burn: {}", e);
+                    }
+                }
+            }
+        };
 
         self.update_status(new_status).await;
 

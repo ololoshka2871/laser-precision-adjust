@@ -15,6 +15,19 @@ pub struct ResonatroPlacement {
 
     #[serde(rename = "Height", serialize_with = "crate::serialize_float_2dgt")]
     pub h: f32,
+
+    /// Следующие параметры необязательные модификации паарметорв лажера для канала
+    #[serde(rename = "MulS", serialize_with = "crate::serialize_opt_float_2dgt")]
+    pub mul_laser_pump_power: Option<f32>,
+
+    #[serde(rename = "MulA", serialize_with = "crate::serialize_opt_float_2dgt")]
+    pub mul_laser_power: Option<f32>,
+
+    #[serde(rename = "MulB", serialize_with = "crate::serialize_opt_float_2dgt")]
+    pub mul_laser_pwm: Option<f32>,
+
+    #[serde(rename = "MulF", serialize_with = "crate::serialize_opt_float_2dgt")]
+    pub mul_laser_feedrate: Option<f32>,
 }
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
@@ -37,13 +50,19 @@ pub struct ForecastConfig {
     #[serde(rename = "MaxFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
     pub max_freq_grow: f32,
 
-    #[serde(rename = "MedianFreqGrow", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(
+        rename = "MedianFreqGrow",
+        serialize_with = "crate::serialize_float_2dgt"
+    )]
     pub median_freq_grow: f32,
 }
 
 #[derive(Deserialize, Clone, Copy, Serialize)]
 pub struct AutoAdjustLimits {
-    #[serde(rename = "MinFreqOffset", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(
+        rename = "MinFreqOffset",
+        serialize_with = "crate::serialize_float_2dgt"
+    )]
     pub min_freq_offset: f32,
 
     #[serde(rename = "MaxForwardSteps")]
@@ -97,13 +116,22 @@ pub struct Config {
     #[serde(rename = "TotalVerticalSteps")]
     pub total_vertical_steps: u32,
 
-    #[serde(rename = "FreqmeterOffset", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(
+        rename = "FreqmeterOffset",
+        serialize_with = "crate::serialize_float_2dgt"
+    )]
     pub freqmeter_offset: f32,
 
-    #[serde(rename = "WorkingOffsetPPM", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(
+        rename = "WorkingOffsetPPM",
+        serialize_with = "crate::serialize_float_2dgt"
+    )]
     pub working_offset_ppm: f32,
 
-    #[serde(rename = "TargetFreqCenter", serialize_with = "crate::serialize_float_2dgt")]
+    #[serde(
+        rename = "TargetFreqCenter",
+        serialize_with = "crate::serialize_float_2dgt"
+    )]
     pub target_freq_center: f32,
 
     #[serde(rename = "UpdateIntervalMs")]
@@ -180,28 +208,59 @@ impl std::fmt::Display for Config {
         writeln!(f, "ForecastConfig:")?;
         writeln!(f, "  MinFreqGrow: {}", self.forecast_config.min_freq_grow)?;
         writeln!(f, "  MaxFreqGrow: {}", self.forecast_config.max_freq_grow)?;
-        writeln!(f, "  MedianFreqGrow: {}", self.forecast_config.median_freq_grow)?;
+        writeln!(
+            f,
+            "  MedianFreqGrow: {}",
+            self.forecast_config.median_freq_grow
+        )?;
 
         writeln!(f, "CooldownTimeMs: {}", self.cooldown_time_ms)?;
 
         writeln!(f, "AutoAdjustLimits:")?;
-        writeln!(f, "  MinFreqOffset: {}", self.auto_adjust_limits.min_freq_offset)?;
-        writeln!(f, "  MaxForwardSteps: {}", self.auto_adjust_limits.max_forward_steps)?;
-        writeln!(f, "  MaxRetreatSteps: {}", self.auto_adjust_limits.max_retreat_steps)?;
-        writeln!(f, "  FastForwardStepLimit: {}", self.auto_adjust_limits.fast_forward_step_limit)?;
-        writeln!(f, "  EdgeDetectSintervalSt: {}", self.auto_adjust_limits.edge_detect_interval)?;
+        writeln!(
+            f,
+            "  MinFreqOffset: {}",
+            self.auto_adjust_limits.min_freq_offset
+        )?;
+        writeln!(
+            f,
+            "  MaxForwardSteps: {}",
+            self.auto_adjust_limits.max_forward_steps
+        )?;
+        writeln!(
+            f,
+            "  MaxRetreatSteps: {}",
+            self.auto_adjust_limits.max_retreat_steps
+        )?;
+        writeln!(
+            f,
+            "  FastForwardStepLimit: {}",
+            self.auto_adjust_limits.fast_forward_step_limit
+        )?;
+        writeln!(
+            f,
+            "  EdgeDetectSintervalSt: {}",
+            self.auto_adjust_limits.edge_detect_interval
+        )?;
 
         writeln!(f, "StableVal: {}", self.stable_val)?;
 
         // write resonators placement as a table
         writeln!(f, "ResonatorsPlacement:")?;
-        writeln!(f, "  Center\t| Width\t| Height")?;
-        writeln!(f, "  ------\t| -----\t| ------")?;
+        writeln!(f, "  Center\t| Width\t| Height\t| MulS\t| MulA\t| MulB\t| MulF")?;
+        writeln!(f, "  ------\t| -----\t| ------\t| ----\t| ----\t| ----\t| ----")?;
         for placement in &self.resonator_placement {
             writeln!(
                 f,
-                "  X{} Y{}\t| {}\t| {}",
-                placement.x, placement.y, placement.w, placement.h
+                "  X{} Y{}\t| {}\t| {}\t| {:?}\t| {:?}\t| {:?}\t| {:?}",
+                placement.x,
+                placement.y,
+                placement.w,
+                placement.h,
+                placement.mul_laser_pump_power,
+                placement.mul_laser_power,
+                placement.mul_laser_pwm,
+                placement.mul_laser_feedrate
             )?;
         }
         Ok(())

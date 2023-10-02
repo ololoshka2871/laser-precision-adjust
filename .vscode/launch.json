@@ -30,7 +30,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "laser_precision_adjust_server=trace",
+                "RUST_LOG": "laser_precision_adjust_server=trace,laser_precision_adjust=debug",
             },
             "cargo": {
                 "args": [
