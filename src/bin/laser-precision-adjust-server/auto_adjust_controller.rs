@@ -354,7 +354,8 @@ async fn find_edge(
         .await?;
         sleep_ms((update_interval_ms * 10) as u64).await;
 
-        // поиск во фрагменте повышения частоты не менее чем на 0.2 Гц
+        // поиск во фрагменте повышения частоты не менее чем на 0.35 Гц
+        const EDGE_DETECT_PEAK: f64 = 0.35;
         {
             let (last_fragment, _) = capture(predictor).await;
             let box_plot = BoxPlot::new(&last_fragment);
@@ -375,11 +376,11 @@ async fn find_edge(
                     max_frequency,
                     box_plot.q3()
                 )))?
-            } else if box_plot.q3() - box_plot.q1() >= 0.35
-                && (last_fragment.first().map_or(box_plot.q1(), |v| *v)
+            } else if (box_plot.q3() - box_plot.q1() > EDGE_DETECT_PEAK)
+                && ((last_fragment.first().map_or(box_plot.q1(), |v| *v)
                     - last_fragment.last().map_or(box_plot.q3(), |v| *v))
                 .abs()
-                    >= 0.35
+                    > EDGE_DETECT_PEAK)
             {
                 // нашли
                 display_progress(&status_report_q, format!("Реакция обнаружена!")).await?;
@@ -450,10 +451,13 @@ async fn do_fast_forward_adjust(
                 .await
                 .unwrap()
                 .median;
-            if fr < f_lower_baund
-            {
+            if fr < f_lower_baund {
                 forecast = current_freq;
-                tracing::warn!("Fast-forward: detected false-stop: predict-median={:.2}, lb={:.2}", fr, f_lower_baund);
+                tracing::warn!(
+                    "Fast-forward: detected false-stop: predict-median={:.2}, lb={:.2}",
+                    fr,
+                    f_lower_baund
+                );
                 continue;
             }
 
