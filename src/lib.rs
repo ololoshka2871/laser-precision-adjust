@@ -1,6 +1,5 @@
 mod config;
 mod precision_adjust;
-mod measure_sanitizer;
 
 pub mod predict;
 
@@ -13,7 +12,6 @@ use num_traits::Float;
 
 pub use config::{AutoAdjustLimits, Config, ForecastConfig};
 pub use precision_adjust::{Error, PrecisionAdjust, Status};
-pub use measure_sanitizer::{CoollingDownInfo, MeasureSanitizer, MeasureSanitizerState};
 
 #[derive(Clone)]
 pub struct AdjustConfig {

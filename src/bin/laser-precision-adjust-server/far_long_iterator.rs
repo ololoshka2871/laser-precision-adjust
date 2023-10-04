@@ -23,6 +23,10 @@ impl<T: FarLongIteratorItem> FarLongIterator<T> {
     fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.elemnts.get_mut(index)
     }
+
+    fn reset(&mut self) {
+        self.current_selected = None;
+    }
 }
 
 pub trait IntoFarLongIterator<T: FarLongIteratorItem> {
@@ -190,7 +194,7 @@ mod test {
             assert_eq!(id, correct_order[i % SIZE as usize]);
             std::thread::sleep((duraton * 2).to_std().unwrap());
             iterator.get_mut(id).map(SItem::select);
-            i += 1; 
+            i += 1;
         }
     }
 }

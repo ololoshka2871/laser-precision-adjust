@@ -54,7 +54,6 @@ struct AppState {
     close_timestamp: Arc<Mutex<Option<u128>>>,
     select_channel_blocked: Arc<Mutex<bool>>,
 
-    measure_sanitizer: Arc<Mutex<laser_precision_adjust::MeasureSanitizer>>,
     predictor: Arc<Mutex<Predictor<f64>>>,
     auto_adjust_ctrl: Arc<Mutex<auto_adjust_controller::AutoAdjestController>>,
 }
@@ -96,9 +95,6 @@ async fn main() -> Result<(), std::io::Error> {
         target_freq: config.target_freq_center,
         work_offset_hz: config.freqmeter_offset,
     }));
-
-    let measure_sanitizer =
-        laser_precision_adjust::MeasureSanitizer::new(status_rx.clone(), config.stable_val);
 
     let predictor = Predictor::new(
         status_rx.clone(),
@@ -146,7 +142,6 @@ async fn main() -> Result<(), std::io::Error> {
         close_timestamp: Arc::new(Mutex::new(None)),
         select_channel_blocked: Arc::new(Mutex::new(false)),
 
-        measure_sanitizer: Arc::new(Mutex::new(measure_sanitizer)),
         predictor: Arc::new(Mutex::new(predictor)),
         auto_adjust_ctrl: Arc::new(Mutex::new(auto_adjust_controller)),
     };

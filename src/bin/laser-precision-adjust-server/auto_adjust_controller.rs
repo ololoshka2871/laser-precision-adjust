@@ -30,10 +30,6 @@ pub enum State {
     // Пока наибольшее значение прогноза ниже целевой частоты делается 1 шаг и ожидается полное охладдение
     PrecisionStepping,
 
-    // Пока текущая частота ниже целевой, а верхний предел прогноза ниже верхнего допустимого предела
-    // Делается 1 шаг со смещщением -1, но не более AutoAdjustLimits.max_retreat_steps шагов
-    ReverseStepping,
-
     // Конец
     End,
 }
@@ -217,7 +213,7 @@ async fn adjust_task(
 
     *state.lock().await = new_state;
 
-    let (new_state, precision_end_freq, precision_steps_used) =
+    let (_new_state, precision_end_freq, precision_steps_used) =
         if new_state == State::PrecisionStepping {
             match do_precision_adjust(
                 traget_frequency,
@@ -254,54 +250,17 @@ async fn adjust_task(
             (new_state, None, 0)
         };
 
-    let (backward_end_freq, backward_steps_used) = if new_state == State::ReverseStepping {
-        match do_backword_adjust(
-            traget_frequency,
-            precision_ppm,
-            precision_end_freq.unwrap_or(fast_forward_end_freq),
-            config.max_retreat_steps,
-            update_interval_ms,
-            &status_report_q,
-            &precision_adjust,
-            &predictor,
-            channel,
-        )
-        .await
-        {
-            Ok((freq, steps_used)) => {
-                display_progress(
-                    &status_report_q,
-                    format!("Обратный ход: -> {:.2} Гц ({} шага)", freq, steps_used),
-                )
-                .await?;
-                (Some(freq), steps_used)
-            }
-            Err(e) => {
-                tracing::error!("Precision adjust failed: {}", e);
-                status_report_q
-                    .send(AutoAdjustStateReport::Error(e.to_string()))
-                    .await?;
-                *state.lock().await = State::Idle;
-                return Ok(());
-            }
-        }
-    } else {
-        display_progress(&status_report_q, "Обратный ход пропущен".to_owned()).await?;
-        (None, 0)
-    };
-
     // report
     {
         let precision_end_freq = precision_end_freq.unwrap_or(fast_forward_end_freq);
-        let backward_end_freq = backward_end_freq.unwrap_or(precision_end_freq);
 
-        let result = backward_end_freq;
+        let result = precision_end_freq;
         let offset_ppm = (result - traget_frequency) / traget_frequency * 1_000_000.0;
-        let total_steps_used = fast_forward_steps_used + precision_steps_used + backward_steps_used;
+        let total_steps_used = fast_forward_steps_used + precision_steps_used;
 
         status_report_q
             .send(AutoAdjustStateReport::Finished(format!(
-                "Настройка завершена: {initial_freq:.2} -> {edge_freq:.2} -> {fast_forward_end_freq:.2} -> {precision_end_freq:.2} -> {backward_end_freq:.2} Гц ({offset_ppm:+.1} ppm) за {total_steps_used} шагов",
+                "Настройка завершена: {initial_freq:.2} -> {edge_freq:.2} -> {fast_forward_end_freq:.2} -> {precision_end_freq:.2} Гц ({offset_ppm:+.1} ppm) за {total_steps_used} шагов",
             )))
             .await?;
     }
@@ -477,28 +436,31 @@ async fn do_fast_forward_adjust(
                 .unwrap()
                 .maximal)
             .floor() as i32;
-        if steps_forecast <= 1 {
+        tracing::trace!("New fast-forward forecast: {} steps", steps_forecast);
+        if steps_forecast < 1 {
             // ожидание + переизмеренть частоту
             sleep_ms((update_interval_ms * 5) as u64).await;
             let current_freq = reread_freq(predictor).await;
 
             // ложное срабатывание?
-            if predictor
+            let fr = predictor
                 .lock()
                 .await
                 .get_prediction(channel, current_freq)
                 .await
                 .unwrap()
-                .maximal
-                < f_lower_baund
+                .median;
+            if fr < f_lower_baund
             {
                 forecast = current_freq;
+                tracing::warn!("Fast-forward: detected false-stop: predict-median={:.2}, lb={:.2}", fr, f_lower_baund);
                 continue;
             }
 
             // переход к точной настройке
             return Ok((State::PrecisionStepping, current_freq, total_step_counter));
         } else if steps_forecast > step_limit as i32 {
+            tracing::warn!("Fast-forawrd: trimmed steps to {}", step_limit);
             steps_forecast = step_limit as i32;
         }
 
@@ -517,6 +479,8 @@ async fn do_fast_forward_adjust(
             total_step_counter = max_forward_steps;
             step_limit_over = true;
         }
+
+        tracing::trace!("Burn {} steps...", steps_forecast);
 
         for _ in 0..steps_forecast {
             burn(&precision_adjust).await?;
@@ -539,6 +503,8 @@ async fn do_fast_forward_adjust(
             }
         }
 
+        tracing::trace!("...Success");
+
         // защита от "залипания"
         if last_timestamp.is_none() {
             Err(HardwareLogickError(
@@ -548,6 +514,7 @@ async fn do_fast_forward_adjust(
 
         // ожидаем полного охлаждения
         display_progress(&status_report_q, "Ожидание охлаждения".to_owned()).await?;
+        tracing::trace!("Cooling...");
         let last_fragment = loop {
             sleep_ms(update_interval_ms as u64).await;
             let last_fragment = get_last_fragment(&predictor, channel).await;
@@ -562,15 +529,19 @@ async fn do_fast_forward_adjust(
         forecast = last_fragment.target();
         if step_limit_over {
             // Достигнут лимит шагов, принудительно выходим
+            tracing::info!("Fast-forward: Sep limit");
             break (State::PrecisionStepping, forecast, total_step_counter);
         } else if forecast > traget_frequency {
-            // прогноз показывает, что частота уже выше целевой, переходим к ReverseStepping
-            break (State::ReverseStepping, forecast, total_step_counter);
+            tracing::info!("Fast-forward: forecast ok");
+            // прогноз показывает, что частота уже выше целевой, переходим к PrecisionStepping
+            break (State::PrecisionStepping, forecast, total_step_counter);
         } else if forecast > f_lower_baund {
+            tracing::info!("Fast-forward: forecast upper min");
             // достигнута нижняя граница, останов грубой настройки, переходим к PrecisionStepping
             break (State::PrecisionStepping, forecast, total_step_counter);
         } else {
             // продолжаем грубую настройку
+            tracing::trace!("Need more fast-forward steps");
         }
     })
 }
@@ -592,10 +563,8 @@ async fn do_precision_adjust(
     let mut total_step_counter: u32 = 0;
 
     let target_state = loop {
-        if current_freq > traget_frequency {
+        if current_freq > traget_frequency || current_freq > f_lower_baund {
             break State::End;
-        } else if current_freq > f_lower_baund {
-            break State::ReverseStepping;
         }
 
         let forecast = predictor
@@ -606,13 +575,13 @@ async fn do_precision_adjust(
             .ok_or(HardwareLogickError("Отсутвует прогноз!".to_owned()))?;
 
         if forecast.maximal >= f_upper_baund {
-            break State::ReverseStepping;
+            break State::End;
         }
 
         if total_step_counter >= max_steps {
             // достигнут лимит шагов, принудительно выходим
             display_progress(&status_report_q, "Достигнут лимит шагов".to_owned()).await?;
-            break State::ReverseStepping;
+            break State::End;
         }
 
         // прожиг 1 шага
@@ -668,93 +637,6 @@ async fn do_precision_adjust(
     current_freq = reread_freq(predictor).await;
 
     Ok((target_state, current_freq, total_step_counter))
-}
-
-/// Итеративно делаем шаги назад, пока прогноз не станет выше целевой частоты или не кончится лимит шагов
-async fn do_backword_adjust(
-    traget_frequency: f64,
-    precision_ppm: f64,
-    mut current_freq: f64,
-    max_rev_steps: u32,
-    update_interval_ms: u32,
-    status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
-    precision_adjust: &Mutex<PrecisionAdjust>,
-    predictor: &Mutex<Predictor<f64>>,
-    channel: u32,
-) -> Result<(f64, u32), anyhow::Error> {
-    let f_upper_baund = traget_frequency * (1.0 + precision_ppm / 1_000_000.0);
-    let mut total_step_counter: u32 = 0;
-
-    loop {
-        if current_freq > traget_frequency {
-            break;
-        }
-
-        let forecast = predictor
-            .lock()
-            .await
-            .get_prediction(channel, current_freq)
-            .await
-            .ok_or(HardwareLogickError("Отсутвует прогноз!".to_owned()))?;
-
-        if forecast.minimal > traget_frequency || forecast.maximal >= f_upper_baund {
-            break;
-        }
-
-        if total_step_counter >= max_rev_steps {
-            // достигнут лимит шагов, принудительно выходим
-            display_progress(
-                &status_report_q,
-                "Достигнут лимит обратных шагов".to_owned(),
-            )
-            .await?;
-            break;
-        }
-
-        // прожиг 1 шага
-        burn(&precision_adjust).await?;
-        total_step_counter += 1;
-        sleep_ms((update_interval_ms * 4) as u64).await;
-        match step(&precision_adjust, -1).await {
-            Ok(_) => {
-                if let (_, Some(ts)) = capture(&predictor).await {
-                    // ожидаем полного охлаждения
-                    display_progress(&status_report_q, "Ожидание охлаждения".to_owned()).await?;
-                    let last_fragment = loop {
-                        sleep_ms(update_interval_ms as u64).await;
-                        let last_fragment = get_last_fragment(&predictor, channel).await;
-                        if let Some(fragment) = &last_fragment {
-                            if fragment.start_timestamp() >= ts as f64 {
-                                break last_fragment.unwrap();
-                            }
-                        }
-                    };
-
-                    // обновляем текущую частоту
-                    current_freq = last_fragment.target();
-                    display_progress(
-                        &status_report_q,
-                        format!("Текущая частота: ~{:.2} Гц", current_freq),
-                    )
-                    .await?;
-                } else {
-                    Err(HardwareLogickError(
-                        "Не удалось получить данные с частотмера, аварийный останов".to_owned(),
-                    ))?;
-                }
-            }
-            Err(laser_precision_adjust::Error::Logick(_)) => {
-                Err(HardwareLogickError(
-                    "Достигнут лимит перемещения, невозможно продолжить".to_owned(),
-                ))?;
-            }
-            Err(e) => Err(HardwareLogickError(format!(
-                "Не удалось сделать шаг ({e:?})"
-            )))?,
-        }
-    }
-
-    Ok((current_freq, total_step_counter))
 }
 
 async fn reread_freq(predictor: &Mutex<Predictor<f64>>) -> f64 {
