@@ -115,6 +115,9 @@ pub struct StateResult {
 
     #[serde(rename = "StatusCode")]
     status_code: RezStatus,
+
+    #[serde(rename = "RestartMarker")]
+    restart_marker: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -861,8 +864,14 @@ pub(super) async fn handle_state(
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
 ) -> impl IntoResponse {
+    const MAX_POINTS: usize = 100;
+
+    let mut counter = 0;
+
     let stream = async_stream::stream! {
         loop {
+            counter += 1;
+            
             status_rx.changed().await.ok();
 
             let status = status_rx.borrow().clone();
@@ -946,7 +955,12 @@ pub(super) async fn handle_state(
                 aproximations,
                 is_auto_adjust_busy,
                 status_code: limits.to_status(status.current_frequency),
+                restart_marker: counter == MAX_POINTS
             };
+
+            if counter > MAX_POINTS {
+                break;
+            }
         }
     };
 

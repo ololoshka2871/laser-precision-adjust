@@ -3,9 +3,6 @@ interface JQuery<TElement extends Element = HTMLElement> extends Iterable<TEleme
     tooltip(options?: any): JQuery<TElement>;
 }
 
-// declare oboe as defined global function
-declare function oboe(url: string | Object): any;
-
 // declare hotkeys as defined global function
 declare function hotkeys(key: string, callback: (event: KeyboardEvent, handler: any) => void): void;
 
@@ -32,6 +29,7 @@ interface IState {
     Aproximations: Array<Array<[number, number]>>,
     IsAutoAdjustBusy: boolean,
     StatusCode: string,
+    RestartMarker: boolean,
 }
 
 interface IControlResult {
@@ -118,7 +116,7 @@ $(() => {
             url: '/control/scan-all',
             method: 'POST',
             body: {}
-        }).node('!.', (state: IControlResult) => {
+        }).done((state: IControlResult) => {
             if (state.success) {
                 if (state.message === 'Finished' && present_noty !== null) {
                     present_noty.close();
@@ -144,7 +142,7 @@ $(() => {
             url: '/control/auto-adjust',
             method: 'POST',
             body: {}
-        }).node('!.', (state: IControlResult) => {
+        }).done((state: IControlResult) => {
             if (state.success) {
                 console.log(state.message);
 
@@ -293,80 +291,7 @@ $(() => {
             }
         });
 
-    oboe('/state')
-        .node('!.', (state: IState) => {
-            // state - это весь JSON объект, который пришел с сервера
-            const current_freq = state.CurrentFreq;
-
-            const target = state.TargetFreq;
-            const offset_hz = state.WorkOffsetHz;
-            const upperLimit = target + offset_hz;
-            const lowerLimit = target - offset_hz;
-
-            // добавляем новые значения в график
-            chart.data.labels = state.Points.map(p => p[0]);
-            chart.data.datasets[0].data = Array<number>(state.Points.length).fill(upperLimit);
-            chart.data.datasets[1].data = Array<number>(state.Points.length).fill(lowerLimit);
-            // raw data
-            chart.data.datasets[2].data = state.Points.map(p => p[1]);
-            chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
-
-            var plot_max = upperLimit;
-            var plot_min: number;
-            {
-                var data_not_nan = chart.data.datasets[2].data.filter((v?: number) => v !== null) as number[];
-                var sl = data_not_nan.slice(0, Math.min(5, data_not_nan.length));
-                const data_start_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
-                sl = data_not_nan.slice(data_not_nan.length - Math.min(5, data_not_nan.length), data_not_nan.length);
-                const data_end_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
-                plot_min = Math.min(data_start_min_avg, data_end_min_avg, lowerLimit) - 1.0;
-            }
-
-            // prediction
-            if (state.Prediction !== undefined && state.Points.length > 5) {
-                const offset = state.Prediction.start_offset || 0;
-                chart.data.datasets[4].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.median, offset)
-                chart.data.datasets[5].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.maximal, offset)
-                chart.data.datasets[6].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.minimal, offset)
-
-                plot_max = Math.max(plot_max, state.Prediction.maximal);
-                //plot_min = Math.max(plot_min, state.Prediction.minimal) - (state.Prediction.maximal - state.Prediction.minimal);
-            } else {
-                chart.data.datasets[4].data = []
-                chart.data.datasets[5].data = []
-                chart.data.datasets[6].data = []
-            }
-
-            // approx
-            chart.data.datasets[7].data = Array<number>(state.Points.length).fill(NaN);
-            for (var i = 0; i < state.Aproximations.length; ++i) {
-                const d: Array<[number, number]> = state.Aproximations[i];
-                const res_index_offset = chart.data.labels.findIndex((v) => v == d[0][0]);
-                if (res_index_offset >= 0) {
-                    for (var j = 0; j < d.length; ++j) {
-                        chart.data.datasets[7].data[res_index_offset + j] = d[j][1];
-                    }
-                }
-                plot_min = Math.min(plot_min, Math.min(...(<number[]>chart.data.datasets[7].data).filter((v) => v !== null && !isNaN(v))))
-            }
-
-            // Y-axis limits
-            chart.options.scales.yAxes[0].ticks.min = plot_min;
-            chart.options.scales.yAxes[0].ticks.max = plot_max;
-            chart.update();
-
-            update_f_re_display({
-                freq: current_freq,
-                min: lowerLimit,
-                max: upperLimit
-            });
-
-            update_rezonator_table(state);
-
-            update_camera_controls(state.CloseTimestamp, state.Points.pop()[0]);
-
-            update_autoadj_button(state.IsAutoAdjustBusy);
-        });
+    start_updater(chart);
 
     // hotkeys
     hotkeys('space', (event, _handler) => {
@@ -548,4 +473,88 @@ function update_autoadj_button(busy: boolean): void {
         // make start
         btn.removeClass('btn-warning').addClass('btn-danger').text('Настроить');
     }
+}
+
+function update(chart: Chart, state: IState): void {
+    // state - это весь JSON объект, который пришел с сервера
+    const current_freq = state.CurrentFreq;
+
+    const target = state.TargetFreq;
+    const offset_hz = state.WorkOffsetHz;
+    const upperLimit = target + offset_hz;
+    const lowerLimit = target - offset_hz;
+
+    // добавляем новые значения в график
+    chart.data.labels = state.Points.map(p => p[0]);
+    chart.data.datasets[0].data = Array<number>(state.Points.length).fill(upperLimit);
+    chart.data.datasets[1].data = Array<number>(state.Points.length).fill(lowerLimit);
+    // raw data
+    chart.data.datasets[2].data = state.Points.map(p => p[1]);
+    chart.data.datasets[3].data = Array<number>(state.Points.length).fill(target);
+
+    var plot_max = upperLimit;
+    var plot_min: number;
+    {
+        var data_not_nan = chart.data.datasets[2].data.filter((v?: number) => v !== null) as number[];
+        var sl = data_not_nan.slice(0, Math.min(5, data_not_nan.length));
+        const data_start_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
+        sl = data_not_nan.slice(data_not_nan.length - Math.min(5, data_not_nan.length), data_not_nan.length);
+        const data_end_min_avg = sl.reduce((a, b) => a + b, 0) / sl.length;
+        plot_min = Math.min(data_start_min_avg, data_end_min_avg, lowerLimit) - 1.0;
+    }
+
+    // prediction
+    if (state.Prediction !== undefined && state.Points.length > 5) {
+        const offset = state.Prediction.start_offset || 0;
+        chart.data.datasets[4].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.median, offset)
+        chart.data.datasets[5].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.maximal, offset)
+        chart.data.datasets[6].data = Array<number>(state.Points.length).fill(NaN, 0, offset).fill(state.Prediction.minimal, offset)
+
+        plot_max = Math.max(plot_max, state.Prediction.maximal);
+        //plot_min = Math.max(plot_min, state.Prediction.minimal) - (state.Prediction.maximal - state.Prediction.minimal);
+    } else {
+        chart.data.datasets[4].data = []
+        chart.data.datasets[5].data = []
+        chart.data.datasets[6].data = []
+    }
+
+    // approx
+    chart.data.datasets[7].data = Array<number>(state.Points.length).fill(NaN);
+    for (var i = 0; i < state.Aproximations.length; ++i) {
+        const d: Array<[number, number]> = state.Aproximations[i];
+        const res_index_offset = chart.data.labels.findIndex((v) => v == d[0][0]);
+        if (res_index_offset >= 0) {
+            for (var j = 0; j < d.length; ++j) {
+                chart.data.datasets[7].data[res_index_offset + j] = d[j][1];
+            }
+        }
+        plot_min = Math.min(plot_min, Math.min(...(<number[]>chart.data.datasets[7].data).filter((v) => v !== null && !isNaN(v))))
+    }
+
+    // Y-axis limits
+    chart.options.scales.yAxes[0].ticks.min = plot_min;
+    chart.options.scales.yAxes[0].ticks.max = plot_max;
+    chart.update();
+
+    update_f_re_display({
+        freq: current_freq,
+        min: lowerLimit,
+        max: upperLimit
+    });
+
+    update_rezonator_table(state);
+
+    update_camera_controls(state.CloseTimestamp, state.Points.pop()[0]);
+
+    update_autoadj_button(state.IsAutoAdjustBusy);
+}
+
+function start_updater(chart: Chart) {
+    oboe('/state')
+        .done((state: IState) => {
+            update(chart, state);
+            if (state.RestartMarker) {
+                setTimeout(() => start_updater(chart), 0)
+            }
+        })
 }
