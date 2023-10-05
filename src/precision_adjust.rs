@@ -111,6 +111,64 @@ pub struct PrecisionAdjust {
 }
 
 impl PrecisionAdjust {
+    /*
+    pub async fn new(
+        laser_setup: Arc<Mutex<LaserSetup>>,
+        laser_controller: Arc<Mutex<crate::LaserController>>,
+        config: crate::Config,
+    ) -> Self {
+        Self {
+            laser_setup,
+            total_vertical_steps: config.total_vertical_steps,
+
+            laser_controller,
+            positions: config.resonator_placement,
+
+            status: Arc::new(Mutex::new(PrivStatus {
+                current_channel: 0,
+                current_side: Side::Left,
+                current_step: 0,
+
+                current_camera_state: CameraState::Close,
+                current_valve_state: ValveState::Atmosphere,
+
+                prev_freq: None,
+                shot_requested: false,
+            })),
+
+            start_time: SystemTime::now(),
+
+            burn_laser_pump_power: config.burn_laser_pump_power,
+            burn_laser_power: config.burn_laser_power,
+            burn_laser_frequency: config.burn_laser_frequency,
+            burn_laser_feedrate: config.burn_laser_feedrate,
+
+            axis_config: config.axis_config,
+
+            data_log_file: {
+                Arc::new(Mutex::new(match config.data_log_file.clone() {
+                    Some(data_log_file_name) => {
+                        let file = tokio::fs::OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .truncate(true)
+                            .open({
+                                let now = chrono::offset::Local::now();
+                                now.format(data_log_file_name.to_str().unwrap()).to_string()
+                            })
+                            .await
+                            .unwrap();
+                        Some(file)
+                    }
+                    None => None,
+                }))
+            },
+
+            freq_merer_offset: Arc::new(Mutex::new(config.freqmeter_offset)),
+        }
+    }
+    */
+
     pub async fn with_config(config: crate::Config) -> Self {
         let laser_port = tokio_serial::new(config.laser_control_port, 1500000)
             .open_native_async()

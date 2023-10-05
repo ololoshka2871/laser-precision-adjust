@@ -79,6 +79,20 @@ async fn main() -> Result<(), std::io::Error> {
     tracing::info!("Loading config...");
     let (config, config_file) = laser_precision_adjust::Config::load();
 
+    /*
+    let laser_controller = Arc::new(Mutex::new(laser_precision_adjust::LaserController::new(
+        &config.laser_control_port,
+        std::time::Duration::from_millis(config.port_timeout_ms),
+    )));
+    
+    let freqmeter_controller = Arc::new(Mutex::new(
+        laser_precision_adjust::LaserSetupController::new(
+            &config.laser_setup_port,
+            std::time::Duration::from_millis(config.port_timeout_ms),
+        ),
+    ));
+    */
+
     let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
 
     tracing::warn!("Testing connections...");
