@@ -538,11 +538,19 @@ async fn do_fast_forward_adjust(
         } else if forecast > traget_frequency {
             tracing::info!("Fast-forward: forecast ok");
             // прогноз показывает, что частота уже выше целевой, переходим к PrecisionStepping
-            break (State::PrecisionStepping, forecast, total_step_counter);
+            break (
+                State::PrecisionStepping,
+                reread_freq(predictor).await,
+                total_step_counter,
+            );
         } else if forecast > f_lower_baund {
             tracing::info!("Fast-forward: forecast upper min");
             // достигнута нижняя граница, останов грубой настройки, переходим к PrecisionStepping
-            break (State::PrecisionStepping, forecast, total_step_counter);
+            break (
+                State::PrecisionStepping,
+                reread_freq(predictor).await,
+                total_step_counter,
+            );
         } else {
             // продолжаем грубую настройку
             tracing::trace!("Need more fast-forward steps");
@@ -563,7 +571,7 @@ async fn do_precision_adjust(
     channel: u32,
 ) -> Result<(State, f64, u32), anyhow::Error> {
     let f_lower_baund = traget_frequency * (1.0 - precision_ppm / 1_000_000.0);
-    let f_lower_stop_baund = traget_frequency * (1.0 - (precision_ppm / 2.0) / 1_000_000.0);
+    let f_lower_stop_baund = traget_frequency * (1.0 - (precision_ppm * 2.0 / 3.0) / 1_000_000.0);
     let f_upper_baund = traget_frequency * (1.0 + precision_ppm / 1_000_000.0);
     let mut total_step_counter: u32 = 0;
 
