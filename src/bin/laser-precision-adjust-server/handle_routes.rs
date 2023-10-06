@@ -719,7 +719,7 @@ pub(super) async fn handle_control(
                                 .map(|v| v.y().to_string())
                                 .collect::<HashSet<_>>().len() < POINTS_TO_AVG / 5
                         ) {
-                            channel.initial_freq = None;
+                            channel.initial_freq = channel.points.last().map(|p| p.y() as f32);
                         } else {
                             channel.points.remove(channel.points.len() - points_to_read);
                             let median = BoxPlot::new(&channel.points.iter().map(|p| p.y()).collect::<Vec<_>>()).median();
@@ -779,7 +779,7 @@ pub(super) async fn handle_control(
                         .len()
                         < POINTS_TO_AVG / 5)
                 {
-                    channel.initial_freq = None;
+                    channel.initial_freq = channel.points.last().map(|p| p.y() as f32);
                 } else {
                     channel.points.remove(channel.points.len() - points_to_read);
                     let median = BoxPlot::new(
@@ -871,7 +871,7 @@ pub(super) async fn handle_state(
     let stream = async_stream::stream! {
         loop {
             counter += 1;
-            
+
             status_rx.changed().await.ok();
 
             let status = status_rx.borrow().clone();

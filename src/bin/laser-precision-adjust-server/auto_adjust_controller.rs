@@ -562,12 +562,13 @@ async fn do_precision_adjust(
     predictor: &Mutex<Predictor<f64>>,
     channel: u32,
 ) -> Result<(State, f64, u32), anyhow::Error> {
-    let f_lower_baund = traget_frequency * (1.0 - (precision_ppm / 2.0) / 1_000_000.0);
+    let f_lower_baund = traget_frequency * (1.0 - precision_ppm / 1_000_000.0);
+    let f_lower_stop_baund = traget_frequency * (1.0 - (precision_ppm / 2.0) / 1_000_000.0);
     let f_upper_baund = traget_frequency * (1.0 + precision_ppm / 1_000_000.0);
     let mut total_step_counter: u32 = 0;
 
     let target_state = loop {
-        if current_freq > traget_frequency || current_freq > f_lower_baund {
+        if current_freq > f_lower_stop_baund {
             break State::End;
         }
 
@@ -579,7 +580,11 @@ async fn do_precision_adjust(
             .ok_or(HardwareLogickError("Отсутвует прогноз!".to_owned()))?;
 
         if forecast.maximal >= f_upper_baund {
-            break State::End;
+            // Иногда прогноз дает очень большое преввышение, проверим на всякий случай
+            current_freq = reread_freq(predictor).await;
+            if current_freq > f_lower_baund {
+                break State::End;
+            }
         }
 
         if total_step_counter >= max_steps {
@@ -614,7 +619,7 @@ async fn do_precision_adjust(
                         format!("Текущая частота: ~{:.2} Гц", current_freq),
                     )
                     .await?;
-                    if current_freq > f_lower_baund {
+                    if current_freq > f_lower_stop_baund {
                         // на всякий случай
                         sleep_ms((update_interval_ms * 5) as u64).await;
                         current_freq = reread_freq(predictor).await;
