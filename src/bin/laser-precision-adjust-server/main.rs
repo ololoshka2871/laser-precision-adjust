@@ -83,12 +83,24 @@ async fn main() -> Result<(), std::io::Error> {
     let laser_controller = Arc::new(Mutex::new(laser_precision_adjust::LaserController::new(
         &config.laser_control_port,
         std::time::Duration::from_millis(config.port_timeout_ms),
+        config.resonator_placement.clone(),
+        config.axis_config.clone(),
+        config.total_vertical_steps,
+        config.burn_laser_pump_power,
+        config.burn_laser_power,
+        config.burn_laser_frequency,
+        config.burn_laser_feedrate,
     )));
-    
+
     let freqmeter_controller = Arc::new(Mutex::new(
         laser_precision_adjust::LaserSetupController::new(
             &config.laser_setup_port,
+            config.resonator_placement.len() as u32,
             std::time::Duration::from_millis(config.port_timeout_ms),
+            config.freq_meter_i2c_addr,
+            std::time::Duration::from_millis(config.update_interval_ms as u64),
+            config.freqmeter_offset,
+            emulate_freq,
         ),
     ));
     */

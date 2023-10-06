@@ -1,17 +1,30 @@
 use std::io::Error as IoError;
+use std::ops::AddAssign;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio_serial::SerialPortBuilderExt;
 use tokio_util::codec::Decoder;
 
-use crate::Error;
+use crate::coordinates::{CoordiantesCalc, Side};
 use crate::{gcode_codec, gcode_ctrl::GCodeCtrl};
+use crate::{Error, Status};
 
 pub struct LaserController {
     laser_control: tokio_util::codec::Framed<tokio_serial::SerialStream, gcode_codec::LineCodec>,
     gcode_timeout: Duration,
     positions: Vec<crate::config::ResonatroPlacement>,
+    axis_config: crate::config::AxisConfig,
+    total_vertical_steps: u32,
+
+    burn_laser_pump_power: f32,
+    burn_laser_power: f32,
+    burn_laser_frequency: u32,
+    burn_laser_feedrate: f32,
+
+    current_channel: u32,
+    current_step: u32,
+    side: Side,
 }
 
 impl LaserController {
@@ -19,6 +32,13 @@ impl LaserController {
         path: impl Into<std::borrow::Cow<'a, str>>,
         gcode_timeout: Duration,
         positions: Vec<crate::config::ResonatroPlacement>,
+        axis_config: crate::config::AxisConfig,
+        total_vertical_steps: u32,
+
+        burn_laser_pump_power: f32,
+        burn_laser_power: f32,
+        burn_laser_frequency: u32,
+        burn_laser_feedrate: f32,
     ) -> Self {
         let laser_port = tokio_serial::new(path, 1500000)
             .open_native_async()
@@ -27,6 +47,17 @@ impl LaserController {
             laser_control: gcode_codec::LineCodec.framed(laser_port),
             gcode_timeout,
             positions,
+            axis_config,
+            total_vertical_steps,
+
+            burn_laser_pump_power,
+            burn_laser_power,
+            burn_laser_frequency,
+            burn_laser_feedrate,
+
+            current_channel: 0,
+            current_step: 0,
+            side: Side::Left,
         }
     }
 
@@ -97,6 +128,57 @@ impl LaserController {
         trys: Option<usize>,
     ) -> Result<(), Error> {
         let initial_step = initial_step.unwrap_or(0);
+
+        if channel >= self.positions.len() as u32 {
+            return Err(Error::Logick(format!(
+                "Channel {} is out of range (0 - {})!",
+                channel,
+                self.positions.len() - 1
+            )));
+        }
+
+        if initial_step > self.total_vertical_steps {
+            return Err(Error::Logick(format!(
+                "Initial step {} is out of range (0 - {})!",
+                initial_step, self.total_vertical_steps
+            )));
+        }
+
+        let pos = self.positions[channel as usize];
+        let ax_conf = self.axis_config;
+        let total_vertical_steps = self.total_vertical_steps;
+
+        let mut a = self.burn_laser_power;
+        let mut b = self.burn_laser_frequency;
+
+        if let Some(mula) = pos.mul_laser_power {
+            a *= mula;
+        }
+        if let Some(mulb) = pos.mul_laser_pwm {
+            b = (b as f32 * mulb) as u32;
+        }
+
+        let (new_x, new_y) = pos.to_abs(&ax_conf, 0, Side::Left, total_vertical_steps);
+
+        let commands = vec![
+            GCodeCtrl::M5,
+            GCodeCtrl::Setup { a, b },
+            GCodeCtrl::G0 {
+                x: new_x,
+                y: new_y,
+            }
+        ];
+
+        self.execute_gcode_trys(commands, trys).await?;
+
+        self.current_channel = channel;
+        self.current_step = initial_step;
+        self.side = if initial_step % 2 == 1 {
+            Side::Right
+        } else {
+            Side::Left
+        };
+
         Ok(())
     }
 
@@ -108,6 +190,50 @@ impl LaserController {
         trys: Option<usize>,
     ) -> Result<(), Error> {
         let burn_step = burn_step.unwrap_or(0);
+
+        let ch_cfg = self.positions[self.current_channel as usize];
+
+        let s = self.burn_laser_pump_power * ch_cfg.mul_laser_power.unwrap_or(1.0);
+        let f = self.burn_laser_feedrate * ch_cfg.mul_laser_feedrate.unwrap_or(1.0);
+
+        let mut commands = vec![GCodeCtrl::M3 { s }];
+        let mut side = self.side;
+        let mut current_step = self.current_step;
+        for _ in 0..burn_count {
+            side = side.mirrored();
+            if burn_step < 0 && current_step < (-burn_step) as u32 {
+                return Err(Error::Laser(IoError::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Burn step too big",
+                )));
+            }
+            if burn_step > 0 && current_step + burn_step as u32 > self.total_vertical_steps {
+                return Err(Error::Laser(IoError::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Burn step too big",
+                )));
+            }
+            current_step = current_step.wrapping_add_signed(burn_step);
+            let new_abs_coordinates = ch_cfg.to_abs(
+                &self.axis_config,
+                current_step,
+                side,
+                self.total_vertical_steps,
+            );
+            let cmd = GCodeCtrl::G1 {
+                x: new_abs_coordinates.0,
+                y: new_abs_coordinates.1,
+                f,
+            };
+            commands.push(cmd);
+        }
+        commands.push(GCodeCtrl::M5);
+
+        self.execute_gcode_trys(commands, trys).await?;
+
+        self.side = side;
+        self.current_step = current_step;
+
         Ok(())
     }
 }
