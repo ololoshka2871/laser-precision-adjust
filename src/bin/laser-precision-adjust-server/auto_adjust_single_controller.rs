@@ -45,13 +45,13 @@ impl std::fmt::Display for HardwareLogickError {
 
 impl std::error::Error for HardwareLogickError {}
 
-pub enum AutoAdjustStateReport {
+pub enum AutoAdjustSingleStateReport {
     Progress(String),
     Error(String),
     Finished(String),
 }
 
-pub struct AutoAdjestController {
+pub struct AutoAdjustSingleController {
     config: AutoAdjustLimits,
     update_interval_ms: u32,
     precision_ppm: f32,
@@ -59,7 +59,7 @@ pub struct AutoAdjestController {
     task: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
 
-impl AutoAdjestController {
+impl AutoAdjustSingleController {
     pub fn new(config: AutoAdjustLimits, update_interval_ms: u32, precision_ppm: f32) -> Self {
         Self {
             config,
@@ -76,7 +76,7 @@ impl AutoAdjestController {
         predictor: Arc<Mutex<Predictor<f64>>>,
         precision_adjust: Arc<Mutex<PrecisionAdjust2>>,
         traget_frequency: f32,
-    ) -> Result<mpsc::Receiver<AutoAdjustStateReport>, &'static str> {
+    ) -> Result<mpsc::Receiver<AutoAdjustSingleStateReport>, &'static str> {
         if *self.state.lock().await == State::Idle {
             let (tx, rx) = mpsc::channel(1);
 
@@ -131,7 +131,7 @@ impl AutoAdjestController {
 async fn adjust_task(
     channel: u32,
     update_interval_ms: u32,
-    status_report_q: mpsc::Sender<AutoAdjustStateReport>,
+    status_report_q: mpsc::Sender<AutoAdjustSingleStateReport>,
     state: Arc<Mutex<State>>,
     predictor: Arc<Mutex<Predictor<f64>>>,
     precision_adjust: Arc<Mutex<PrecisionAdjust2>>,
@@ -171,7 +171,7 @@ async fn adjust_task(
         Err(e) => {
             tracing::error!("Edge not found: {}", e);
             status_report_q
-                .send(AutoAdjustStateReport::Error(e.to_string()))
+                .send(AutoAdjustSingleStateReport::Error(e.to_string()))
                 .await?;
             *state.lock().await = State::Idle;
             return Ok(());
@@ -204,7 +204,7 @@ async fn adjust_task(
         Err(e) => {
             tracing::error!("Fast-forward failed: {}", e);
             status_report_q
-                .send(AutoAdjustStateReport::Error(e.to_string()))
+                .send(AutoAdjustSingleStateReport::Error(e.to_string()))
                 .await?;
             *state.lock().await = State::Idle;
             return Ok(());
@@ -239,7 +239,7 @@ async fn adjust_task(
                 Err(e) => {
                     tracing::error!("Precision adjust failed: {}", e);
                     status_report_q
-                        .send(AutoAdjustStateReport::Error(e.to_string()))
+                        .send(AutoAdjustSingleStateReport::Error(e.to_string()))
                         .await?;
                     *state.lock().await = State::Idle;
                     return Ok(());
@@ -259,7 +259,7 @@ async fn adjust_task(
         let total_steps_used = fast_forward_steps_used + precision_steps_used;
 
         status_report_q
-            .send(AutoAdjustStateReport::Finished(format!(
+            .send(AutoAdjustSingleStateReport::Finished(format!(
                 "Настройка завершена: {initial_freq:.2} -> {edge_freq:.2} -> {fast_forward_end_freq:.2} -> {precision_end_freq:.2} Гц ({offset_ppm:+.1} ppm) за {total_steps_used} шагов",
             )))
             .await?;
@@ -271,11 +271,11 @@ async fn adjust_task(
 }
 
 async fn display_progress(
-    status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
+    status_report_q: &mpsc::Sender<AutoAdjustSingleStateReport>,
     msg: String,
-) -> Result<(), mpsc::error::SendError<AutoAdjustStateReport>> {
+) -> Result<(), mpsc::error::SendError<AutoAdjustSingleStateReport>> {
     status_report_q
-        .send(AutoAdjustStateReport::Progress(msg))
+        .send(AutoAdjustSingleStateReport::Progress(msg))
         .await
 }
 
@@ -321,7 +321,7 @@ async fn find_edge(
     predictor: &Mutex<Predictor<f64>>,
     precision_adjust: &Mutex<PrecisionAdjust2>,
     edge_detect_interval: u32,
-    status_report_q: mpsc::Sender<AutoAdjustStateReport>,
+    status_report_q: mpsc::Sender<AutoAdjustSingleStateReport>,
     min_frequency: f64,
     max_frequency: f64,
 ) -> anyhow::Result<(u32, f64, BoxPlot<f64>)> {
@@ -411,7 +411,7 @@ async fn do_fast_forward_adjust(
     traget_frequency: f64,
     precision_ppm: f64,
     last_freq_boxplot: BoxPlot<f64>,
-    status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
+    status_report_q: &mpsc::Sender<AutoAdjustSingleStateReport>,
     precision_adjust: &Mutex<PrecisionAdjust2>,
     update_interval_ms: u32,
     predictor: &Mutex<Predictor<f64>>,
@@ -470,7 +470,7 @@ async fn do_fast_forward_adjust(
 
         // прожиг steps_forecast шагов
         status_report_q
-            .send(AutoAdjustStateReport::Progress(format!(
+            .send(AutoAdjustSingleStateReport::Progress(format!(
                 "Прожиг {} шагов",
                 steps_forecast
             )))
@@ -565,7 +565,7 @@ async fn do_precision_adjust(
     mut current_freq: f64,
     max_steps: u32,
     update_interval_ms: u32,
-    status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
+    status_report_q: &mpsc::Sender<AutoAdjustSingleStateReport>,
     precision_adjust: &Mutex<PrecisionAdjust2>,
     predictor: &Mutex<Predictor<f64>>,
     channel: u32,

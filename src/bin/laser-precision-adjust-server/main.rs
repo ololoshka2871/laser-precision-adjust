@@ -1,6 +1,6 @@
 #![feature(async_iterator)]
 
-mod auto_adjust_controller;
+mod auto_adjust_single_controller;
 mod far_long_iterator;
 mod handle_routes;
 mod into_body;
@@ -55,7 +55,7 @@ struct AppState {
     select_channel_blocked: Arc<Mutex<bool>>,
 
     predictor: Arc<Mutex<Predictor<f64>>>,
-    auto_adjust_ctrl: Arc<Mutex<auto_adjust_controller::AutoAdjestController>>,
+    auto_adjust_ctrl: Arc<Mutex<auto_adjust_single_controller::AutoAdjustSingleController>>,
 }
 
 #[tokio::main]
@@ -129,7 +129,7 @@ async fn main() -> Result<(), std::io::Error> {
         (config.cooldown_time_ms / config.update_interval_ms) as usize,
     );
 
-    let auto_adjust_controller = auto_adjust_controller::AutoAdjestController::new(
+    let auto_adjust_controller = auto_adjust_single_controller::AutoAdjustSingleController::new(
         config.auto_adjust_limits,
         config.update_interval_ms,
         config.working_offset_ppm,

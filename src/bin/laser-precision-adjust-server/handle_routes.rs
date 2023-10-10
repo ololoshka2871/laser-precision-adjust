@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use tokio::sync::Mutex;
 
-use crate::{auto_adjust_controller::AutoAdjestController, AdjustConfig, AppEngine, ChannelState};
+use crate::{auto_adjust_single_controller::AutoAdjustSingleController, AdjustConfig, AppEngine, ChannelState};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -469,7 +469,7 @@ pub(super) async fn handle_control(
     State(status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(precision_adjust): State<Arc<Mutex<PrecisionAdjust2>>>,
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
-    State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
+    State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjustSingleController>>>,
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Json(payload): Json<ControlRequest>,
@@ -805,17 +805,17 @@ pub(super) async fn handle_control(
             {
                 let stream = async_stream::stream! {
                     while let Some(msg) = status_channel.recv().await {
-                        use crate::auto_adjust_controller::AutoAdjustStateReport;
+                        use crate::auto_adjust_single_controller::AutoAdjustSingleStateReport;
                         yield match msg {
-                            AutoAdjustStateReport::Progress(msg) => {
+                            AutoAdjustSingleStateReport::Progress(msg) => {
                                 ControlResult::success(Some(msg))
                             },
 
-                            AutoAdjustStateReport::Error(e) => {
+                            AutoAdjustSingleStateReport::Error(e) => {
                                 ControlResult::error(e)
 
                             },
-                            AutoAdjustStateReport::Finished(msg) => {
+                            AutoAdjustSingleStateReport::Finished(msg) => {
                                  ControlResult::success(Some(msg))
                             },
                         };
@@ -861,7 +861,7 @@ pub(super) async fn handle_state(
     State(mut status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
     State(close_timestamp): State<Arc<Mutex<Option<u128>>>>,
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
-    State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
+    State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjustSingleController>>>,
 ) -> impl IntoResponse {
     const MAX_POINTS: usize = 100;
 
@@ -924,7 +924,7 @@ pub(super) async fn handle_state(
                 .lock()
                 .await
                 .current_state()
-                .await != crate::auto_adjust_controller::State::Idle;
+                .await != crate::auto_adjust_single_controller::State::Idle;
 
             let points = if points.len() < config.display_points_count {
                 let mut p = vec![DataPoint::<f64>::nan(); config.display_points_count as usize];

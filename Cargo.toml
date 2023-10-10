@@ -21,18 +21,16 @@ chrono = "0.4"
 num-traits = "0.2"
 anyhow = "1"
 
+### async
 tokio = { version = "1", features = ["full"] }
 tokio-serial = "5.4"
 tokio-util = { version = "0.7", default-features = false, features = ["codec"] }
 
+### serialisation
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "1.0"
 
-rustyline-async = { version = "=0.3.0", default-features = false } # В версии 0.3.1 двоение букв
-
-colored = "2.0"
-shellwords = "1.1"
-
+### math
 ndarray = "0.13"
 csaps = "0.3"
 varpro = "0.6"
@@ -59,9 +57,6 @@ mime_guess = "2"
 
 [lib]
 name = "laser_precision_adjust"
-
-#[[bin]]
-#name = "laser-precision-adjust-cli"
 
 [[bin]]
 name = "laser-precision-adjust-server"
