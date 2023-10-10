@@ -111,52 +111,6 @@ impl PrecisionAdjust2 {
             laser_controller,
             status_rx,
             ev_tx,
-            /*
-            total_vertical_steps: config.total_vertical_steps,
-
-            positions: config.resonator_placement,
-
-            status: Arc::new(Mutex::new(PrivStatus {
-                current_channel: 0,
-                current_side: Side::Left,
-                current_step: 0,
-
-                current_camera_state: CameraState::Close,
-                current_valve_state: ValveState::Atmosphere,
-
-                prev_freq: None,
-                shot_requested: false,
-            })),
-
-
-            burn_laser_pump_power: config.burn_laser_pump_power,
-            burn_laser_power: config.burn_laser_power,
-            burn_laser_frequency: config.burn_laser_frequency,
-            burn_laser_feedrate: config.burn_laser_feedrate,
-
-            axis_config: config.axis_config,
-
-            data_log_file: {
-                Arc::new(Mutex::new(match config.data_log_file.clone() {
-                    Some(data_log_file_name) => {
-                        let file = tokio::fs::OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .truncate(true)
-                            .open({
-                                let now = chrono::offset::Local::now();
-                                now.format(data_log_file_name.to_str().unwrap()).to_string()
-                            })
-                            .await
-                            .unwrap();
-                        Some(file)
-                    }
-                    None => None,
-                }))
-            },
-
-            freq_merer_offset: Arc::new(Mutex::new(config.freqmeter_offset)),
-            */
         }
     }
 
@@ -206,15 +160,15 @@ impl PrecisionAdjust2 {
     }
 
     pub async fn close_camera(&mut self, vacuum: bool) -> Result<(), Error> {
-        self.laser_setup
-            .lock()
-            .await
-            .valve_control(if vacuum {
-                ValveState::Vacuum
-            } else {
-                ValveState::Atmosphere
-            })
+        let mut guard = self.laser_setup.lock().await;
+        guard
+            .camera_control(CameraState::Close)
             .map_err(|e| Error::LaserSetup(e))?;
+        if vacuum {
+            guard
+                .valve_control(ValveState::Vacuum)
+                .map_err(|e| Error::LaserSetup(e))?;
+        }
         self.ev_tx
             .send(PrivStatusEvent {
                 camera: Some(CameraState::Close),
