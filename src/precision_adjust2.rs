@@ -269,6 +269,7 @@ async fn status_watcher(
     loop {
         tokio::select! {
             ev = ev_rx.recv() => {
+                // command recived
                 if let Some(ev)= ev {
                     if let Some(channel) = ev.chanel_select {
                         status.current_channel = channel;
@@ -283,8 +284,6 @@ async fn status_watcher(
                     if let Some(step) = ev.step {
                         status.current_step = (status.current_step as i32 + step) as u32;
                     }
-
-                    tx.send(status).unwrap();
                 }
             }
             s = rx.changed() => {
@@ -295,6 +294,7 @@ async fn status_watcher(
                     status.since_start = SystemTime::now().duration_since(start_time).unwrap();
                     status.valve_state = s.valve_state;
                     tx.send(status).unwrap();
+                    status.shot_mark = false;
                 }
             }
         }
