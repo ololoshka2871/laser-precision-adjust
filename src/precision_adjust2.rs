@@ -9,7 +9,6 @@ use tokio::sync::Mutex;
 
 use laser_setup_interface::{CameraState, ControlState, ValveState};
 
-use crate::coordinates::Side;
 use crate::laser_setup_controller::LaserSetupStatus;
 use crate::{LaserController, LaserSetupController};
 

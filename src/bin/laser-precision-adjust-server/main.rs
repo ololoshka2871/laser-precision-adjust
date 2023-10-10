@@ -12,11 +12,9 @@ use axum::{
     extract::FromRef,
     response::Redirect,
     routing::{get, post},
-    Router, http::status,
+    Router,
 };
-use laser_precision_adjust::{
-    predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust, PrecisionAdjust2,
-};
+use laser_precision_adjust::{predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust2};
 
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
@@ -51,7 +49,7 @@ struct AppState {
     freqmeter_config: Arc<Mutex<AdjustConfig>>,
     status_rx: tokio::sync::watch::Receiver<laser_precision_adjust::Status>,
 
-    precision_adjust: Arc<Mutex<PrecisionAdjust>>,
+    precision_adjust: Arc<Mutex<PrecisionAdjust2>>,
     channels: Arc<Mutex<Vec<ChannelState>>>,
     close_timestamp: Arc<Mutex<Option<u128>>>,
     select_channel_blocked: Arc<Mutex<bool>>,
@@ -81,7 +79,6 @@ async fn main() -> Result<(), std::io::Error> {
     tracing::info!("Loading config...");
     let (config, config_file) = laser_precision_adjust::Config::load();
 
-    /*
     let laser_controller = Arc::new(Mutex::new(laser_precision_adjust::LaserController::new(
         &config.laser_control_port,
         std::time::Duration::from_millis(config.port_timeout_ms),
@@ -120,19 +117,6 @@ async fn main() -> Result<(), std::io::Error> {
     }
 
     let status_rx = precision_adjust.subscribe_status();
-    */
-
-    let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
-
-    tracing::warn!("Testing connections...");
-    if let Err(e) = precision_adjust.test_connection().await {
-        panic!("Failed to connect to: {:?}", e);
-    } else {
-        tracing::info!("Connection successful!");
-    }
-
-    let status_rx = precision_adjust.start_monitoring(emulate_freq).await;
-    precision_adjust.reset().await.expect("Can't reset laser!");
 
     let freqmeter_config = Arc::new(Mutex::new(AdjustConfig {
         target_freq: config.target_freq_center,

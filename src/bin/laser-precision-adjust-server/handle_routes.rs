@@ -14,7 +14,7 @@ use axum::{
 };
 use axum_template::{Key, RenderHtml};
 use laser_precision_adjust::{
-    box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust,
+    box_plot::BoxPlot, predict::Predictor, Config, DataPoint, IDataPoint, PrecisionAdjust2,
 };
 
 use num_traits::Float;
@@ -257,7 +257,6 @@ pub(super) async fn handle_work(
 pub(super) async fn handle_stat(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(config): State<Config>,
-    State(_precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(engine): State<AppEngine>,
 ) -> impl IntoResponse {
@@ -434,7 +433,7 @@ pub(super) async fn handle_config(
 
 pub(super) async fn handle_update_config(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
-    State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
+    State(precision_adjust): State<Arc<Mutex<PrecisionAdjust2>>>,
     Json(input): Json<UpdateConfigValues>,
 ) -> impl IntoResponse {
     tracing::debug!("handle_update_config: {:?}", input);
@@ -468,7 +467,7 @@ pub(super) async fn handle_control(
     State(config): State<Config>,
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(status_rx): State<tokio::sync::watch::Receiver<laser_precision_adjust::Status>>,
-    State(precision_adjust): State<Arc<Mutex<PrecisionAdjust>>>,
+    State(precision_adjust): State<Arc<Mutex<PrecisionAdjust2>>>,
     State(select_channel_blocked): State<Arc<Mutex<bool>>>,
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjestController>>>,
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
