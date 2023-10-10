@@ -85,7 +85,6 @@ impl PrecisionAdjust2 {
     pub async fn new(
         laser_setup: Arc<Mutex<LaserSetupController>>,
         laser_controller: Arc<Mutex<LaserController>>,
-        _config: crate::Config,
     ) -> Self {
         let (status_tx, status_rx) = tokio::sync::watch::channel(Status {
             current_channel: 0,

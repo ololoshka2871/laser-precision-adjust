@@ -27,7 +27,7 @@ use minijinja::Environment;
 
 use crate::handle_routes::{
     handle_config, handle_control, handle_generate_report, handle_stat, handle_stat_rez,
-    handle_state, handle_update_config, handle_work,
+    handle_state, handle_update_config, handle_work, handle_auto_adjust,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -106,7 +106,6 @@ async fn main() -> Result<(), std::io::Error> {
     let mut precision_adjust = PrecisionAdjust2::new(
         laser_setup_controller.clone(),
         laser_controller.clone(),
-        config.clone(),
     )
     .await;
     tracing::warn!("Testing connections...");
@@ -140,6 +139,9 @@ async fn main() -> Result<(), std::io::Error> {
     let mut minijinja = Environment::new();
     minijinja
         .add_template("work", include_str!("wwwroot/html/work.jinja"))
+        .unwrap();
+    minijinja
+        .add_template("auto", include_str!("wwwroot/html/auto.jinja"))
         .unwrap();
     minijinja
         .add_template("stat", include_str!("wwwroot/html/stat.jinja"))
@@ -179,6 +181,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/control/:action", post(handle_control))
         .route("/state", get(handle_state))
         .route("/work", get(handle_work))
+        .route("/auto", get(handle_auto_adjust))
         .route("/stat", get(handle_stat))
         .route("/stat/:rez_id", get(handle_stat_rez))
         .route("/report/:part_id", get(handle_generate_report))

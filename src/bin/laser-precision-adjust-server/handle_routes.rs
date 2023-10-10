@@ -966,6 +966,15 @@ pub(super) async fn handle_state(
     axum_streams::StreamBodyAs::json_nl(stream)
 }
 
+pub(super) async fn handle_auto_adjust(State(engine): State<AppEngine>) -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct Model {}
+
+    let model = Model {};
+
+    RenderHtml(Key("auto".to_owned()), engine, model)
+}
+
 // генерация отчета
 pub(super) async fn handle_generate_report(
     State(engine): State<AppEngine>,

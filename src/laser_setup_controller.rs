@@ -198,6 +198,8 @@ async fn control_task(
 ) {
     const TRYS: usize = 3;
 
+    let mut prev_freq: Option<f32> = None;
+
     // read curent status
     let mut current_status = {
         let mut i = 0;
@@ -266,7 +268,30 @@ async fn control_task(
                                     f32::from_le_bytes(byte_array)
                                 };
 
-                                current_status.update_freq(f + current_status.freq_offset);
+                                if let Some(prev_f) = &mut prev_freq {
+                                    let v_prev_f = *prev_f;
+                                    if f > v_prev_f + 100.0 {
+                                        tracing::error!(
+                                            "Random frequency jump detected! {} -> {}",
+                                            prev_f,
+                                            f
+                                        );
+                                        prev_freq.replace(f);
+                                    } else if f > 0.0 && f < 49.0 {
+                                        tracing::error!("Empty result");
+                                        prev_freq = None;
+                                    } else if (f.is_nan() || f < 49.0) && !v_prev_f.is_nan() {
+                                        tracing::error!("Invalid result: {}", f);
+                                        prev_freq = None;
+                                    } else {
+                                        current_status.update_freq(f + current_status.freq_offset);
+                                        prev_freq.replace(f);
+                                    }
+                                } else {
+                                    prev_freq.replace(f);
+                                    current_status.update_freq(f + current_status.freq_offset);
+                                }
+
                                 tx.send(current_status).ok();
 
                                 break;

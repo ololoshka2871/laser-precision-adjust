@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Точная настройка кварцевых резонаторов</title>
+    <link rel="icon" type="image/x-icon" href="/static/images/favicon.ico">
+
+    <!-- Common styles -->
+    <link rel="stylesheet" href="/lib/bootstrap/css/bootstrap.css" />
+    <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css" />
+
+    <!-- specific styles -->
+    <link rel="stylesheet" href="/static/css/docs.min.css" />
+    <link rel="stylesheet" href="/lib/chart.js/Chart.min.css">
+
+    <!-- main style -->
+    <link rel="stylesheet" href="/static/css/site.css" />
+</head>
+
+<body>
+    <header>
+        <nav
+            class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-1 navbar-custom">
+            <div class="container">
+                <a class="navbar-brand" href="/">
+                    <img src="/static/images/rez.png" height="40" width="160" style="margin-top:0px;">
+                </a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target=".navbar-collapse"
+                    aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex flex-sm-row-reverse">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item active" id="nav-bar-work">
+                            <a class="nav-link" href="/work"><i class="fas fa-ruler-horizontal"></i> Работа</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-stat">
+                            <a class="nav-link" href="/stat"><i class="fas fa-chart-bar"></i> Статистика</a>
+                        </li>
+                        <li class="nav-item" id="nav-bar-config">
+                            <a class="nav-link" href="/config"><i class="fas fa-cogs"></i> Настройка</a>
+                        </li>
+                        <li class="nav-item ml-auto" id="nav-bar-config">
+                            <a class="nav-link" href="#" id="gen-report"><i class="fas fa-flag"></i> Отчет</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            <div class="container">
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Common scripts -->
+    <script src="/lib/jquery/jquery.min.js"></script>
+    <script src="/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="/lib/font-awesome/js/all.min.js"></script>
+    <script src="/lib/jquery-noty/packaged/jquery.noty.packaged.min.js"></script>
+    <script src="/static/js/common.js"></script>
+
+    <!-- Specific scripts -->
+    <script src="/lib/chart.js/Chart.bundle.min.js"></script>
+    <script src="/lib/oboe.js/oboe-browser.min.js"></script>
+    <script src="/lib/hotkeys-js/dist/hotkeys.min.js"></script>
+    <script src="/static/js/work.js"></script>
+</body>
+
+</html>
