@@ -15,7 +15,7 @@ use num_traits::Float;
 
 pub use config::{AutoAdjustLimits, Config, ForecastConfig};
 pub use laser_controller::LaserController;
-pub use laser_setup_controller::LaserSetupController;
+pub use laser_setup_controller::{LaserSetupController, LaserSetupStatus};
 pub use precision_adjust2::{Error, PrecisionAdjust2, Status};
 
 #[derive(Clone)]

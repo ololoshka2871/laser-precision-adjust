@@ -1,5 +1,6 @@
 #![feature(async_iterator)]
 
+mod auto_adjust_all;
 mod auto_adjust_single_controller;
 mod far_long_iterator;
 mod handle_routes;
@@ -26,8 +27,8 @@ use axum_template::engine::Engine;
 use minijinja::Environment;
 
 use crate::handle_routes::{
-    handle_config, handle_control, handle_generate_report, handle_stat, handle_stat_rez,
-    handle_state, handle_update_config, handle_work, handle_auto_adjust,
+    handle_auto_adjust, handle_config, handle_control, handle_generate_report, handle_stat,
+    handle_stat_rez, handle_state, handle_update_config, handle_work,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -56,6 +57,7 @@ struct AppState {
 
     predictor: Arc<Mutex<Predictor<f64>>>,
     auto_adjust_ctrl: Arc<Mutex<auto_adjust_single_controller::AutoAdjustSingleController>>,
+    auto_adjust_all_ctrl: Arc<Mutex<auto_adjust_all::AutoAdjustAllController>>,
 }
 
 #[tokio::main]
@@ -103,11 +105,8 @@ async fn main() -> Result<(), std::io::Error> {
         ),
     ));
 
-    let mut precision_adjust = PrecisionAdjust2::new(
-        laser_setup_controller.clone(),
-        laser_controller.clone(),
-    )
-    .await;
+    let mut precision_adjust =
+        PrecisionAdjust2::new(laser_setup_controller.clone(), laser_controller.clone()).await;
     tracing::warn!("Testing connections...");
     if let Err(e) = precision_adjust.test_connection().await {
         panic!("Failed to connect to: {:?}", e);
@@ -132,6 +131,15 @@ async fn main() -> Result<(), std::io::Error> {
     let auto_adjust_controller = auto_adjust_single_controller::AutoAdjustSingleController::new(
         config.auto_adjust_limits,
         config.update_interval_ms,
+        config.working_offset_ppm,
+    );
+
+    let auto_adjust_all_controller = auto_adjust_all::AutoAdjustAllController::new(
+        config.resonator_placement.len(),
+        laser_controller,
+        laser_setup_controller,
+        config.auto_adjust_limits,
+        std::time::Duration::from_millis(config.update_interval_ms as u64),
         config.working_offset_ppm,
     );
 
@@ -173,6 +181,7 @@ async fn main() -> Result<(), std::io::Error> {
 
         predictor: Arc::new(Mutex::new(predictor)),
         auto_adjust_ctrl: Arc::new(Mutex::new(auto_adjust_controller)),
+        auto_adjust_all_ctrl: Arc::new(Mutex::new(auto_adjust_all_controller)),
     };
 
     // Build our application with some routes

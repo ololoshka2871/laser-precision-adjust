@@ -35,7 +35,7 @@ pub enum State {
 }
 
 #[derive(Clone, Debug)]
-pub struct HardwareLogickError(String);
+pub struct HardwareLogickError(pub String);
 
 impl std::fmt::Display for HardwareLogickError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

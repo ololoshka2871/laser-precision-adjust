@@ -27,6 +27,10 @@ impl<T: FarLongIteratorItem> FarLongIterator<T> {
     fn reset(&mut self) {
         self.current_selected = None;
     }
+
+    fn count(&self) -> usize {
+        self.elemnts.len()
+    }
 }
 
 pub trait IntoFarLongIterator<T: FarLongIteratorItem> {
