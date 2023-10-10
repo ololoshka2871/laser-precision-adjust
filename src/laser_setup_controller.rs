@@ -1,7 +1,10 @@
 use laser_setup_interface::{CameraState, Error, LaserSetup, ValveState};
 use std::fmt::Debug;
+use std::ops::DerefMut;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::watch::{Receiver, Sender};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LaserSetupStatus {
@@ -56,6 +59,7 @@ impl laser_setup_interface::ControlState for LaserCtrl {
 
 pub struct LaserSetupController {
     channels_count: u32,
+    laser_setup: Arc<Mutex<LaserSetup>>,
     status_rx: Receiver<LaserSetupStatus>,
     control_tx: Sender<LaserCtrl>,
 }
@@ -70,7 +74,7 @@ impl LaserSetupController {
         initial_freq_offset: f32,
         emulate_center: Option<f32>,
     ) -> Self {
-        let laser_setup = LaserSetup::new(port, timeout);
+        let laser_setup = Arc::new(Mutex::new(LaserSetup::new(port, timeout)));
 
         let (status_tx, status_rx) = tokio::sync::watch::channel(LaserSetupStatus {
             current_frequency: 0.0,
@@ -85,7 +89,7 @@ impl LaserSetupController {
         tokio::spawn(control_task(
             status_tx,
             control_rx,
-            laser_setup,
+            laser_setup.clone(),
             freq_meter_i2c_addr,
             update_interval,
             emulate_center,
@@ -94,6 +98,7 @@ impl LaserSetupController {
 
         Self {
             channels_count,
+            laser_setup,
             status_rx,
             control_tx,
         }
@@ -167,12 +172,17 @@ impl LaserSetupController {
     pub fn current_frequency(&mut self) -> f32 {
         self.status_rx.borrow().current_frequency
     }
+
+    pub async fn test_connection(&self) -> Result<(), Error> {
+        self.laser_setup.lock().await.read().await?;
+        Ok(())
+    }
 }
 
 async fn control_task(
     tx: Sender<LaserSetupStatus>,
     mut rx: Receiver<LaserCtrl>,
-    mut laser_setup: LaserSetup,
+    laser_setup: Arc<Mutex<LaserSetup>>,
 
     freq_meter_i2c_addr: u8,
     update_interval: Duration,
@@ -185,7 +195,7 @@ async fn control_task(
     let mut current_status = {
         let mut i = 0;
         loop {
-            match laser_setup.read().await {
+            match laser_setup.lock().await.read().await {
                 Ok(status) => {
                     break LaserSetupStatus {
                         current_frequency: f32::NAN,
@@ -215,7 +225,7 @@ async fn control_task(
             // read current status
             for i in 0..TRYS {
                 match i2c_read(
-                    &mut laser_setup,
+                    laser_setup.lock().await.deref_mut(),
                     freq_meter_i2c_addr,
                     0x08,
                     std::mem::size_of::<f32>(),
@@ -253,7 +263,7 @@ async fn control_task(
             let ctrl: LaserCtrl = rx.borrow().clone();
             for i in 0..TRYS {
                 // write control command to device
-                if let Err(e) = laser_setup.write(&ctrl).await {
+                if let Err(e) = laser_setup.lock().await.write(&ctrl).await {
                     if i == TRYS - 1 {
                         panic!("Can't write control command: {e:?}, give up!");
                     } else {

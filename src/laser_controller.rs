@@ -1,5 +1,4 @@
 use std::io::Error as IoError;
-use std::ops::AddAssign;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -7,8 +6,8 @@ use tokio_serial::SerialPortBuilderExt;
 use tokio_util::codec::Decoder;
 
 use crate::coordinates::{CoordiantesCalc, Side};
+use crate::precision_adjust2::Error;
 use crate::{gcode_codec, gcode_ctrl::GCodeCtrl};
-use crate::{Error, Status};
 
 pub struct LaserController {
     laser_control: tokio_util::codec::Framed<tokio_serial::SerialStream, gcode_codec::LineCodec>,
@@ -87,7 +86,7 @@ impl LaserController {
         self.get_gcode_result().await
     }
 
-    async fn execute_gcode_trys(
+    pub async fn execute_gcode_trys(
         &mut self,
         cmds: Vec<GCodeCtrl>,
         trys: Option<usize>,
@@ -116,12 +115,12 @@ impl LaserController {
         Ok(())
     }
 
-    async fn execute_gcode(&mut self, cmds: Vec<GCodeCtrl>) -> Result<(), Error> {
+    pub async fn execute_gcode(&mut self, cmds: Vec<GCodeCtrl>) -> Result<(), Error> {
         self.execute_gcode_trys(cmds, None).await
     }
 
     /// Выбрать канал и переместиться к initial_step
-    async fn select_channel(
+    pub async fn select_channel(
         &mut self,
         channel: u32,
         initial_step: Option<u32>,
@@ -163,10 +162,7 @@ impl LaserController {
         let commands = vec![
             GCodeCtrl::M5,
             GCodeCtrl::Setup { a, b },
-            GCodeCtrl::G0 {
-                x: new_x,
-                y: new_y,
-            }
+            GCodeCtrl::G0 { x: new_x, y: new_y },
         ];
 
         self.execute_gcode_trys(commands, trys).await?;
@@ -183,7 +179,7 @@ impl LaserController {
     }
 
     /// Сделать burn_count шагов с шагом burn_step
-    async fn burn(
+    pub async fn burn(
         &mut self,
         burn_count: u32,
         burn_step: Option<i32>,
@@ -235,5 +231,47 @@ impl LaserController {
         self.current_step = current_step;
 
         Ok(())
+    }
+
+    pub async fn step(&mut self, count: i32, trys: Option<usize>) -> Result<(), Error> {
+        let ch_cfg = self.positions[self.current_channel as usize];
+
+        let side = if count % 2 == 0 {
+            self.side
+        } else {
+            self.side.mirrored()
+        };
+        let current_step = self
+            .current_step
+            .checked_add_signed(count)
+            .ok_or(Error::Logick("Overflow".to_owned()))?;
+
+        let new_abs_coordinates = ch_cfg.to_abs(
+            &self.axis_config,
+            current_step,
+            side,
+            self.total_vertical_steps,
+        );
+        let cmd = GCodeCtrl::G0 {
+            x: new_abs_coordinates.0,
+            y: new_abs_coordinates.1,
+        };
+        let commands = vec![cmd];
+
+        self.execute_gcode_trys(commands, trys).await?;
+
+        self.side = side;
+        self.current_step = current_step;
+
+        Ok(())
+    }
+
+    // Получить номер текущего шага
+    pub fn get_current_step(&self) -> u32 {
+        self.current_step
+    }
+
+    pub async fn test_connection(&mut self) -> Result<(), Error> {
+        self.raw_gcode("\n").await.map_err(|e| Error::Laser(e))
     }
 }

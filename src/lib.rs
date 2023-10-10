@@ -1,7 +1,8 @@
 mod config;
-mod precision_adjust;
-mod laser_setup_controller;
 mod laser_controller;
+mod laser_setup_controller;
+mod precision_adjust;
+pub(crate) mod precision_adjust2;
 
 pub mod predict;
 
@@ -13,9 +14,10 @@ pub(crate) mod gcode_ctrl;
 use num_traits::Float;
 
 pub use config::{AutoAdjustLimits, Config, ForecastConfig};
-pub use precision_adjust::{Error, PrecisionAdjust, Status};
 pub use laser_controller::LaserController;
 pub use laser_setup_controller::LaserSetupController;
+pub use precision_adjust::{Error, PrecisionAdjust, Status};
+pub use precision_adjust2::PrecisionAdjust2;
 
 #[derive(Clone)]
 pub struct AdjustConfig {

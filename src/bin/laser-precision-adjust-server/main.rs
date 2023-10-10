@@ -12,9 +12,11 @@ use axum::{
     extract::FromRef,
     response::Redirect,
     routing::{get, post},
-    Router,
+    Router, http::status,
 };
-use laser_precision_adjust::{predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust};
+use laser_precision_adjust::{
+    predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust, PrecisionAdjust2,
+};
 
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
@@ -92,7 +94,7 @@ async fn main() -> Result<(), std::io::Error> {
         config.burn_laser_feedrate,
     )));
 
-    let freqmeter_controller = Arc::new(Mutex::new(
+    let laser_setup_controller = Arc::new(Mutex::new(
         laser_precision_adjust::LaserSetupController::new(
             &config.laser_setup_port,
             config.resonator_placement.len() as u32,
@@ -103,6 +105,21 @@ async fn main() -> Result<(), std::io::Error> {
             emulate_freq,
         ),
     ));
+
+    let mut precision_adjust = PrecisionAdjust2::new(
+        laser_setup_controller.clone(),
+        laser_controller.clone(),
+        config.clone(),
+    )
+    .await;
+    tracing::warn!("Testing connections...");
+    if let Err(e) = precision_adjust.test_connection().await {
+        panic!("Failed to connect to: {:?}", e);
+    } else {
+        tracing::info!("Connection successful!");
+    }
+
+    let status_rx = precision_adjust.subscribe_status();
     */
 
     let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
