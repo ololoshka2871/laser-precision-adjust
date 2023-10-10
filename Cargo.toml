@@ -1,6 +1,6 @@
 [package]
 name = "laser-precision-adjust"
-version = "0.17.0"
+version = "0.20.0"
 edition = "2021"
 authors = ["ololoshka2871"]
 readme = "README.md"
@@ -60,8 +60,8 @@ mime_guess = "2"
 [lib]
 name = "laser_precision_adjust"
 
-[[bin]]
-name = "laser-precision-adjust-cli"
+#[[bin]]
+#name = "laser-precision-adjust-cli"
 
 [[bin]]
 name = "laser-precision-adjust-server"

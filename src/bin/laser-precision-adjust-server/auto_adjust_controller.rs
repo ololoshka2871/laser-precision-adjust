@@ -9,7 +9,7 @@ use tokio::{
 use laser_precision_adjust::{
     box_plot::BoxPlot,
     predict::{Fragment, Predictor},
-    AutoAdjustLimits, PrecisionAdjust,
+    AutoAdjustLimits, PrecisionAdjust2,
 };
 
 #[derive(PartialEq, Clone, Copy)]
@@ -74,7 +74,7 @@ impl AutoAdjestController {
         &mut self,
         channel: u32,
         predictor: Arc<Mutex<Predictor<f64>>>,
-        precision_adjust: Arc<Mutex<PrecisionAdjust>>,
+        precision_adjust: Arc<Mutex<PrecisionAdjust2>>,
         traget_frequency: f32,
     ) -> Result<mpsc::Receiver<AutoAdjustStateReport>, &'static str> {
         if *self.state.lock().await == State::Idle {
@@ -134,7 +134,7 @@ async fn adjust_task(
     status_report_q: mpsc::Sender<AutoAdjustStateReport>,
     state: Arc<Mutex<State>>,
     predictor: Arc<Mutex<Predictor<f64>>>,
-    precision_adjust: Arc<Mutex<PrecisionAdjust>>,
+    precision_adjust: Arc<Mutex<PrecisionAdjust2>>,
     config: AutoAdjustLimits,
     traget_frequency: f64,
     precision_ppm: f64,
@@ -279,7 +279,7 @@ async fn display_progress(
         .await
 }
 
-async fn burn(precision_adjust: &Mutex<PrecisionAdjust>) -> Result<(), HardwareLogickError> {
+async fn burn(precision_adjust: &Mutex<PrecisionAdjust2>) -> Result<(), HardwareLogickError> {
     precision_adjust
         .lock()
         .await
@@ -289,7 +289,7 @@ async fn burn(precision_adjust: &Mutex<PrecisionAdjust>) -> Result<(), HardwareL
 }
 
 async fn step(
-    precision_adjust: &Mutex<PrecisionAdjust>,
+    precision_adjust: &Mutex<PrecisionAdjust2>,
     count: i32,
 ) -> Result<(), laser_precision_adjust::Error> {
     precision_adjust.lock().await.step(count).await
@@ -319,7 +319,7 @@ async fn find_edge(
     channel: u32,
     update_interval_ms: u32,
     predictor: &Mutex<Predictor<f64>>,
-    precision_adjust: &Mutex<PrecisionAdjust>,
+    precision_adjust: &Mutex<PrecisionAdjust2>,
     edge_detect_interval: u32,
     status_report_q: mpsc::Sender<AutoAdjustStateReport>,
     min_frequency: f64,
@@ -412,7 +412,7 @@ async fn do_fast_forward_adjust(
     precision_ppm: f64,
     last_freq_boxplot: BoxPlot<f64>,
     status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
-    precision_adjust: &Mutex<PrecisionAdjust>,
+    precision_adjust: &Mutex<PrecisionAdjust2>,
     update_interval_ms: u32,
     predictor: &Mutex<Predictor<f64>>,
     channel: u32,
@@ -566,7 +566,7 @@ async fn do_precision_adjust(
     max_steps: u32,
     update_interval_ms: u32,
     status_report_q: &mpsc::Sender<AutoAdjustStateReport>,
-    precision_adjust: &Mutex<PrecisionAdjust>,
+    precision_adjust: &Mutex<PrecisionAdjust2>,
     predictor: &Mutex<Predictor<f64>>,
     channel: u32,
 ) -> Result<(State, f64, u32), anyhow::Error> {
