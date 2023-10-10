@@ -61,7 +61,7 @@ pub struct LaserSetupController {
     channels_count: u32,
     laser_setup: Arc<Mutex<LaserSetup>>,
     status_rx: Receiver<LaserSetupStatus>,
-    control_tx: Sender<LaserCtrl>,
+    control_tx: tokio::sync::mpsc::Sender<LaserCtrl>,
 }
 
 impl LaserSetupController {
@@ -84,7 +84,7 @@ impl LaserSetupController {
             channel: 0,
         });
 
-        let (control_tx, control_rx) = tokio::sync::watch::channel(LaserCtrl::default());
+        let (control_tx, control_rx) = tokio::sync::mpsc::channel(5);
 
         tokio::spawn(control_task(
             status_tx,
@@ -110,7 +110,7 @@ impl LaserSetupController {
     }
 
     /// Выбрать канал
-    pub fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
+    pub async fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
         if channel > self.channels_count {
             return Err(Error::IoError(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -122,40 +122,47 @@ impl LaserSetupController {
                 channel: Some(channel),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
+
         Ok(())
     }
 
     /// Управление камерой
-    pub fn camera_control(&mut self, state: CameraState) -> Result<(), Error> {
+    pub async fn camera_control(&mut self, state: CameraState) -> Result<(), Error> {
         self.control_tx
             .send(LaserCtrl {
                 camera: Some(state),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
+
         Ok(())
     }
 
     /// Управление вакуумным клапаном
-    pub fn valve_control(&mut self, state: ValveState) -> Result<(), Error> {
+    pub async fn valve_control(&mut self, state: ValveState) -> Result<(), Error> {
         self.control_tx
             .send(LaserCtrl {
                 valve: Some(state),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
+
         Ok(())
     }
 
     /// Установить поправку частотомера
-    pub fn set_freq_meter_offset(&mut self, offset: f32) {
+    pub async fn set_freq_meter_offset(&mut self, offset: f32) {
         self.control_tx
             .send(LaserCtrl {
                 freqmeter_offset: Some(offset),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
     }
 
     /// Получить поправку частотомера
@@ -181,7 +188,7 @@ impl LaserSetupController {
 
 async fn control_task(
     tx: Sender<LaserSetupStatus>,
-    mut rx: Receiver<LaserCtrl>,
+    mut rx: tokio::sync::mpsc::Receiver<LaserCtrl>,
     laser_setup: Arc<Mutex<LaserSetup>>,
 
     freq_meter_i2c_addr: u8,
@@ -221,58 +228,56 @@ async fn control_task(
 
     loop {
         // wait for control command or timeout=update_interval
-        if let Err(_) = tokio::time::timeout(update_interval, rx.changed()).await {
-            // read current status
-            for i in 0..TRYS {
-                match i2c_read(
-                    laser_setup.lock().await.deref_mut(),
-                    freq_meter_i2c_addr,
-                    0x08,
-                    std::mem::size_of::<f32>(),
-                )
-                .await
-                {
-                    Ok(r) => {
-                        if r.len() == std::mem::size_of::<f32>() {
-                            let f = if let Some(fake_freq) = emulate_center {
-                                generate_fake_freq(fake_freq)
-                            } else {
-                                let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
-                                f32::from_le_bytes(byte_array)
-                            };
-
-                            current_status.update_freq(f + current_status.freq_offset);
-                            tx.send(current_status).ok();
-
-                            break;
-                        } else {
-                            tracing::debug!("Freqmeter returned invalid data, skipping...");
-                        }
-                    }
-                    Err(e) => {
+        match tokio::time::timeout(update_interval, rx.recv()).await {
+            Ok(Some(ctrl)) => {
+                // read control command
+                for i in 0..TRYS {
+                    // write control command to device
+                    if let Err(e) = laser_setup.lock().await.write(&ctrl).await {
                         if i == TRYS - 1 {
-                            panic!("Can't read status: {e:?}, give up!");
+                            panic!("Can't write control command: {e:?}, give up!");
                         } else {
-                            tracing::error!("Can't read status: {:?}", e);
+                            tracing::error!("Can't write control command: {:?}", e);
                         }
+                    } else {
+                        current_status.update(&ctrl);
+                        tx.send(current_status).ok();
+                        break;
                     }
                 }
             }
-        } else {
-            // read control command
-            let ctrl: LaserCtrl = rx.borrow().clone();
-            for i in 0..TRYS {
-                // write control command to device
-                if let Err(e) = laser_setup.lock().await.write(&ctrl).await {
-                    if i == TRYS - 1 {
-                        panic!("Can't write control command: {e:?}, give up!");
-                    } else {
-                        tracing::error!("Can't write control command: {:?}", e);
+            _ => {
+                // read current status
+                for _ in 0..TRYS {
+                    match i2c_read(
+                        laser_setup.lock().await.deref_mut(),
+                        freq_meter_i2c_addr,
+                        0x08,
+                        std::mem::size_of::<f32>(),
+                    )
+                    .await
+                    {
+                        Ok(r) => {
+                            if r.len() == std::mem::size_of::<f32>() {
+                                let f = if let Some(fake_freq) = emulate_center {
+                                    generate_fake_freq(fake_freq)
+                                } else {
+                                    let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
+                                    f32::from_le_bytes(byte_array)
+                                };
+
+                                current_status.update_freq(f + current_status.freq_offset);
+                                tx.send(current_status).ok();
+
+                                break;
+                            } else {
+                                tracing::debug!("Freqmeter returned invalid data, skipping...");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Can't read status: {:?}", e);
+                        }
                     }
-                } else {
-                    current_status.update(&ctrl);
-                    tx.send(current_status).ok();
-                    break;
                 }
             }
         }

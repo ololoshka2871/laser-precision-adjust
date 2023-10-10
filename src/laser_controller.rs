@@ -157,7 +157,12 @@ impl LaserController {
             b = (b as f32 * mulb) as u32;
         }
 
-        let (new_x, new_y) = pos.to_abs(&ax_conf, 0, Side::Left, total_vertical_steps);
+        let side = if initial_step % 2 == 1 {
+            Side::Right
+        } else {
+            Side::Left
+        };
+        let (new_x, new_y) = pos.to_abs(&ax_conf, initial_step, side, total_vertical_steps);
 
         let commands = vec![
             GCodeCtrl::M5,
@@ -169,11 +174,7 @@ impl LaserController {
 
         self.current_channel = channel;
         self.current_step = initial_step;
-        self.side = if initial_step % 2 == 1 {
-            Side::Right
-        } else {
-            Side::Left
-        };
+        self.side = side;
 
         Ok(())
     }

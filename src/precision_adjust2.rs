@@ -76,7 +76,7 @@ pub struct PrecisionAdjust2 {
     laser_setup: Arc<Mutex<LaserSetupController>>,
     laser_controller: Arc<Mutex<LaserController>>,
     status_rx: Receiver<Status>,
-    ev_tx: Sender<PrivStatusEvent>,
+    ev_tx: tokio::sync::mpsc::Sender<PrivStatusEvent>,
 }
 
 pub const TRYS: usize = 3;
@@ -100,7 +100,7 @@ impl PrecisionAdjust2 {
             shot_mark: false,
         });
 
-        let (ev_tx, ev_rx) = tokio::sync::watch::channel(PrivStatusEvent::default());
+        let (ev_tx, ev_rx) = tokio::sync::mpsc::channel(5);
 
         let lss_rx = laser_setup.lock().await.subscribe();
 
@@ -130,14 +130,21 @@ impl PrecisionAdjust2 {
             .lock()
             .await
             .select_channel(channel)
+            .await
             .map_err(|e| Error::LaserSetup(e))?;
+        self.laser_controller
+            .lock()
+            .await
+            .select_channel(channel, None, Some(TRYS))
+            .await?;
 
         self.ev_tx
             .send(PrivStatusEvent {
                 chanel_select: Some(channel),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
 
         Ok(())
     }
@@ -147,6 +154,7 @@ impl PrecisionAdjust2 {
             .lock()
             .await
             .camera_control(CameraState::Open)
+            .await
             .map_err(|e| Error::LaserSetup(e))?;
 
         self.ev_tx
@@ -154,7 +162,8 @@ impl PrecisionAdjust2 {
                 camera: Some(CameraState::Open),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
 
         Ok(())
     }
@@ -163,10 +172,12 @@ impl PrecisionAdjust2 {
         let mut guard = self.laser_setup.lock().await;
         guard
             .camera_control(CameraState::Close)
+            .await
             .map_err(|e| Error::LaserSetup(e))?;
         if vacuum {
             guard
                 .valve_control(ValveState::Vacuum)
+                .await
                 .map_err(|e| Error::LaserSetup(e))?;
         }
         self.ev_tx
@@ -174,7 +185,9 @@ impl PrecisionAdjust2 {
                 camera: Some(CameraState::Close),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
+
         Ok(())
     }
 
@@ -190,7 +203,8 @@ impl PrecisionAdjust2 {
                 step: Some(count),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
 
         Ok(())
     }
@@ -206,12 +220,18 @@ impl PrecisionAdjust2 {
                 shot_mark: Some(true),
                 ..Default::default()
             })
-            .unwrap();
+            .await
+            .ok();
+
         Ok(())
     }
 
     pub async fn set_freq_meter_offset(&mut self, offset: f32) {
-        self.laser_setup.lock().await.set_freq_meter_offset(offset);
+        self.laser_setup
+            .lock()
+            .await
+            .set_freq_meter_offset(offset)
+            .await;
     }
 
     pub async fn get_freq_meter_offset(&self) -> f32 {
@@ -230,7 +250,7 @@ impl PrecisionAdjust2 {
 async fn status_watcher(
     mut rx: Receiver<LaserSetupStatus>,
     tx: Sender<Status>,
-    mut ev_rx: Receiver<PrivStatusEvent>,
+    mut ev_rx: tokio::sync::mpsc::Receiver<PrivStatusEvent>,
 ) {
     let start_time = SystemTime::now();
     let mut status = Status {
@@ -248,11 +268,11 @@ async fn status_watcher(
 
     loop {
         tokio::select! {
-            ev = ev_rx.changed() => {
-                if ev.is_ok() {
-                    let ev = ev_rx.borrow();
+            ev = ev_rx.recv() => {
+                if let Some(ev)= ev {
                     if let Some(channel) = ev.chanel_select {
                         status.current_channel = channel;
+                        status.current_step = 0;
                     }
                     if let Some(camera) = ev.camera {
                         status.camera_state = camera;
@@ -263,6 +283,7 @@ async fn status_watcher(
                     if let Some(step) = ev.step {
                         status.current_step = (status.current_step as i32 + step) as u32;
                     }
+
                     tx.send(status).unwrap();
                 }
             }
