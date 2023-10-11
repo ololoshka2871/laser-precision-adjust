@@ -73,6 +73,15 @@ pub struct AutoAdjustLimits {
 }
 
 #[derive(Deserialize, Clone, Serialize)]
+pub struct I2CCommand {
+    #[serde(rename = "Addr")]
+    pub addr: u8,
+
+    #[serde(rename = "Data")]
+    pub data: Vec<u8>,
+}
+
+#[derive(Deserialize, Clone, Serialize)]
 pub struct Config {
     #[serde(rename = "LaserSetupPort")]
     pub laser_setup_port: String,
@@ -139,6 +148,9 @@ pub struct Config {
 
     #[serde(rename = "ResonatorsPlacement")]
     pub resonator_placement: Vec<ResonatroPlacement>,
+
+    #[serde(rename = "I2CCommands")]
+    pub i2c_commands: Vec<I2CCommand>,
 }
 
 impl Config {

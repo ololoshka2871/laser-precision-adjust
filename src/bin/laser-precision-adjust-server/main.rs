@@ -12,10 +12,10 @@ use axum::{
     extract::FromRef,
     response::Redirect,
     routing::{get, post},
-    Router, http::status,
+    Router,
 };
 use laser_precision_adjust::{
-    predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust, PrecisionAdjust2,
+    predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust, //PrecisionAdjust2,
 };
 
 use tokio::sync::Mutex;
@@ -132,7 +132,10 @@ async fn main() -> Result<(), std::io::Error> {
     }
 
     let status_rx = precision_adjust.start_monitoring(emulate_freq).await;
-    precision_adjust.reset().await.expect("Can't reset laser!");
+    precision_adjust
+        .reset(config.freq_meter_i2c_addr, config.i2c_commands.clone())
+        .await
+        .expect("Can't reset laser!");
 
     let freqmeter_config = Arc::new(Mutex::new(AdjustConfig {
         target_freq: config.target_freq_center,

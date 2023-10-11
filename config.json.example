@@ -50,5 +50,10 @@
         { "Xcenter": -21, "Ycenter": -16, "Width": 5, "Height": 3 },
         { "Xcenter": -26, "Ycenter": -16, "Width": 5, "Height": 3 },
         { "Xcenter": -32, "Ycenter": -16, "Width": 5, "Height": 3 }
+    ],
+    I2CCommands: [
+        { "addr": 134, "data": [100, 0], },
+        { "addr": 136, "data": [100, 0], },
+        { "addr": 61, "data": [7], },
     ]
 }

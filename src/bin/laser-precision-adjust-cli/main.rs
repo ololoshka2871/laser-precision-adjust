@@ -36,7 +36,7 @@ async fn main() -> Result<(), std::io::Error> {
         )?;
     }
 
-    let mut precision_adjust = PrecisionAdjust::with_config(config).await;
+    let mut precision_adjust = PrecisionAdjust::with_config(config.clone()).await;
 
     tracing::warn!("Testing connections...");
     if let Err(e) = precision_adjust.test_connection().await {
@@ -46,7 +46,10 @@ async fn main() -> Result<(), std::io::Error> {
     }
 
     let mut status_channel = precision_adjust.start_monitoring(None).await;
-    precision_adjust.reset().await.expect("Can't reset laser!");
+    precision_adjust
+        .reset(config.freq_meter_i2c_addr, config.i2c_commands.clone())
+        .await
+        .expect("Can't reset laser!");
 
     writeln!(stdout, "Type 'help' to see the list of commands!").unwrap();
 

@@ -373,7 +373,11 @@ impl PrecisionAdjust {
         rx
     }
 
-    pub async fn reset(&mut self) -> Result<(), Error> {
+    pub async fn reset(
+        &mut self,
+        dev_addr: u8,
+        i2c_comands: Vec<crate::config::I2CCommand>,
+    ) -> Result<(), Error> {
         let a = self.burn_laser_power;
         let b = self.burn_laser_frequency;
 
@@ -404,6 +408,16 @@ impl PrecisionAdjust {
             new_status.current_valve_state = state.valve;
             new_status.current_camera_state = state.camera;
             *guard = new_status;
+        }
+
+        {
+            // i2c init commands
+            let mut guard = self.laser_setup.lock().await;
+            for w in i2c_comands {
+                Self::i2c_write(guard.deref_mut(), dev_addr, w.addr, &w.data)
+                    .await
+                    .map_err(Error::LaserSetup)?;
+            }
         }
 
         Ok(())
@@ -763,6 +777,20 @@ impl PrecisionAdjust {
         d.transaction(dev_addr, &mut ops).await?;
 
         Ok(buf)
+    }
+
+    async fn i2c_write<'a, E: Debug, I: laser_setup_interface::I2c<Error = E>>(
+        d: &'a mut I,
+        dev_addr: u8,
+        start_addr: u8,
+        data: &[u8],
+    ) -> Result<(), E> {
+        let mut data_to_tx = vec![start_addr];
+        data_to_tx.extend(data.into_iter());
+
+        let mut ops = vec![laser_setup_interface::Operation::Write(&data_to_tx)];
+
+        d.transaction(dev_addr, &mut ops).await
     }
 
     pub async fn set_freq_meter_offset(&mut self, offset: f32) {
