@@ -74,8 +74,8 @@ pub struct LaserSetupController {
 }
 
 impl LaserSetupController {
-    pub fn new<'a>(
-        port: impl Into<std::borrow::Cow<'a, str>>,
+    pub fn new(
+        port: String,
         channels_count: u32,
         timeout: Duration,
         freq_meter_i2c_addr: u8,

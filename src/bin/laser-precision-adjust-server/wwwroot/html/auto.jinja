@@ -56,7 +56,123 @@
     <div class="container">
         <main role="main" class="pb-3">
             <div class="container">
-
+                <div class="row" style="height: 100px">
+                    <div class="col-2 bg-secondary">
+                        <input type="text" class="form-control seven-segment-font freq-config" id="freq-target"
+                            placeholder="Цель" value="{{ target_freq }}" data-toggle="tooltip"
+                            title="Целевая частота настройки резонаторов"> Гц
+                        <input type="text" class="form-control seven-segment-font freq-config" id="freq_adj"
+                            placeholder="Поправка" value="{{ work_offset_hz }}" data-toggle="tooltip"
+                            title="Поправка показаний частотомера установки"> Гц
+                    </div>
+                    <div class="col-2 align-middle btn-group-vertical">
+                        <button class="btn" type="button" id="adj-all-ctrl-btn"><i class="fas fa-magic"></i>
+                            Начать</button>
+                    </div>
+                    <div class="mr-auto"></div>
+                    <div class="col-2 align-middle btn-group-vertical btn-group-xs">
+                        <button class="btn btn-xs btn-success camera-ctrl" ctrl-request="close" data-toggle="tooltip"
+                            title="Закрыть вакуумную камеру"><i class="fa fa-lock"></i> Закрыть</button>
+                        <hr class="thin-hr" />
+                        <button class="btn btn-xs btn-info camera-ctrl" ctrl-request="vac" data-toggle="tooltip"
+                            data-state="enabled" title="Открыть клапан вакуумного насоса"><i class="fa fa-soap"></i>
+                            Вакуум</button>
+                        <hr class="thin-hr" />
+                        <button class="btn btn-xs btn-danger camera-ctrl" ctrl-request="open" data-toggle="tooltip"
+                            title="Открыть вакуумную камеру"><i class="fa fa-unlock"></i> Открыть</button>
+                    </div>
+                </div>
+                <hr />
+                <div class="row">
+                    <h4>Этапы настройки</h4>
+                </div>
+                <div class="row">
+                    <h6>Поиск края</h6>
+                    <table id="rezonators" class="table table-sm table-bordered table-condensed">
+                        <thead>
+                            <tr>
+                                <th scope="col">Позиция</th>
+                                {% for rez in rezonators -%}
+                                <th scope="col">{{ loop.index }}</th>
+                                {% endfor -%}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">Шаг</th>
+                                {% for rez in rezonators -%}
+                                <td>0</th>
+                                    {% endfor -%}
+                            </tr>
+                            <tr>
+                                <th scope="row">Частота, Гц</th>
+                                {% for rez in rezonators -%}
+                                <td>0.0</th>
+                                    {% endfor -%}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row">
+                    <h6>Настройка</h6>
+                    <table id="rezonators" class="table table-sm table-bordered table-condensed">
+                        <thead>
+                            <tr>
+                                <th scope="col">Позиция</th>
+                                {% for rez in rezonators -%}
+                                <th scope="col">{{ loop.index }}</th>
+                                {% endfor -%}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">Шаг</th>
+                                {% for rez in rezonators -%}
+                                <td>0</th>
+                                    {% endfor -%}
+                            </tr>
+                            <tr>
+                                <th scope="row">Частота, Гц</th>
+                                {% for rez in rezonators -%}
+                                <td>0.0</th>
+                                    {% endfor -%}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="row">
+                    <h6>Готово</h6>
+                    <table id="rezonators" class="table table-sm table-bordered table-condensed">
+                        <thead>
+                            <tr>
+                                <th scope="col">Позиция</th>
+                                {% for rez in rezonators -%}
+                                <th scope="col">{{ loop.index }}</th>
+                                {% endfor -%}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">Частота, Гц</th>
+                                {% for rez in rezonators -%}
+                                <td>0.0</th>
+                                    {% endfor -%}
+                            </tr>
+                            <tr>
+                                <th scope="row">PPM</th>
+                                {% for rez in rezonators -%}
+                                <td>0</th>
+                                    {% endfor -%}
+                            </tr>
+                            <tr>
+                                <th scope="row">Причина</th>
+                                {% for rez in rezonators -%}
+                                <td>-</th>
+                                    {% endfor -%}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </main>
     </div>
@@ -72,7 +188,7 @@
     <script src="/lib/chart.js/Chart.bundle.min.js"></script>
     <script src="/lib/oboe.js/oboe-browser.min.js"></script>
     <script src="/lib/hotkeys-js/dist/hotkeys.min.js"></script>
-    <script src="/static/js/work.js"></script>
+    <script src="/static/js/auto.js"></script>
 </body>
 
 </html>

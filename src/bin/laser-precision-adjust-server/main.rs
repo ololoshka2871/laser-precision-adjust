@@ -82,7 +82,7 @@ async fn main() -> Result<(), std::io::Error> {
     let (config, config_file) = laser_precision_adjust::Config::load();
 
     let laser_controller = Arc::new(Mutex::new(laser_precision_adjust::LaserController::new(
-        &config.laser_control_port,
+        config.laser_control_port.clone(),
         std::time::Duration::from_millis(config.port_timeout_ms),
         config.resonator_placement.clone(),
         config.axis_config.clone(),
@@ -95,7 +95,7 @@ async fn main() -> Result<(), std::io::Error> {
 
     let laser_setup_controller = Arc::new(Mutex::new(
         laser_precision_adjust::LaserSetupController::new(
-            &config.laser_setup_port,
+            config.laser_setup_port.clone(),
             config.resonator_placement.len() as u32,
             std::time::Duration::from_millis(config.port_timeout_ms),
             config.freq_meter_i2c_addr,

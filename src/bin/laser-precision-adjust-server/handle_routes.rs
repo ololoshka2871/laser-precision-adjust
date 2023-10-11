@@ -979,11 +979,28 @@ pub(super) async fn handle_state(
     axum_streams::StreamBodyAs::json_nl(stream)
 }
 
-pub(super) async fn handle_auto_adjust(State(engine): State<AppEngine>) -> impl IntoResponse {
+pub(super) async fn handle_auto_adjust(
+    State(engine): State<AppEngine>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
+) -> impl IntoResponse {
     #[derive(Serialize)]
-    struct Model {}
+    struct Model {
+        target_freq: String,
+        work_offset_hz: String,
+        rezonators: Vec<u32>,
+    }
 
-    let model = Model {};
+    let (target_freq, work_offset_hz) = {
+        let guard = freqmeter_config.lock().await;
+        (guard.target_freq, guard.work_offset_hz)
+    };
+
+    let model = Model {
+        target_freq: format!("{:.2}", target_freq),
+        work_offset_hz: format!("{:+.2}", work_offset_hz),
+        rezonators: vec![0; channels.lock().await.len()],
+    };
 
     RenderHtml(Key("auto".to_owned()), engine, model)
 }

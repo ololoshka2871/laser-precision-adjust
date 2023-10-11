@@ -28,7 +28,7 @@ pub struct LaserController {
 
 impl LaserController {
     pub fn new<'a>(
-        path: impl Into<std::borrow::Cow<'a, str>>,
+        path: String,
         gcode_timeout: Duration,
         positions: Vec<crate::config::ResonatroPlacement>,
         axis_config: crate::config::AxisConfig,
@@ -39,9 +39,10 @@ impl LaserController {
         burn_laser_frequency: u32,
         burn_laser_feedrate: f32,
     ) -> Self {
-        let laser_port = tokio_serial::new(path, 1500000)
-            .open_native_async()
-            .unwrap();
+        let laser_port = match tokio_serial::new(path.clone(), 1500000).open_native_async() {
+            Ok(p) => p,
+            Err(e) => panic!("Не удалось открыть порт Лазера {path}: {e}"),
+        };
         Self {
             laser_control: gcode_codec::LineCodec.framed(laser_port),
             gcode_timeout,
