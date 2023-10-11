@@ -62,9 +62,6 @@ pub struct AutoAdjustLimits {
     #[serde(rename = "MaxForwardSteps")]
     pub max_forward_steps: u32,
 
-    #[serde(rename = "MaxRetreatSteps")]
-    pub max_retreat_steps: u32,
-
     #[serde(rename = "FastForwardStepLimit")]
     pub fast_forward_step_limit: u32,
 
@@ -223,11 +220,6 @@ impl std::fmt::Display for Config {
             f,
             "  MaxForwardSteps: {}",
             self.auto_adjust_limits.max_forward_steps
-        )?;
-        writeln!(
-            f,
-            "  MaxRetreatSteps: {}",
-            self.auto_adjust_limits.max_retreat_steps
         )?;
         writeln!(
             f,

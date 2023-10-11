@@ -20,15 +20,15 @@ pub struct FarLongIterator<T: FarLongIteratorItem> {
 }
 
 impl<T: FarLongIteratorItem> FarLongIterator<T> {
-    fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.elemnts.get_mut(index)
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.current_selected = None;
     }
 
-    fn count(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.elemnts.len()
     }
 }

@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Local};
-use laser_precision_adjust::box_plot::BoxPlot;
+use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits};
 use tokio::sync::Mutex;
 
 use crate::{
@@ -9,11 +9,20 @@ use crate::{
     far_long_iterator::{FarLongIterator, FarLongIteratorItem, IntoFarLongIterator},
 };
 
+#[derive(Clone, Copy, Debug)]
+pub enum StopReason {
+    InProcess,
+    Unsatable(BoxPlot<f32>),
+    OutOfRange(f32),
+    Ok(f32),
+}
+
 #[derive(Clone)]
 pub struct ChannelRef {
     id: usize,
     last_selected: DateTime<Local>,
     total_channels: usize,
+    status: StopReason,
 }
 
 impl ChannelRef {
@@ -22,11 +31,16 @@ impl ChannelRef {
             id,
             last_selected: Local::now(),
             total_channels,
+            status: StopReason::InProcess,
         }
     }
 
     fn select(&mut self) {
         self.last_selected = Local::now();
+    }
+
+    fn stop(&mut self, reason: StopReason) {
+        self.status = reason;
     }
 }
 
@@ -51,7 +65,10 @@ impl FarLongIteratorItem for ChannelRef {
     }
 
     fn is_valid(&self) -> bool {
-        true /* TODO */
+        match self.status {
+            StopReason::InProcess => true,
+            _ => false,
+        }
     }
 }
 
@@ -65,7 +82,7 @@ enum State {
     Idle,
 
     /// Поиск края
-    SearchingEdge,
+    SearchingEdge(u32),
 
     /// Настройка
     Adjusting,
@@ -85,7 +102,7 @@ pub struct AutoAdjustAllController {
     channel_count: usize,
     laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
     laser_setup_controller: Arc<Mutex<laser_precision_adjust::LaserSetupController>>,
-    auto_adjust_limits: laser_precision_adjust::AutoAdjustLimits,
+    auto_adjust_limits: AutoAdjustLimits,
     update_interval: Duration,
     precision_ppm: f32,
 
@@ -97,7 +114,7 @@ impl AutoAdjustAllController {
         channel_count: usize,
         laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
         laser_setup_controller: Arc<Mutex<laser_precision_adjust::LaserSetupController>>,
-        auto_adjust_limits: laser_precision_adjust::AutoAdjustLimits,
+        auto_adjust_limits: AutoAdjustLimits,
         update_interval: Duration,
         precision_ppm: f32,
     ) -> Self {
@@ -113,7 +130,10 @@ impl AutoAdjustAllController {
         }
     }
 
-    pub fn adjust(&mut self) -> Result<tokio::sync::watch::Receiver<ProgressReport>, Error> {
+    pub fn adjust(
+        &mut self,
+        target: f32,
+    ) -> Result<tokio::sync::watch::Receiver<ProgressReport>, Error> {
         if let Some(task) = &self.task {
             if !task.is_finished() {
                 return Err(Error::AdjustInProgress);
@@ -137,6 +157,7 @@ impl AutoAdjustAllController {
             channels.into_far_long_iterator(
                 chrono::Duration::from_std(self.update_interval * 2).unwrap(),
             ),
+            target,
         )));
 
         Ok(rx)
@@ -159,10 +180,11 @@ async fn adjust_task(
     mut tx: tokio::sync::watch::Sender<ProgressReport>,
     laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
     laser_setup_controller: Arc<Mutex<laser_precision_adjust::LaserSetupController>>,
-    auto_adjust_limits: laser_precision_adjust::AutoAdjustLimits,
+    auto_adjust_limits: AutoAdjustLimits,
     update_interval: Duration,
     precision_ppm: f32,
     mut channel_iterator: FarLongIterator<ChannelRef>,
+    target: f32,
 ) {
     const TRYS: usize = 10;
 
@@ -174,6 +196,7 @@ async fn adjust_task(
         update_interval,
         precision_ppm,
         &mut channel_iterator,
+        target,
         TRYS,
     )
     .await
@@ -197,17 +220,21 @@ async fn find_edge(
     tx: &mut tokio::sync::watch::Sender<ProgressReport>,
     laser_controller: &Mutex<laser_precision_adjust::LaserController>,
     laser_setup_controller: &Mutex<laser_precision_adjust::LaserSetupController>,
-    auto_adjust_limits: laser_precision_adjust::AutoAdjustLimits,
+    limits: AutoAdjustLimits,
     update_interval: Duration,
     precision_ppm: f32,
     channel_iterator: &mut FarLongIterator<ChannelRef>,
+    target: f32,
     trys: usize,
 ) -> anyhow::Result<()> {
-    tx.send(ProgressReport {
-        state: State::SearchingEdge,
-    })
-    .ok();
+    let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
+    let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
+
     for ch in 0..channel_iterator.count() as u32 {
+        tx.send(ProgressReport {
+            state: State::SearchingEdge(ch),
+        })
+        .ok();
         laser_controller
             .lock()
             .await
@@ -223,10 +250,84 @@ async fn find_edge(
             HardwareLogickError(format!("Не удалось переключить частотомера ({e:?})"))
         })?;
 
-        match measure(guard.subscribe(), Duration::from_secs(1)) {
-            MeasureResult::Stable(f) => {}
-            MeasureResult::Unstable(boxplot) => {}
-            MeasureResult::OutOfRange(f) => {}
+        let rx = guard.subscribe();
+
+        match measure(
+            rx.clone(),
+            update_interval * 10,
+            0.2,
+            (upper_limit, target - limits.min_freq_offset),
+        )
+        .await?
+        {
+            MeasureResult::Stable(f) => {
+                // Частота стабильна и в диапазоне, можно искать край
+                tracing::info!("Channel {} stable at {} Hz", ch, f);
+                if f < upper_limit && f > lower_limit {
+                    // сразу годный, стоп!
+                    channel_iterator
+                        .get_mut(ch as usize)
+                        .unwrap()
+                        .stop(StopReason::Ok(f));
+                    continue;
+                }
+            }
+            MeasureResult::Unstable(boxplot) => {
+                // Частота нестабильна - брак
+                channel_iterator
+                    .get_mut(ch as usize)
+                    .unwrap()
+                    .stop(StopReason::Unsatable(boxplot));
+                continue;
+            }
+            MeasureResult::OutOfRange(f) => {
+                // Частота вне диапазона - брак
+                channel_iterator
+                    .get_mut(ch as usize)
+                    .unwrap()
+                    .stop(StopReason::OutOfRange(f));
+                continue;
+            }
+        }
+
+        loop {
+            laser_controller
+                .lock()
+                .await
+                .burn(1, Some(limits.edge_detect_interval as i32), Some(trys))
+                .await
+                .map_err(|e| HardwareLogickError(format!("Не удалось сделать шаг ({e:?})")))?;
+
+            match measure(
+                rx.clone(),
+                update_interval * 5,
+                0.2,
+                (upper_limit, 0.0),
+            )
+            .await?
+            {
+                MeasureResult::Stable(f) => {
+                    // нет реакции
+                    if f < upper_limit && f > lower_limit {
+                        // годный, стоп!
+                        channel_iterator
+                            .get_mut(ch as usize)
+                            .unwrap()
+                            .stop(StopReason::Ok(f));
+                        break;
+                    } else {
+                        continue;
+                    }
+                }
+                MeasureResult::Unstable(_r) => break, // край найден
+                MeasureResult::OutOfRange(f) => {
+                    channel_iterator
+                        .get_mut(ch as usize)
+                        .unwrap()
+                        .stop(StopReason::OutOfRange(f));
+                    break; // Брак
+                }
+            }
         }
     }
 
@@ -239,9 +340,29 @@ enum MeasureResult {
     OutOfRange(f32),
 }
 
-fn measure(
-    m: tokio::sync::watch::Receiver<laser_precision_adjust::LaserSetupStatus>,
+async fn measure(
+    mut m: tokio::sync::watch::Receiver<laser_precision_adjust::LaserSetupStatus>,
     timeout: Duration,
-) -> MeasureResult {
-    MeasureResult::OutOfRange(0.0)
+    stable_range: f32,
+    work_range: (f32, f32),
+) -> Result<MeasureResult, tokio::sync::watch::error::RecvError> {
+    let start = std::time::Instant::now();
+    let mut data = vec![];
+
+    while std::time::Instant::now() - start < timeout {
+        m.changed().await?;
+        let status = m.borrow();
+        data.push(status.current_frequency);
+    }
+
+    let boxplot = BoxPlot::new(&data);
+    Ok(if boxplot.q3() - boxplot.q1() < stable_range {
+        if boxplot.median() > work_range.0 || boxplot.median() < work_range.1 {
+            MeasureResult::OutOfRange(boxplot.median())
+        } else {
+            MeasureResult::Stable(boxplot.median())
+        }
+    } else {
+        MeasureResult::Unstable(boxplot)
+    })
 }

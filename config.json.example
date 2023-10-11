@@ -29,7 +29,6 @@
     "AutoAdjustLimits": {
         "MinFreqOffset": 20.0,
         "MaxForwardSteps": 70,
-        "MaxRetreatSteps": 10,
         "FastForwardStepLimit": 5,
         "EdgeDetectSintervalSt": 10
     },
