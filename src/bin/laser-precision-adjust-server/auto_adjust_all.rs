@@ -35,7 +35,7 @@ impl ChannelRef {
         }
     }
 
-    fn select(&mut self) {
+    fn touch(&mut self) {
         self.last_selected = Local::now();
     }
 
@@ -235,6 +235,7 @@ async fn find_edge(
             state: State::SearchingEdge(ch),
         })
         .ok();
+
         laser_controller
             .lock()
             .await
@@ -298,14 +299,7 @@ async fn find_edge(
                 .await
                 .map_err(|e| HardwareLogickError(format!("Не удалось сделать шаг ({e:?})")))?;
 
-            match measure(
-                rx.clone(),
-                update_interval * 5,
-                0.2,
-                (upper_limit, 0.0),
-            )
-            .await?
-            {
+            match measure(rx.clone(), update_interval * 5, 0.2, (upper_limit, 0.0)).await? {
                 MeasureResult::Stable(f) => {
                     // нет реакции
                     if f < upper_limit && f > lower_limit {
@@ -329,6 +323,8 @@ async fn find_edge(
                 }
             }
         }
+
+        channel_iterator.get_mut(ch as usize).unwrap().touch();
     }
 
     Ok(())

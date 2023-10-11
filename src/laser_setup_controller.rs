@@ -6,6 +6,8 @@ use std::time::{Duration, SystemTime};
 use tokio::sync::watch::{Receiver, Sender};
 use tokio::sync::Mutex;
 
+use crate::config::I2CCommand;
+
 #[derive(Debug, Clone, Copy)]
 pub struct LaserSetupStatus {
     pub current_frequency: f32,
@@ -45,7 +47,11 @@ pub struct LaserCtrl {
 
 impl laser_setup_interface::ControlState for LaserCtrl {
     fn valve(&self) -> Option<ValveState> {
-        self.valve
+        if let Some(CameraState::Open) = self.camera {
+            Some(ValveState::Atmosphere)
+        } else {
+            self.valve
+        }
     }
 
     fn channel(&self) -> Option<u32> {
@@ -62,6 +68,9 @@ pub struct LaserSetupController {
     laser_setup: Arc<Mutex<LaserSetup>>,
     status_rx: Receiver<LaserSetupStatus>,
     control_tx: tokio::sync::mpsc::Sender<LaserCtrl>,
+
+    i2c_init_comands: Vec<I2CCommand>,
+    freq_meter_i2c_addr: u8,
 }
 
 impl LaserSetupController {
@@ -72,6 +81,7 @@ impl LaserSetupController {
         freq_meter_i2c_addr: u8,
         update_interval: Duration,
         initial_freq_offset: f32,
+        i2c_init_comands: Vec<I2CCommand>,
         emulate_center: Option<f32>,
     ) -> Self {
         let laser_setup = Arc::new(Mutex::new(LaserSetup::new(port, timeout)));
@@ -101,12 +111,24 @@ impl LaserSetupController {
             laser_setup,
             status_rx,
             control_tx,
+            i2c_init_comands,
+            freq_meter_i2c_addr,
         }
     }
 
     /// Получить экземпляр рессивера обновленя статуса
     pub fn subscribe(&self) -> Receiver<LaserSetupStatus> {
         self.status_rx.clone()
+    }
+
+    /// сброс
+    pub async fn reset(&mut self) -> Result<(), Error> {
+        // i2c init commands
+        let mut guard = self.laser_setup.lock().await;
+        for w in self.i2c_init_comands.iter() {
+            i2c_write(guard.deref_mut(), self.freq_meter_i2c_addr, w.addr, &w.data).await?
+        }
+        Ok(())
     }
 
     /// Выбрать канал
@@ -326,6 +348,20 @@ async fn i2c_read<'a, E: Debug, I: laser_setup_interface::I2c<Error = E>>(
     d.transaction(dev_addr, &mut ops).await?;
 
     Ok(buf)
+}
+
+async fn i2c_write<'a, E: Debug, I: laser_setup_interface::I2c<Error = E>>(
+    d: &'a mut I,
+    dev_addr: u8,
+    start_addr: u8,
+    data: &[u8],
+) -> Result<(), E> {
+    let mut data_to_tx = vec![start_addr];
+    data_to_tx.extend(data.into_iter());
+
+    let mut ops = vec![laser_setup_interface::Operation::Write(&data_to_tx)];
+
+    d.transaction(dev_addr, &mut ops).await
 }
 
 fn generate_fake_freq(center: f32) -> f32 {

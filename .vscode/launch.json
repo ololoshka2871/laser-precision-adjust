@@ -7,25 +7,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "cli",
-            "args": [],
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "RUST_LOG": "trace"
-            },
-            "cargo": {
-                "args": [
-                    "build",
-                    "--bin=laser-precision-adjust-cli"
-                ],
-                "filter": {
-                    "kind": "bin"
-                }
-            }
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "web",
             "args": [],
             "cwd": "${workspaceFolder}",

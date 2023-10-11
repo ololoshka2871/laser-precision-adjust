@@ -275,4 +275,8 @@ impl LaserController {
     pub async fn test_connection(&mut self) -> Result<(), Error> {
         self.raw_gcode("\n").await.map_err(|e| Error::Laser(e))
     }
+
+    pub async fn reset(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }

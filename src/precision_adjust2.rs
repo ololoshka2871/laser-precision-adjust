@@ -124,6 +124,17 @@ impl PrecisionAdjust2 {
         Ok(())
     }
 
+    pub async fn reset(&mut self) -> Result<(), Error> {
+        self.laser_setup
+            .lock()
+            .await
+            .reset()
+            .await
+            .map_err(|e| Error::LaserSetup(e))?;
+        self.laser_controller.lock().await.reset().await?;
+        Ok(())
+    }
+
     pub async fn select_channel(&mut self, channel: u32) -> Result<(), Error> {
         self.laser_setup
             .lock()

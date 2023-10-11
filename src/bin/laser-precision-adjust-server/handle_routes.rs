@@ -22,7 +22,10 @@ use serde::{Deserialize, Serialize};
 
 use tokio::sync::Mutex;
 
-use crate::{auto_adjust_single_controller::AutoAdjustSingleController, AdjustConfig, AppEngine, ChannelState};
+use crate::{
+    auto_adjust_single_controller::AutoAdjustSingleController, AdjustConfig, AppEngine,
+    ChannelState,
+};
 
 #[derive(Deserialize, Debug)]
 pub struct ControlRequest {
@@ -499,9 +502,9 @@ pub(super) async fn handle_control(
 
                 let move_to_pos = channels.lock().await[ch as usize].current_step;
 
-                let mut lock = precision_adjust.lock().await;
+                let mut guard = precision_adjust.lock().await;
 
-                if let Err(e) = lock.select_channel(ch).await {
+                if let Err(e) = guard.select_channel(ch).await {
                     return Json(ControlResult::error(format!(
                         "Не удалось переключить канал: {:?}",
                         e
@@ -510,7 +513,7 @@ pub(super) async fn handle_control(
                 }
                 if move_to_pos != 0 {
                     tracing::info!("Restore position {}", move_to_pos);
-                    if let Err(e) = lock.step(move_to_pos as i32).await {
+                    if let Err(e) = guard.step(move_to_pos as i32).await {
                         return Json(ControlResult::error(format!(
                             "Не удалось перейти к позиции {}: {:?}",
                             move_to_pos, e
@@ -536,14 +539,24 @@ pub(super) async fn handle_control(
                 tracing::info!("Camera action: {}", action);
                 match action.as_str() {
                     "close" => {
-                        if let Err(e) = precision_adjust.lock().await.close_camera(false).await {
+                        let mut guard = precision_adjust.lock().await;
+
+                        if let Err(e) = guard.close_camera(false).await {
                             return Json(ControlResult::error(format!(
                                 "Не удалось закрыть камеру: {:?}",
                                 e
                             )))
                             .into_response();
                         } else {
-                            ok_result.into_response()
+                            if let Err(e) = guard.reset().await {
+                                return Json(ControlResult::error(format!(
+                                    "Не удалось сбросить состояние: {:?}",
+                                    e
+                                )))
+                                .into_response();
+                            } else {
+                                ok_result.into_response()
+                            }
                         }
                     }
                     "open" => {

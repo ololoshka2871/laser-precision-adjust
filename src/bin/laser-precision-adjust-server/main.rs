@@ -101,6 +101,7 @@ async fn main() -> Result<(), std::io::Error> {
             config.freq_meter_i2c_addr,
             std::time::Duration::from_millis(config.update_interval_ms as u64),
             config.freqmeter_offset,
+            config.i2c_commands.clone(),
             emulate_freq,
         ),
     ));
