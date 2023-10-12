@@ -1,3 +1,12 @@
+
+interface IAutoAdjustStatusReport {
+    active: boolean,
+    status: string,
+    reset_marker: boolean,
+}
+
+//-----------------------------------------------------------------------------
+
 // on page loaded jquery
 $(() => {
     // https://getbootstrap.com/docs/4.0/components/tooltips/
@@ -26,7 +35,20 @@ $(() => {
     });
 
     $('#adj-all-ctrl-btn').on('click', (ev) => {
-        alert('Start!');
+        $.ajax({
+            url: '/control/adjust-all',
+            method: 'POST',
+            data: JSON.stringify({ }),
+            contentType: 'application/json',
+            success: (data) => {
+                if (!data.success) {
+                    noty_error('Ошибка: ' + data.error);
+                } else {
+                    start_autoadjust_updater();
+                }
+            }
+        })
+        ev.preventDefault();
     });
 
     // report
@@ -35,3 +57,17 @@ $(() => {
         gen_report(report_id);
     });
 });
+
+function update_autoadjust(state: IAutoAdjustStatusReport) {
+    console.log(state);
+}
+
+function start_autoadjust_updater() {
+    oboe('/auto_status')
+        .done((state: IAutoAdjustStatusReport) => {
+            update_autoadjust(state);
+            if (state.reset_marker) {
+                setTimeout(() => start_autoadjust_updater(), 0)
+            }
+        })
+}

@@ -475,6 +475,7 @@ pub(super) async fn handle_control(
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjustSingleController>>>,
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
     Json(payload): Json<ControlRequest>,
 ) -> impl IntoResponse {
     const POINTS_TO_AVG: usize = 15;
@@ -843,6 +844,32 @@ pub(super) async fn handle_control(
                 Json(ControlResult::error("Невозможное состояние!".to_owned())).into_response()
             }
         }
+        "adjust-all" => {
+            let mut guard = auto_adjust_all_ctrl.lock().await;
+            match guard.adjust(freqmeter_config.lock().await.target_freq) {
+                Ok(_) => Json(ControlResult::success(Some(
+                    "Автонастройка начата.".to_owned(),
+                )))
+                .into_response(),
+                Err(crate::auto_adjust_all::Error::AdjustInProgress) => {
+                    if let Err(e) = guard.cancel() {
+                        Json(ControlResult::error(format!(
+                            "Не удалось отменить автонастройку: {e:?}"
+                        )))
+                        .into_response()
+                    } else {
+                        Json(ControlResult::success(Some(
+                            "Автонастройка отменена.".to_owned(),
+                        )))
+                        .into_response()
+                    }
+                }
+                Err(e) => Json(ControlResult::error(format!(
+                    "Не удалось начать автонастройку: {e:?}"
+                )))
+                .into_response(),
+            }
+        }
         _ => {
             tracing::error!("Unknown command: {}", path);
             Json(ControlResult::error("Unknown command".to_owned())).into_response()
@@ -1003,6 +1030,57 @@ pub(super) async fn handle_auto_adjust(
     };
 
     RenderHtml(Key("auto".to_owned()), engine, model)
+}
+
+pub(super) async fn handle_auto_adjust_status(
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
+) -> impl IntoResponse {
+    use crate::auto_adjust_all::State;
+
+    const MAX_STEPS: usize = 100;
+
+    #[derive(Serialize)]
+    struct AutoAdjustStatusReport {
+        active: bool,
+        status: String,
+        reset_marker: bool,
+    }
+
+    match auto_adjust_all_ctrl.lock().await.subscribe() {
+        Some(mut rx) => {
+            let mut counter = 0;
+
+            let stream = async_stream::stream! {
+                loop {
+                    counter += 1;
+                    let reset_marker = counter == MAX_STEPS;
+
+                    if let Err(e) = rx.changed().await {
+                        tracing::error!("Autoadjust status break: {}", e);
+                        break;
+                    }
+
+                    let state = rx.borrow().state.clone();
+                    match state {
+                        State::Idle => yield AutoAdjustStatusReport { active: false, status: "".to_owned(), reset_marker },
+                        State::SearchingEdge(rez) => yield AutoAdjustStatusReport { active: true, status: format!("Поиск края резонатора {}", rez + 1), reset_marker },
+                        State::Adjusting => yield AutoAdjustStatusReport { active: true, status: format!("Настройка"), reset_marker },
+                        State::Done => yield AutoAdjustStatusReport { active: false, status: "Настройка завершена".to_owned(), reset_marker },
+                        State::Error(e) => {
+                            yield AutoAdjustStatusReport { active: true, status: format!("Ошибка: {e}"), reset_marker: true };
+                            break;
+                        },
+                    };
+
+                    if reset_marker {
+                        break;
+                    }
+                }
+            };
+            axum_streams::StreamBodyAs::json_nl(stream).into_response()
+        }
+        None => Json(ControlResult::error("Autoadjust not active".to_owned())).into_response(),
+    }
 }
 
 // генерация отчета

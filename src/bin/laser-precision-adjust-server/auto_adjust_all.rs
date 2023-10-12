@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Local};
 use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits};
-use tokio::sync::Mutex;
+use tokio::sync::{watch, Mutex};
 
 use crate::{
     auto_adjust_single_controller::HardwareLogickError,
@@ -72,12 +72,14 @@ impl FarLongIteratorItem for ChannelRef {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Error {
     AdjustInProgress,
     NothingToCancel,
 }
 
-enum State {
+#[derive(Debug, Clone)]
+pub enum State {
     /// Бездействие
     Idle,
 
@@ -95,7 +97,7 @@ enum State {
 }
 
 pub struct ProgressReport {
-    state: State,
+    pub state: State,
 }
 
 pub struct AutoAdjustAllController {
@@ -107,6 +109,7 @@ pub struct AutoAdjustAllController {
     precision_ppm: f32,
 
     task: Option<tokio::task::JoinHandle<()>>,
+    rx: Option<watch::Receiver<ProgressReport>>,
 }
 
 impl AutoAdjustAllController {
@@ -127,13 +130,15 @@ impl AutoAdjustAllController {
             precision_ppm,
 
             task: None,
+            rx: None,
         }
     }
 
-    pub fn adjust(
-        &mut self,
-        target: f32,
-    ) -> Result<tokio::sync::watch::Receiver<ProgressReport>, Error> {
+    pub fn subscribe(&self) -> Option<watch::Receiver<ProgressReport>> {
+        self.rx.as_ref().map(|rx| rx.clone())
+    }
+
+    pub fn adjust(&mut self, target: f32) -> Result<(), Error> {
         if let Some(task) = &self.task {
             if !task.is_finished() {
                 return Err(Error::AdjustInProgress);
@@ -145,7 +150,9 @@ impl AutoAdjustAllController {
             .map(move |ch_id| ChannelRef::new(ch_id, channel_count))
             .collect::<Vec<_>>();
 
-        let (tx, rx) = tokio::sync::watch::channel(ProgressReport { state: State::Idle });
+        let (tx, rx) = watch::channel(ProgressReport { state: State::Idle });
+
+        self.rx.replace(rx);
 
         self.task.replace(tokio::spawn(adjust_task(
             tx,
@@ -160,7 +167,7 @@ impl AutoAdjustAllController {
             target,
         )));
 
-        Ok(rx)
+        Ok(())
     }
 
     pub fn cancel(&mut self) -> Result<(), Error> {
@@ -172,12 +179,13 @@ impl AutoAdjustAllController {
                 return Ok(());
             }
         }
+        self.rx = None;
         Err(Error::NothingToCancel)
     }
 }
 
 async fn adjust_task(
-    mut tx: tokio::sync::watch::Sender<ProgressReport>,
+    mut tx: watch::Sender<ProgressReport>,
     laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
     laser_setup_controller: Arc<Mutex<laser_precision_adjust::LaserSetupController>>,
     auto_adjust_limits: AutoAdjustLimits,
@@ -217,7 +225,7 @@ async fn adjust_task(
 }
 
 async fn find_edge(
-    tx: &mut tokio::sync::watch::Sender<ProgressReport>,
+    tx: &mut watch::Sender<ProgressReport>,
     laser_controller: &Mutex<laser_precision_adjust::LaserController>,
     laser_setup_controller: &Mutex<laser_precision_adjust::LaserSetupController>,
     limits: AutoAdjustLimits,
@@ -230,7 +238,7 @@ async fn find_edge(
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
 
-    for ch in 0..channel_iterator.count() as u32 {
+    for ch in 0..channel_iterator.len() as u32 {
         tx.send(ProgressReport {
             state: State::SearchingEdge(ch),
         })
@@ -248,7 +256,7 @@ async fn find_edge(
         let mut guard = laser_setup_controller.lock().await;
 
         guard.select_channel(ch).await.map_err(|e| {
-            HardwareLogickError(format!("Не удалось переключить частотомера ({e:?})"))
+            HardwareLogickError(format!("Не удалось переключить частотомер ({e:?})"))
         })?;
 
         let rx = guard.subscribe();
@@ -337,11 +345,11 @@ enum MeasureResult {
 }
 
 async fn measure(
-    mut m: tokio::sync::watch::Receiver<laser_precision_adjust::LaserSetupStatus>,
+    mut m: watch::Receiver<laser_precision_adjust::LaserSetupStatus>,
     timeout: Duration,
     stable_range: f32,
     work_range: (f32, f32),
-) -> Result<MeasureResult, tokio::sync::watch::error::RecvError> {
+) -> Result<MeasureResult, watch::error::RecvError> {
     let start = std::time::Instant::now();
     let mut data = vec![];
 

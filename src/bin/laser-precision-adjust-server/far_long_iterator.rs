@@ -28,7 +28,7 @@ impl<T: FarLongIteratorItem> FarLongIterator<T> {
         self.current_selected = None;
     }
 
-    pub fn count(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.elemnts.len()
     }
 }
