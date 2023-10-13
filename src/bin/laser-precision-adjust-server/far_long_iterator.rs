@@ -32,6 +32,10 @@ impl<T: FarLongIteratorItem> FarLongIterator<T> {
     pub fn len(&self) -> usize {
         self.elemnts.len()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.elemnts.iter()
+    }
 }
 
 pub trait IntoFarLongIterator<T: FarLongIteratorItem> {

@@ -4,16 +4,31 @@ interface ISearchingEdge {
     step: number,
 }
 
-interface IReport {
+interface IProgressStatus {
     Idle?: Object,
     SearchingEdge?: ISearchingEdge,
     Adjusting?: Object,
     Done?: Object,
-    Error?: String,
+    Error?: string,
+}
+
+interface IRezInfo {
+    id: number,
+    current_step: number,
+    current_freq: number,
+    state: string,
+}
+
+interface IProgressReport {
+    status: IProgressStatus,
+    measure_channel_id?: number,
+    burn_channel_id?: number,
+    rezonator_info: Array<IRezInfo>,
 }
 
 interface IAutoAdjustStatusReport {
-    report: IAdjustReport,
+    progress_string: string,
+    report: IProgressReport,
     reset_marker: boolean,
 }
 
@@ -70,14 +85,49 @@ $(() => {
     });
 });
 
-function update_autoadjust(report: IAutoAdjustStatusReport) {
-    console.log(report);
+function update_autoadjust(report: IProgressReport, progress_string: string) {
+    $('#adjust-step').text(progress_string);
+
+    if (report.status.Error != undefined) {
+        noty_error(report.status.Error);
+    } else if (report.status.Done != undefined) {
+        noty_success("Настройка завершена!");
+    } else {
+        const sel_header = (ch: number) => 'th[position="' + (ch + 1).toString() + '"]'
+
+        function update_text_if_changed(selector: string, value: string) {
+            const item = $(selector);
+            if (item.text() != value) {
+                item.text(value);
+            }
+        }
+
+        if (report.burn_channel_id != undefined) {
+            const td = $(sel_header(report.burn_channel_id));
+            if (!td.hasClass('pos-burn')) {
+                td.addClass('pos-burn').siblings().removeClass('pos-burn');
+            }
+        }
+        if (report.measure_channel_id != undefined) {
+            const td = $(sel_header(report.burn_channel_id));
+            if (!td.hasClass('pos-measure')) {
+                td.addClass('pos-measure').siblings().removeClass('pos-measure');
+            }
+        }
+
+        for (const rez of report.rezonator_info) {
+            const posid: string = '[position="' + (rez.id + 1).toString() + '"]';
+            update_text_if_changed('td.position-display' + posid, rez.current_step.toString());
+            update_text_if_changed('td.frequency-display' + posid, round_to_2_digits(rez.current_freq));
+            update_text_if_changed('td.status-display' + posid, rez.state);
+        }
+    }
 }
 
 function start_autoadjust_updater() {
     oboe('/auto_status')
         .done((report: IAutoAdjustStatusReport) => {
-            update_autoadjust(report);
+            update_autoadjust(report.report, report.progress_string);
             if (report.reset_marker) {
                 setTimeout(() => start_autoadjust_updater(), 0)
             }

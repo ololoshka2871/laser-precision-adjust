@@ -2,6 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Local};
 use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits};
+use serde::Serialize;
 use tokio::sync::{watch, Mutex};
 
 use crate::{
@@ -10,12 +11,25 @@ use crate::{
 };
 
 #[derive(Clone, Copy, Debug)]
-pub enum StopReason {
+pub enum ChannelState {
     InProcess,
-    Unsatable(BoxPlot<f32>),
-    OutOfRange(f32),
+    Unsatable,
+    OutOfRange,
     NoReaction,
-    Ok(f32),
+    Ok,
+}
+
+impl ChannelState {
+    fn to_status_icon(&self) -> String {
+        match self {
+            ChannelState::InProcess => "-",
+            ChannelState::Unsatable => "x",
+            ChannelState::OutOfRange => "↕",
+            ChannelState::NoReaction => "∙",
+            ChannelState::Ok => "ⓥ",
+        }
+        .to_owned()
+    }
 }
 
 #[derive(Clone)]
@@ -23,7 +37,9 @@ pub struct ChannelRef {
     id: usize,
     last_selected: DateTime<Local>,
     total_channels: usize,
-    status: StopReason,
+    state: ChannelState,
+    current_freq: f32,
+    current_step: u32,
 }
 
 impl ChannelRef {
@@ -32,7 +48,9 @@ impl ChannelRef {
             id,
             last_selected: Local::now(),
             total_channels,
-            status: StopReason::InProcess,
+            state: ChannelState::InProcess,
+            current_freq: 0.0,
+            current_step: 0,
         }
     }
 
@@ -40,9 +58,21 @@ impl ChannelRef {
         self.last_selected = Local::now();
     }
 
-    fn stop(&mut self, reason: StopReason) {
-        tracing::warn!("Rezonator {} stop adjustig due of {:?}", self.id, reason);
-        self.status = reason;
+    fn update_state(&mut self, state: ChannelState, freq: f32, step: u32) {
+        tracing::debug!(
+            "Rezonator {} update state {:?}: F={}, step={}",
+            self.id,
+            state,
+            freq,
+            step
+        );
+        self.state = state;
+        self.current_freq = freq;
+        self.current_step = step;
+    }
+
+    fn get_state(&self) -> ChannelState {
+        self.state
     }
 }
 
@@ -67,8 +97,8 @@ impl FarLongIteratorItem for ChannelRef {
     }
 
     fn is_valid(&self) -> bool {
-        match self.status {
-            StopReason::InProcess => true,
+        match self.state {
+            ChannelState::InProcess => true,
             _ => false,
         }
     }
@@ -80,8 +110,8 @@ pub enum Error {
     NothingToCancel,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub enum ProgressReport {
+#[derive(Debug, Clone, Serialize)]
+pub enum ProgressStatus {
     /// Бездействие
     Idle,
 
@@ -98,16 +128,72 @@ pub enum ProgressReport {
     Error(String),
 }
 
-impl std::fmt::Display for ProgressReport {
+impl std::fmt::Display for ProgressStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProgressReport::Idle => write!(f, "Ожидание"),
-            ProgressReport::SearchingEdge { ch, step } => {
-                write!(f, "Поиск края резонатора {ch}. Шаг: {step}")
+            ProgressStatus::Idle => write!(f, "Ожидание"),
+            ProgressStatus::SearchingEdge { ch, step } => {
+                write!(f, "Поиск края резонатора {}. Шаг: {}", ch + 1, step)
             }
-            ProgressReport::Adjusting => write!(f, "Настройка"),
-            ProgressReport::Done => write!(f, "Завершено"),
-            ProgressReport::Error(e) => write!(f, "Ошибка: {e}"),
+            ProgressStatus::Adjusting => write!(f, "Настройка"),
+            ProgressStatus::Done => write!(f, "Завершено"),
+            ProgressStatus::Error(e) => write!(f, "Ошибка: {e}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RezInfo {
+    id: usize,
+    current_step: u32,
+    current_freq: f32,
+    state: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProgressReport {
+    pub status: ProgressStatus,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub measure_channel_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burn_channel_id: Option<u32>,
+
+    pub rezonator_info: Vec<RezInfo>,
+}
+
+impl ProgressReport {
+    pub fn new<'a>(
+        progress: ProgressStatus,
+        measure_channel_id: Option<u32>,
+        burn_channel_id: Option<u32>,
+        rezonator_info: Vec<RezInfo>,
+    ) -> Self {
+        Self {
+            status: progress,
+            measure_channel_id,
+            burn_channel_id,
+            rezonator_info,
+        }
+    }
+
+    pub fn error<'a>(e: String, rezonator_info: Vec<RezInfo>) -> Self {
+        Self {
+            status: ProgressStatus::Error(e),
+            measure_channel_id: None,
+            burn_channel_id: None,
+            rezonator_info,
+        }
+    }
+}
+
+impl Default for ProgressReport {
+    fn default() -> Self {
+        Self {
+            status: ProgressStatus::Idle,
+            measure_channel_id: None,
+            burn_channel_id: None,
+            rezonator_info: vec![],
         }
     }
 }
@@ -154,7 +240,7 @@ impl AutoAdjustAllController {
         self.rx
             .as_ref()
             .map(|rx| rx.borrow().clone())
-            .unwrap_or(ProgressReport::Idle)
+            .unwrap_or(ProgressReport::default())
     }
 
     pub fn adjust(&mut self, target: f32) -> Result<(), Error> {
@@ -169,7 +255,7 @@ impl AutoAdjustAllController {
             .map(move |ch_id| ChannelRef::new(ch_id, channel_count))
             .collect::<Vec<_>>();
 
-        let (tx, rx) = watch::channel(ProgressReport::Idle);
+        let (tx, rx) = watch::channel(ProgressReport::default());
 
         self.rx.replace(rx);
 
@@ -228,9 +314,19 @@ async fn adjust_task(
     )
     .await
     {
-        tx.send(ProgressReport::Error(e.to_string())).ok();
+        tx.send(ProgressReport::error(
+            e.to_string(),
+            gen_rez_info(channel_iterator.iter()),
+        ))
+        .ok();
     } else {
-        tx.send(ProgressReport::Adjusting).ok();
+        tx.send(ProgressReport::new(
+            ProgressStatus::Adjusting,
+            None,
+            None,
+            gen_rez_info(channel_iterator.iter()),
+        ))
+        .ok();
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -252,7 +348,13 @@ async fn find_edge(
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
 
     for ch in 0..channel_iterator.len() as u32 {
-        tx.send(ProgressReport::SearchingEdge { ch, step: 0 }).ok();
+        tx.send(ProgressReport::new(
+            ProgressStatus::SearchingEdge { ch, step: 0 },
+            Some(ch),
+            None,
+            gen_rez_info(channel_iterator.iter()),
+        ))
+        .ok();
 
         laser_controller
             .lock()
@@ -263,15 +365,16 @@ async fn find_edge(
                 HardwareLogickError(format!("Не удалось переключить канал лазера ({e:?})"))
             })?;
 
-        let mut guard = laser_setup_controller.lock().await;
+        let rx = {
+            let mut guard = laser_setup_controller.lock().await;
 
-        guard.select_channel(ch).await.map_err(|e| {
-            HardwareLogickError(format!("Не удалось переключить частотомер ({e:?})"))
-        })?;
+            guard.select_channel(ch).await.map_err(|e| {
+                HardwareLogickError(format!("Не удалось переключить частотомер ({e:?})"))
+            })?;
+            guard.subscribe()
+        };
 
-        let rx = guard.subscribe();
-
-        match measure(
+        let mut last_freq = match measure(
             rx.clone(),
             update_interval * 10,
             0.2,
@@ -285,36 +388,52 @@ async fn find_edge(
                 tracing::info!("Channel {} stable at {} Hz", ch, f);
                 if f < upper_limit && f > lower_limit {
                     // сразу годный, стоп!
-                    channel_iterator
-                        .get_mut(ch as usize)
-                        .unwrap()
-                        .stop(StopReason::Ok(f));
+                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                        ChannelState::Ok,
+                        f,
+                        0,
+                    );
                     continue;
+                } else {
+                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                        ChannelState::InProcess,
+                        f,
+                        0,
+                    );
                 }
+                f
             }
             MeasureResult::Unstable(boxplot) => {
                 // Частота нестабильна - брак
-                channel_iterator
-                    .get_mut(ch as usize)
-                    .unwrap()
-                    .stop(StopReason::Unsatable(boxplot));
+                channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                    ChannelState::Unsatable,
+                    boxplot.median(),
+                    0,
+                );
                 continue;
             }
             MeasureResult::OutOfRange(f) => {
                 // Частота вне диапазона - брак
-                channel_iterator
-                    .get_mut(ch as usize)
-                    .unwrap()
-                    .stop(StopReason::OutOfRange(f));
+                channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                    ChannelState::OutOfRange,
+                    f,
+                    0,
+                );
                 continue;
             }
-        }
+        };
 
         loop {
-            {
+            let current_step = {
                 let mut guard = laser_controller.lock().await;
                 let step = guard.get_current_step();
-                tx.send(ProgressReport::SearchingEdge { ch, step }).ok();
+                tx.send(ProgressReport::new(
+                    ProgressStatus::SearchingEdge { ch, step },
+                    Some(ch),
+                    Some(ch),
+                    gen_rez_info(channel_iterator.iter()),
+                ))
+                .ok();
                 match guard
                     .burn(1, Some(limits.edge_detect_interval as i32), Some(trys))
                     .await
@@ -323,10 +442,11 @@ async fn find_edge(
                     Err(laser_precision_adjust::Error::Laser(e)) => {
                         if e.kind() == std::io::ErrorKind::InvalidInput {
                             // Достигнут предел перемещений
-                            channel_iterator
-                                .get_mut(ch as usize)
-                                .unwrap()
-                                .stop(StopReason::NoReaction);
+                            channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                                ChannelState::NoReaction,
+                                last_freq,
+                                guard.get_current_step(),
+                            );
                             break;
                         } else {
                             Err(HardwareLogickError(format!(
@@ -338,9 +458,8 @@ async fn find_edge(
                         "Не удалось сделать шаг ({e:?})"
                     )))?,
                 }
-            }
-
-            tx.send(ProgressReport::Error("()".to_string())).ok();
+                guard.get_current_step()
+            };
 
             match measure(
                 rx.clone(),
@@ -355,21 +474,36 @@ async fn find_edge(
                     // нет реакции
                     if f < upper_limit && f > lower_limit {
                         // годный, стоп!
-                        channel_iterator
-                            .get_mut(ch as usize)
-                            .unwrap()
-                            .stop(StopReason::Ok(f));
+                        channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                            ChannelState::Ok,
+                            f,
+                            current_step,
+                        );
                         break;
                     } else {
+                        channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                            ChannelState::InProcess,
+                            f,
+                            current_step,
+                        );
+                        last_freq = f;
                         continue;
                     }
                 }
-                MeasureResult::Unstable(_r) => break,
+                MeasureResult::Unstable(bp) => {
+                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                        ChannelState::Ok,
+                        bp.upper_bound(),
+                        current_step,
+                    );
+                    break;
+                }
                 MeasureResult::OutOfRange(f) => {
-                    channel_iterator
-                        .get_mut(ch as usize)
-                        .unwrap()
-                        .stop(StopReason::OutOfRange(f));
+                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
+                        ChannelState::OutOfRange,
+                        f,
+                        current_step,
+                    );
                     break; // Брак
                 }
             }
@@ -417,4 +551,14 @@ async fn measure(
     } else {
         MeasureResult::Unstable(boxplot)
     })
+}
+
+fn gen_rez_info<'a>(iter: impl Iterator<Item = &'a ChannelRef>) -> Vec<RezInfo> {
+    iter.map(|r| RezInfo {
+        id: r.id,
+        current_freq: r.current_freq,
+        current_step: r.current_step,
+        state: r.get_state().to_status_icon(),
+    })
+    .collect()
 }

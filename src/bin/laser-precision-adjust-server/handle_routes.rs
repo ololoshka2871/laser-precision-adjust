@@ -1029,7 +1029,12 @@ pub(super) async fn handle_auto_adjust(
         target_freq: format!("{:.2}", target_freq),
         work_offset_hz: format!("{:+.2}", work_offset_hz),
         rezonators: vec![0; channels.lock().await.len()],
-        stage: auto_adjust_all_ctrl.lock().await.get_status().to_string(),
+        stage: auto_adjust_all_ctrl
+            .lock()
+            .await
+            .get_status()
+            .status
+            .to_string(),
     };
 
     RenderHtml(Key("auto".to_owned()), engine, model)
@@ -1044,6 +1049,7 @@ pub(super) async fn handle_auto_adjust_status(
 
     #[derive(Serialize)]
     struct AutoAdjustStatusReport {
+        progress_string: String,
         report: ProgressReport,
         reset_marker: bool,
     }
@@ -1064,6 +1070,7 @@ pub(super) async fn handle_auto_adjust_status(
 
                     let report = rx.borrow().clone();
                     yield AutoAdjustStatusReport {
+                        progress_string: report.status.to_string(),
                         report,
                         reset_marker,
                     };

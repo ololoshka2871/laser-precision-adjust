@@ -93,7 +93,7 @@
                             <tr>
                                 <th scope="col">Позиция</th>
                                 {% for rez in rezonators -%}
-                                <th scope="col">{{ loop.index }}</th>
+                                <th scope="col" position="{{ loop.index }}">{{ loop.index }}</th>
                                 {% endfor -%}
                             </tr>
                         </thead>
@@ -113,7 +113,7 @@
                             <tr>
                                 <th scope="row">Причина остановки</th>
                                 {% for rez in rezonators -%}
-                                <td class="stop-reason-display" position="{{ loop.index }}">-</th>
+                                <td class="status-display" position="{{ loop.index }}">-</th>
                                 {% endfor -%}
                             </tr>
                         </tbody>
