@@ -1,14 +1,15 @@
 
+type Done = "Done";
+type Adjusting = "Adjusting";
+type Idle = "Idle";
+
 interface ISearchingEdge {
     ch: number,
     step: number,
 }
 
 interface IProgressStatus {
-    Idle?: Object,
     SearchingEdge?: ISearchingEdge,
-    Adjusting?: Object,
-    Done?: Object,
     Error?: string,
 }
 
@@ -20,7 +21,7 @@ interface IRezInfo {
 }
 
 interface IProgressReport {
-    status: IProgressStatus,
+    status: IProgressStatus | Idle | Done | Adjusting,
     measure_channel_id?: number,
     burn_channel_id?: number,
     rezonator_info: Array<IRezInfo>,
@@ -92,28 +93,43 @@ $(() => {
 });
 
 function update_autoadjust(report: IProgressReport, progress_string: string) {
+    const measure_class = 'table-success';
+    const burn_class = 'border border-3 border-danger';
+
     $('#adjust-step').text(progress_string);
 
-    const set_btn_state = (start: boolean) => {
+    function set_btn_state(start: boolean) {
         const button = $('#adj-all-ctrl-btn');
         if (start && !button.hasClass('btn-warning')) {
             button.removeClass('btn-danger').addClass('btn-warning').text('Стоп');
         } else if (!start && !button.hasClass('btn-danger')) {
             button.removeClass('btn-warning').addClass('btn-danger').text('Начать');
         }
-    };
+    }
 
-    if (report.status.Error != undefined) {
-        noty_error(report.status.Error);
+    function reset_laser_pos() {
+        $('th').removeClass(burn_class);
+        $('td').removeClass(burn_class);
+    }
+
+    function reset_freqmeter_pos() {
+        $('tr').removeClass(measure_class);
+    }
+
+    if ((<IProgressStatus>report.status).Error != undefined) {
+        noty_error((report.status as IProgressStatus).Error);
         set_btn_state(true);
-    } else if (report.status.Done != undefined) {
+        reset_laser_pos();
+        reset_freqmeter_pos();
+    } else if (report.status == "Done") {
         noty_success("Настройка завершена!");
         set_btn_state(true);
+        reset_laser_pos();
+        reset_freqmeter_pos();
     } else {
-        set_btn_state(report.status.Idle == undefined);
+        set_btn_state(report.status !== "Idle");
 
-        const measure_class = 'table-success';
-        const burn_class = 'border border-3 border-danger';
+
         const sel_header = (ch: number) => 'th[position="' + (ch + 1).toString() + '"]'
 
         function update_text_if_changed(selector: string, value: string) {
@@ -132,8 +148,7 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
                 td.addClass(burn_class).siblings().addClass(burn_class);
             }
         } else {
-            $('th').removeClass(burn_class);
-            $('td').removeClass(burn_class);
+            reset_laser_pos();
         }
 
         if (report.measure_channel_id != undefined) {
@@ -142,7 +157,7 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
                 tr.addClass(measure_class).siblings().removeClass(measure_class);
             }
         } else {
-            $('tr').removeClass(measure_class);
+            reset_freqmeter_pos();
         }
 
         for (const rez of report.rezonator_info) {
@@ -172,7 +187,7 @@ function start_autoadjust_updater() {
 function reset_gui() {
     updater.abort();
     update_autoadjust({
-        status: { Idle: Object() },
+        status: "Idle",
         rezonator_info: []
     }, "Ожидание");
 }

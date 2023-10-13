@@ -12,7 +12,9 @@ use crate::{
 
 #[derive(Clone, Copy, Debug)]
 pub enum ChannelState {
-    InProcess,
+    UnknownInit,
+    FindingEdge,
+    Adjustig,
     Unsatable,
     OutOfRange,
     NoReaction,
@@ -22,7 +24,9 @@ pub enum ChannelState {
 impl ChannelState {
     fn to_status_icon(&self) -> String {
         match self {
-            ChannelState::InProcess => "Настраивается",
+            ChannelState::UnknownInit => "Неизвестно",
+            ChannelState::FindingEdge => "Поиск края",
+            ChannelState::Adjustig => "Настройка",
             ChannelState::Unsatable => "Сломан или нестабилен",
             ChannelState::OutOfRange => "Вне допазона настройки",
             ChannelState::NoReaction => "Край не обнаружен",
@@ -48,7 +52,7 @@ impl ChannelRef {
             id,
             last_selected: Local::now(),
             total_channels,
-            state: ChannelState::InProcess,
+            state: ChannelState::UnknownInit,
             current_freq: 0.0,
             current_step: 0,
         }
@@ -98,7 +102,7 @@ impl FarLongIteratorItem for ChannelRef {
 
     fn is_valid(&self) -> bool {
         match self.state {
-            ChannelState::InProcess => true,
+            ChannelState::UnknownInit | ChannelState::FindingEdge | ChannelState::Adjustig => true,
             _ => false,
         }
     }
@@ -320,18 +324,25 @@ async fn adjust_task(
             gen_rez_info(channel_iterator.iter()),
         ))
         .ok();
-    } else {
-        tx.send(ProgressReport::new(
-            ProgressStatus::Adjusting,
-            None,
-            None,
-            gen_rez_info(channel_iterator.iter()),
-        ))
-        .ok();
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
     }
+    tx.send(ProgressReport::new(
+        ProgressStatus::Adjusting,
+        None,
+        None,
+        gen_rez_info(channel_iterator.iter()),
+    ))
+    .ok();
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Готово
+    tx.send(ProgressReport::new(
+        ProgressStatus::Done,
+        None,
+        None,
+        gen_rez_info(channel_iterator.iter()),
+    ))
+    .ok();
 }
 
 async fn find_edge(
@@ -380,7 +391,7 @@ async fn find_edge(
             update_interval * 10,
             0.2,
             (upper_limit, target - limits.min_freq_offset),
-            Some(Duration::from_millis(500)),
+            Some(Duration::from_millis(750)),
         )
         .await?
         {
@@ -397,7 +408,7 @@ async fn find_edge(
                     continue;
                 } else {
                     channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                        ChannelState::InProcess,
+                        ChannelState::FindingEdge,
                         f,
                         0,
                     );
@@ -483,7 +494,7 @@ async fn find_edge(
                         break;
                     } else {
                         channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                            ChannelState::InProcess,
+                            ChannelState::FindingEdge,
                             f,
                             current_step,
                         );
@@ -493,7 +504,7 @@ async fn find_edge(
                 }
                 MeasureResult::Unstable(bp) => {
                     channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                        ChannelState::Ok,
+                        ChannelState::Adjustig,
                         bp.upper_bound(),
                         current_step,
                     );
