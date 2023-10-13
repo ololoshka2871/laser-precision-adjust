@@ -22,11 +22,11 @@ pub enum ChannelState {
 impl ChannelState {
     fn to_status_icon(&self) -> String {
         match self {
-            ChannelState::InProcess => "-",
-            ChannelState::Unsatable => "x",
-            ChannelState::OutOfRange => "↕",
-            ChannelState::NoReaction => "∙",
-            ChannelState::Ok => "ⓥ",
+            ChannelState::InProcess => "Настраивается",
+            ChannelState::Unsatable => "Сломан или нестабилен",
+            ChannelState::OutOfRange => "Вне допазона настройки",
+            ChannelState::NoReaction => "Край не обнаружен",
+            ChannelState::Ok => "Настроен",
         }
         .to_owned()
     }
@@ -348,14 +348,6 @@ async fn find_edge(
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
 
     for ch in 0..channel_iterator.len() as u32 {
-        tx.send(ProgressReport::new(
-            ProgressStatus::SearchingEdge { ch, step: 0 },
-            Some(ch),
-            None,
-            gen_rez_info(channel_iterator.iter()),
-        ))
-        .ok();
-
         laser_controller
             .lock()
             .await
@@ -373,6 +365,14 @@ async fn find_edge(
             })?;
             guard.subscribe()
         };
+
+        tx.send(ProgressReport::new(
+            ProgressStatus::SearchingEdge { ch, step: 0 },
+            Some(ch),
+            None,
+            gen_rez_info(channel_iterator.iter()),
+        ))
+        .ok();
 
         let mut last_freq = match measure(
             rx.clone(),

@@ -93,6 +93,8 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
     } else if (report.status.Done != undefined) {
         noty_success("Настройка завершена!");
     } else {
+        const measure_class = 'table-success';
+        const burn_class = 'border border-3 border-danger';
         const sel_header = (ch: number) => 'th[position="' + (ch + 1).toString() + '"]'
 
         function update_text_if_changed(selector: string, value: string) {
@@ -104,15 +106,24 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
 
         if (report.burn_channel_id != undefined) {
             const td = $(sel_header(report.burn_channel_id));
-            if (!td.hasClass('pos-burn')) {
-                td.addClass('pos-burn').siblings().removeClass('pos-burn');
+            if (!td.hasClass(burn_class)) {
+                const siblings = td.parent().siblings()
+                siblings.children('th').removeClass(burn_class);
+                siblings.children('td').removeClass(burn_class);
+                td.addClass(burn_class).siblings().addClass(burn_class);
             }
+        } else {
+            $('th').removeClass(burn_class);
+            $('td').removeClass(burn_class);
         }
+
         if (report.measure_channel_id != undefined) {
-            const td = $(sel_header(report.burn_channel_id));
-            if (!td.hasClass('pos-measure')) {
-                td.addClass('pos-measure').siblings().removeClass('pos-measure');
+            const tr = $(sel_header(report.measure_channel_id)).parent();
+            if (!tr.hasClass(measure_class)) {
+                tr.addClass(measure_class).siblings().removeClass(measure_class);
             }
+        } else {
+            $('tr').removeClass(measure_class);
         }
 
         for (const rez of report.rezonator_info) {

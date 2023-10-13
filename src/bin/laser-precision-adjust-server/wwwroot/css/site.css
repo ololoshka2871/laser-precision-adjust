@@ -132,14 +132,3 @@ hr.thin-hr {
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
 }
-
-/* auto-adjust-higligth
-   --------------------------------------------------- */
-
-th.pos-burn {
-    border-color: red !important;
-}
-
-th.pos-measure {
-    background-color: rgba(17, 133, 50, 0.374);
-}

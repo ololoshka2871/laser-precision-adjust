@@ -92,30 +92,20 @@
                         <thead>
                             <tr>
                                 <th scope="col">Позиция</th>
-                                {% for rez in rezonators -%}
-                                <th scope="col" position="{{ loop.index }}">{{ loop.index }}</th>
-                                {% endfor -%}
+                                <th scope="col">Шаг</th>
+                                <th scope="col">Частота, Гц</th>
+                                <th scope="col">Состояние</th>
                             </tr>
                         </thead>
                         <tbody>
+                            {% for rez in rezonators -%}
                             <tr>
-                                <th scope="row">Шаг</th>
-                                {% for rez in rezonators -%}
+                                <th scope="row" position="{{ loop.index }}">{{ loop.index }}</th>
                                 <td class="position-display" position="{{ loop.index }}">0</th>
-                                {% endfor -%}
-                            </tr>
-                            <tr>
-                                <th scope="row">Частота, Гц</th>
-                                {% for rez in rezonators -%}
                                 <td class="frequency-display" position="{{ loop.index }}">0.0</th>
-                                {% endfor -%}
-                            </tr>
-                            <tr>
-                                <th scope="row">Причина остановки</th>
-                                {% for rez in rezonators -%}
                                 <td class="status-display" position="{{ loop.index }}">-</th>
-                                {% endfor -%}
                             </tr>
+                            {% endfor -%}
                         </tbody>
                     </table>
                 </div>
