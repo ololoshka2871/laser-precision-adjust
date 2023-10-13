@@ -87,7 +87,7 @@
                     <h4>Этапы настройки</h4>
                 </div>
                 <div class="row">
-                    <h6>Поиск края</h6>
+                    <h6 id="adjust-step">{{ stage }}</h6>
                     <table id="rezonators" class="table table-sm table-bordered table-condensed">
                         <thead>
                             <tr>
@@ -101,74 +101,20 @@
                             <tr>
                                 <th scope="row">Шаг</th>
                                 {% for rez in rezonators -%}
-                                <td>0</th>
-                                    {% endfor -%}
-                            </tr>
-                            <tr>
-                                <th scope="row">Частота, Гц</th>
-                                {% for rez in rezonators -%}
-                                <td>0.0</th>
-                                    {% endfor -%}
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="row">
-                    <h6>Настройка</h6>
-                    <table id="rezonators" class="table table-sm table-bordered table-condensed">
-                        <thead>
-                            <tr>
-                                <th scope="col">Позиция</th>
-                                {% for rez in rezonators -%}
-                                <th scope="col">{{ loop.index }}</th>
+                                <td class="position-display" position="{{ loop.index }}">0</th>
                                 {% endfor -%}
                             </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <th scope="row">Шаг</th>
-                                {% for rez in rezonators -%}
-                                <td>0</th>
-                                    {% endfor -%}
-                            </tr>
                             <tr>
                                 <th scope="row">Частота, Гц</th>
                                 {% for rez in rezonators -%}
-                                <td>0.0</th>
-                                    {% endfor -%}
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="row">
-                    <h6>Готово</h6>
-                    <table id="rezonators" class="table table-sm table-bordered table-condensed">
-                        <thead>
-                            <tr>
-                                <th scope="col">Позиция</th>
-                                {% for rez in rezonators -%}
-                                <th scope="col">{{ loop.index }}</th>
+                                <td class="frequency-display" position="{{ loop.index }}">0.0</th>
                                 {% endfor -%}
                             </tr>
-                        </thead>
-                        <tbody>
                             <tr>
-                                <th scope="row">Частота, Гц</th>
+                                <th scope="row">Причина остановки</th>
                                 {% for rez in rezonators -%}
-                                <td>0.0</th>
-                                    {% endfor -%}
-                            </tr>
-                            <tr>
-                                <th scope="row">PPM</th>
-                                {% for rez in rezonators -%}
-                                <td>0</th>
-                                    {% endfor -%}
-                            </tr>
-                            <tr>
-                                <th scope="row">Причина</th>
-                                {% for rez in rezonators -%}
-                                <td>-</th>
-                                    {% endfor -%}
+                                <td class="stop-reason-display" position="{{ loop.index }}">-</th>
+                                {% endfor -%}
                             </tr>
                         </tbody>
                     </table>

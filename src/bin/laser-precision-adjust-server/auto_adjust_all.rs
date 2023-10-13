@@ -14,6 +14,7 @@ pub enum StopReason {
     InProcess,
     Unsatable(BoxPlot<f32>),
     OutOfRange(f32),
+    NoReaction,
     Ok(f32),
 }
 
@@ -40,6 +41,7 @@ impl ChannelRef {
     }
 
     fn stop(&mut self, reason: StopReason) {
+        tracing::warn!("Rezonator {} stop adjustig due of {:?}", self.id, reason);
         self.status = reason;
     }
 }
@@ -78,13 +80,13 @@ pub enum Error {
     NothingToCancel,
 }
 
-#[derive(Debug, Clone)]
-pub enum State {
+#[derive(Debug, Clone, serde::Serialize)]
+pub enum ProgressReport {
     /// Бездействие
     Idle,
 
     /// Поиск края
-    SearchingEdge(u32),
+    SearchingEdge { ch: u32, step: u32 },
 
     /// Настройка
     Adjusting,
@@ -96,8 +98,18 @@ pub enum State {
     Error(String),
 }
 
-pub struct ProgressReport {
-    pub state: State,
+impl std::fmt::Display for ProgressReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProgressReport::Idle => write!(f, "Ожидание"),
+            ProgressReport::SearchingEdge { ch, step } => {
+                write!(f, "Поиск края резонатора {ch}. Шаг: {step}")
+            }
+            ProgressReport::Adjusting => write!(f, "Настройка"),
+            ProgressReport::Done => write!(f, "Завершено"),
+            ProgressReport::Error(e) => write!(f, "Ошибка: {e}"),
+        }
+    }
 }
 
 pub struct AutoAdjustAllController {
@@ -138,6 +150,13 @@ impl AutoAdjustAllController {
         self.rx.as_ref().map(|rx| rx.clone())
     }
 
+    pub fn get_status(&self) -> ProgressReport {
+        self.rx
+            .as_ref()
+            .map(|rx| rx.borrow().clone())
+            .unwrap_or(ProgressReport::Idle)
+    }
+
     pub fn adjust(&mut self, target: f32) -> Result<(), Error> {
         if let Some(task) = &self.task {
             if !task.is_finished() {
@@ -150,7 +169,7 @@ impl AutoAdjustAllController {
             .map(move |ch_id| ChannelRef::new(ch_id, channel_count))
             .collect::<Vec<_>>();
 
-        let (tx, rx) = watch::channel(ProgressReport { state: State::Idle });
+        let (tx, rx) = watch::channel(ProgressReport::Idle);
 
         self.rx.replace(rx);
 
@@ -209,15 +228,9 @@ async fn adjust_task(
     )
     .await
     {
-        tx.send(ProgressReport {
-            state: State::Error(e.to_string()),
-        })
-        .ok();
+        tx.send(ProgressReport::Error(e.to_string())).ok();
     } else {
-        tx.send(ProgressReport {
-            state: State::Adjusting,
-        })
-        .ok();
+        tx.send(ProgressReport::Adjusting).ok();
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
@@ -239,10 +252,7 @@ async fn find_edge(
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
 
     for ch in 0..channel_iterator.len() as u32 {
-        tx.send(ProgressReport {
-            state: State::SearchingEdge(ch),
-        })
-        .ok();
+        tx.send(ProgressReport::SearchingEdge { ch, step: 0 }).ok();
 
         laser_controller
             .lock()
@@ -266,6 +276,7 @@ async fn find_edge(
             update_interval * 10,
             0.2,
             (upper_limit, target - limits.min_freq_offset),
+            Some(Duration::from_millis(500)),
         )
         .await?
         {
@@ -300,14 +311,46 @@ async fn find_edge(
         }
 
         loop {
-            laser_controller
-                .lock()
-                .await
-                .burn(1, Some(limits.edge_detect_interval as i32), Some(trys))
-                .await
-                .map_err(|e| HardwareLogickError(format!("Не удалось сделать шаг ({e:?})")))?;
+            {
+                let mut guard = laser_controller.lock().await;
+                let step = guard.get_current_step();
+                tx.send(ProgressReport::SearchingEdge { ch, step }).ok();
+                match guard
+                    .burn(1, Some(limits.edge_detect_interval as i32), Some(trys))
+                    .await
+                {
+                    Ok(()) => { /* nothing */ }
+                    Err(laser_precision_adjust::Error::Laser(e)) => {
+                        if e.kind() == std::io::ErrorKind::InvalidInput {
+                            // Достигнут предел перемещений
+                            channel_iterator
+                                .get_mut(ch as usize)
+                                .unwrap()
+                                .stop(StopReason::NoReaction);
+                            break;
+                        } else {
+                            Err(HardwareLogickError(format!(
+                                "Не удалось сделать шаг ({e:?})"
+                            )))?;
+                        }
+                    }
+                    Err(e) => Err(HardwareLogickError(format!(
+                        "Не удалось сделать шаг ({e:?})"
+                    )))?,
+                }
+            }
 
-            match measure(rx.clone(), update_interval * 5, 0.2, (upper_limit, 0.0)).await? {
+            tx.send(ProgressReport::Error("()".to_string())).ok();
+
+            match measure(
+                rx.clone(),
+                update_interval * 5,
+                0.2,
+                (upper_limit, 0.0),
+                None,
+            )
+            .await?
+            {
                 MeasureResult::Stable(f) => {
                     // нет реакции
                     if f < upper_limit && f > lower_limit {
@@ -321,7 +364,7 @@ async fn find_edge(
                         continue;
                     }
                 }
-                MeasureResult::Unstable(_r) => break, // край найден
+                MeasureResult::Unstable(_r) => break,
                 MeasureResult::OutOfRange(f) => {
                     channel_iterator
                         .get_mut(ch as usize)
@@ -349,10 +392,15 @@ async fn measure(
     timeout: Duration,
     stable_range: f32,
     work_range: (f32, f32),
+    wait_before: Option<Duration>,
 ) -> Result<MeasureResult, watch::error::RecvError> {
-    let start = std::time::Instant::now();
     let mut data = vec![];
 
+    if let Some(wait_before) = wait_before {
+        tokio::time::sleep(wait_before).await;
+    }
+
+    let start = std::time::Instant::now();
     while std::time::Instant::now() - start < timeout {
         m.changed().await?;
         let status = m.borrow();
@@ -360,7 +408,7 @@ async fn measure(
     }
 
     let boxplot = BoxPlot::new(&data);
-    Ok(if boxplot.q3() - boxplot.q1() < stable_range {
+    Ok(if boxplot.iqr() < stable_range {
         if boxplot.median() > work_range.0 || boxplot.median() < work_range.1 {
             MeasureResult::OutOfRange(boxplot.median())
         } else {

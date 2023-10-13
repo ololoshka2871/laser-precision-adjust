@@ -1,7 +1,19 @@
 
+interface ISearchingEdge {
+    ch: number,
+    step: number,
+}
+
+interface IReport {
+    Idle?: Object,
+    SearchingEdge?: ISearchingEdge,
+    Adjusting?: Object,
+    Done?: Object,
+    Error?: String,
+}
+
 interface IAutoAdjustStatusReport {
-    active: boolean,
-    status: string,
+    report: IAdjustReport,
     reset_marker: boolean,
 }
 
@@ -38,7 +50,7 @@ $(() => {
         $.ajax({
             url: '/control/adjust-all',
             method: 'POST',
-            data: JSON.stringify({ }),
+            data: JSON.stringify({}),
             contentType: 'application/json',
             success: (data) => {
                 if (!data.success) {
@@ -58,15 +70,15 @@ $(() => {
     });
 });
 
-function update_autoadjust(state: IAutoAdjustStatusReport) {
-    console.log(state);
+function update_autoadjust(report: IAutoAdjustStatusReport) {
+    console.log(report);
 }
 
 function start_autoadjust_updater() {
     oboe('/auto_status')
-        .done((state: IAutoAdjustStatusReport) => {
-            update_autoadjust(state);
-            if (state.reset_marker) {
+        .done((report: IAutoAdjustStatusReport) => {
+            update_autoadjust(report);
+            if (report.reset_marker) {
                 setTimeout(() => start_autoadjust_updater(), 0)
             }
         })

@@ -1010,12 +1010,14 @@ pub(super) async fn handle_auto_adjust(
     State(engine): State<AppEngine>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
 ) -> impl IntoResponse {
     #[derive(Serialize)]
     struct Model {
         target_freq: String,
         work_offset_hz: String,
         rezonators: Vec<u32>,
+        stage: String,
     }
 
     let (target_freq, work_offset_hz) = {
@@ -1027,6 +1029,7 @@ pub(super) async fn handle_auto_adjust(
         target_freq: format!("{:.2}", target_freq),
         work_offset_hz: format!("{:+.2}", work_offset_hz),
         rezonators: vec![0; channels.lock().await.len()],
+        stage: auto_adjust_all_ctrl.lock().await.get_status().to_string(),
     };
 
     RenderHtml(Key("auto".to_owned()), engine, model)
@@ -1035,14 +1038,13 @@ pub(super) async fn handle_auto_adjust(
 pub(super) async fn handle_auto_adjust_status(
     State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
 ) -> impl IntoResponse {
-    use crate::auto_adjust_all::State;
+    use crate::auto_adjust_all::ProgressReport;
 
     const MAX_STEPS: usize = 100;
 
     #[derive(Serialize)]
     struct AutoAdjustStatusReport {
-        active: bool,
-        status: String,
+        report: ProgressReport,
         reset_marker: bool,
     }
 
@@ -1060,16 +1062,10 @@ pub(super) async fn handle_auto_adjust_status(
                         break;
                     }
 
-                    let state = rx.borrow().state.clone();
-                    match state {
-                        State::Idle => yield AutoAdjustStatusReport { active: false, status: "".to_owned(), reset_marker },
-                        State::SearchingEdge(rez) => yield AutoAdjustStatusReport { active: true, status: format!("Поиск края резонатора {}", rez + 1), reset_marker },
-                        State::Adjusting => yield AutoAdjustStatusReport { active: true, status: format!("Настройка"), reset_marker },
-                        State::Done => yield AutoAdjustStatusReport { active: false, status: "Настройка завершена".to_owned(), reset_marker },
-                        State::Error(e) => {
-                            yield AutoAdjustStatusReport { active: true, status: format!("Ошибка: {e}"), reset_marker: true };
-                            break;
-                        },
+                    let report = rx.borrow().clone();
+                    yield AutoAdjustStatusReport {
+                        report,
+                        reset_marker,
                     };
 
                     if reset_marker {

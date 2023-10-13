@@ -19,6 +19,7 @@ pub struct FarLongIterator<T: FarLongIteratorItem> {
     time_tolerance: Duration,
 }
 
+#[allow(dead_code)]
 impl<T: FarLongIteratorItem> FarLongIterator<T> {
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.elemnts.get_mut(index)
