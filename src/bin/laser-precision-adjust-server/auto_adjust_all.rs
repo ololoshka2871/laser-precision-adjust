@@ -280,6 +280,7 @@ impl AutoAdjustAllController {
             if !task.is_finished() {
                 task.abort();
                 self.task = None;
+                self.rx = None;
 
                 return Ok(());
             }

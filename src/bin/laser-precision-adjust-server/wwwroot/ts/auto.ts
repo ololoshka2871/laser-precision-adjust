@@ -34,6 +34,8 @@ interface IAutoAdjustStatusReport {
 
 //-----------------------------------------------------------------------------
 
+var updater: oboe.Oboe = null;
+
 // on page loaded jquery
 $(() => {
     // https://getbootstrap.com/docs/4.0/components/tooltips/
@@ -70,6 +72,8 @@ $(() => {
             success: (data) => {
                 if (!data.success) {
                     noty_error('Ошибка: ' + data.error);
+                } else if (data.message == 'Автонастройка отменена.') {
+                    reset_gui();
                 } else {
                     start_autoadjust_updater();
                 }
@@ -83,16 +87,31 @@ $(() => {
         let report_id = prompt('Введите номер партии:');
         gen_report(report_id);
     });
+
+    start_autoadjust_updater();
 });
 
 function update_autoadjust(report: IProgressReport, progress_string: string) {
     $('#adjust-step').text(progress_string);
 
+    const set_btn_state = (start: boolean) => {
+        const button = $('#adj-all-ctrl-btn');
+        if (start && !button.hasClass('btn-warning')) {
+            button.removeClass('btn-danger').addClass('btn-warning').text('Стоп');
+        } else if (!start && !button.hasClass('btn-danger')) {
+            button.removeClass('btn-warning').addClass('btn-danger').text('Начать');
+        }
+    };
+
     if (report.status.Error != undefined) {
         noty_error(report.status.Error);
+        set_btn_state(true);
     } else if (report.status.Done != undefined) {
         noty_success("Настройка завершена!");
+        set_btn_state(true);
     } else {
+        set_btn_state(report.status.Idle == undefined);
+
         const measure_class = 'table-success';
         const burn_class = 'border border-3 border-danger';
         const sel_header = (ch: number) => 'th[position="' + (ch + 1).toString() + '"]'
@@ -136,11 +155,24 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
 }
 
 function start_autoadjust_updater() {
-    oboe('/auto_status')
-        .done((report: IAutoAdjustStatusReport) => {
-            update_autoadjust(report.report, report.progress_string);
-            if (report.reset_marker) {
-                setTimeout(() => start_autoadjust_updater(), 0)
+    updater = oboe('/auto_status')
+        .done((report: IAutoAdjustStatusReport | IControlResult) => {
+            if ((<IControlResult>report).success == undefined) {
+                const rep = report as IAutoAdjustStatusReport;
+                update_autoadjust(rep.report, rep.progress_string);
+                if (rep.reset_marker) {
+                    setTimeout(() => start_autoadjust_updater(), 0)
+                }
+            } else {
+                reset_gui();
             }
-        })
+        });
+}
+
+function reset_gui() {
+    updater.abort();
+    update_autoadjust({
+        status: { Idle: Object() },
+        rezonator_info: []
+    }, "Ожидание");
 }

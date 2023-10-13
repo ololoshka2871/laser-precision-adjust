@@ -57,7 +57,7 @@
         <main role="main" class="pb-3">
             <div class="container">
                 <div class="row" style="height: 100px">
-                    <div class="col-2 bg-secondary">
+                    <div class="col-5 col-md-2 bg-secondary">
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq-target"
                             placeholder="Цель" value="{{ target_freq }}" data-toggle="tooltip"
                             title="Целевая частота настройки резонаторов"> Гц
@@ -65,12 +65,10 @@
                             placeholder="Поправка" value="{{ work_offset_hz }}" data-toggle="tooltip"
                             title="Поправка показаний частотомера установки"> Гц
                     </div>
-                    <div class="col-2 align-middle btn-group-vertical">
-                        <button class="btn" type="button" id="adj-all-ctrl-btn"><i class="fas fa-magic"></i>
-                            Начать</button>
+                    <div class="col-4 col-md-2 align-middle btn-group-vertical mr-auto">
+                        <button class="btn btn-danger" type="button" id="adj-all-ctrl-btn">Начать</button>
                     </div>
-                    <div class="mr-auto"></div>
-                    <div class="col-2 align-middle btn-group-vertical btn-group-xs">
+                    <div class="col-3 col-md-2 align-middle btn-group-vertical btn-group-xs">
                         <button class="btn btn-xs btn-success camera-ctrl" ctrl-request="close" data-toggle="tooltip"
                             title="Закрыть вакуумную камеру"><i class="fa fa-lock"></i> Закрыть</button>
                         <hr class="thin-hr" />
