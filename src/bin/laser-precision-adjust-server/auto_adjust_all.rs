@@ -10,7 +10,7 @@ use crate::{
     far_long_iterator::{FarLongIterator, FarLongIteratorItem, IntoFarLongIterator},
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChannelState {
     UnknownInit,
     FindingEdge,
@@ -42,6 +42,7 @@ pub struct ChannelRef {
     last_touched: DateTime<Local>,
     total_channels: usize,
     state: ChannelState,
+    initial_freq: Option<f32>,
     current_freq: f32,
     current_step: u32,
 }
@@ -53,6 +54,7 @@ impl ChannelRef {
             last_touched: Local::now(),
             total_channels,
             state: ChannelState::UnknownInit,
+            initial_freq: None,
             current_freq: 0.0,
             current_step: 0,
         }
@@ -70,6 +72,11 @@ impl ChannelRef {
             freq,
             step
         );
+
+        if self.initial_freq.is_none() {
+            self.initial_freq.replace(freq);
+        }
+
         self.state = state;
         self.current_freq = freq;
         self.current_step = step;
@@ -163,6 +170,7 @@ impl std::fmt::Display for ProgressStatus {
 pub struct RezInfo {
     id: usize,
     current_step: u32,
+    initial_freq: f32,
     current_freq: f32,
     state: String,
 }
@@ -806,6 +814,7 @@ async fn measure(
 fn gen_rez_info<'a>(iter: impl Iterator<Item = &'a ChannelRef>) -> Vec<RezInfo> {
     iter.map(|r| RezInfo {
         id: r.id,
+        initial_freq: r.initial_freq.unwrap_or(0.0),
         current_freq: r.current_freq,
         current_step: r.current_step,
         state: r.get_state().to_status_icon(),

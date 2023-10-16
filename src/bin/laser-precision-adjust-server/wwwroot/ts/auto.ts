@@ -16,6 +16,7 @@ interface IProgressStatus {
 interface IRezInfo {
     id: number,
     current_step: number,
+    initial_freq: number,
     current_freq: number,
     state: string,
 }
@@ -89,6 +90,9 @@ $(() => {
         gen_report(report_id);
     });
 
+    $('#freq-target').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'TargetFreq'));
+    $('#freq_adj').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'WorkOffsetHz'));
+
     start_autoadjust_updater();
 });
 
@@ -121,51 +125,53 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
         set_btn_state(true);
         reset_laser_pos();
         reset_freqmeter_pos();
+        return;
     } else if (report.status == "Done") {
         noty_success("Настройка завершена!");
-        set_btn_state(true);
+        set_btn_state(false);
         reset_laser_pos();
         reset_freqmeter_pos();
     } else {
         set_btn_state(report.status !== "Idle");
+    }
 
+    const sel_header = (ch: number) => 'th[rez-pos="' + (ch + 1).toString() + '"]'
 
-        const sel_header = (ch: number) => 'th[position="' + (ch + 1).toString() + '"]'
-
-        function update_text_if_changed(selector: string, value: string) {
-            const item = $(selector);
-            if (item.text() != value) {
-                item.text(value);
-            }
+    function update_text_if_changed(selector: string, value: string) {
+        const item = $(selector);
+        if (item.text() != value) {
+            item.text(value);
         }
+    }
 
-        if (report.burn_channel_id != undefined) {
-            const td = $(sel_header(report.burn_channel_id));
-            if (!td.hasClass(burn_class)) {
-                const siblings = td.parent().siblings()
-                siblings.children('th').removeClass(burn_class);
-                siblings.children('td').removeClass(burn_class);
-                td.addClass(burn_class).siblings().addClass(burn_class);
-            }
-        } else {
-            reset_laser_pos();
+    if (report.burn_channel_id != undefined) {
+        const td = $(sel_header(report.burn_channel_id));
+        if (!td.hasClass(burn_class)) {
+            const siblings = td.parent().siblings()
+            siblings.children('th').removeClass(burn_class);
+            siblings.children('td').removeClass(burn_class);
+            td.addClass(burn_class).siblings().addClass(burn_class);
         }
+    } else {
+        reset_laser_pos();
+    }
 
-        if (report.measure_channel_id != undefined) {
-            const tr = $(sel_header(report.measure_channel_id)).parent();
-            if (!tr.hasClass(measure_class)) {
-                tr.addClass(measure_class).siblings().removeClass(measure_class);
-            }
-        } else {
-            reset_freqmeter_pos();
+    if (report.measure_channel_id != undefined) {
+        const tr = $(sel_header(report.measure_channel_id)).parent();
+        if (!tr.hasClass(measure_class)) {
+            tr.addClass(measure_class).siblings().removeClass(measure_class);
         }
+    } else {
+        reset_freqmeter_pos();
+    }
 
-        for (const rez of report.rezonator_info) {
-            const posid: string = '[position="' + (rez.id + 1).toString() + '"]';
-            update_text_if_changed('td.position-display' + posid, rez.current_step.toString());
-            update_text_if_changed('td.frequency-display' + posid, round_to_2_digits(rez.current_freq));
-            update_text_if_changed('td.status-display' + posid, rez.state);
-        }
+    for (const rez of report.rezonator_info) {
+        const posid: string = '[rez-pos="' + (rez.id + 1).toString() + '"]';
+        update_text_if_changed('td.position-display' + posid, rez.current_step.toString());
+        update_text_if_changed('td.start-freq-display' + posid, round_to_2_digits(rez.initial_freq));
+        update_text_if_changed('td.status-display' + posid, rez.state);
+
+        draw_progress(rez.initial_freq, rez.current_freq, $('td.frequency-display' + posid));
     }
 }
 
@@ -190,4 +196,46 @@ function reset_gui() {
         status: "Idle",
         rezonator_info: []
     }, "Ожидание");
+}
+
+function draw_progress(inital_freq: number, current_freq: number, cell: JQuery<HTMLElement>) {
+    const cache = cell.children();
+    cell.text(round_to_2_digits(current_freq)).append(cache);
+
+    if (inital_freq !== 0.0) {
+        const $freq_target = $('#freq-target');
+        const target = parseFloat($freq_target.val() as string);
+        const precision_hz = parseFloat($freq_target.attr('precision_hz'));
+        const min_f = target - precision_hz;
+        const max_f = target + precision_hz;
+
+        // Start --- min_f target max_f --- f
+        // | -------- | ----- * ----| ----- |
+
+        var full_percent: number;
+        const progress_marker = cache.filter('.progress-marker');
+        if (current_freq == inital_freq) {
+            // Костыль
+            inital_freq = Math.min(inital_freq - 2 * precision_hz, min_f);
+        }
+        if (max_f > current_freq) {
+            // правый упор - маркер max_f
+            full_percent = (max_f - inital_freq) / 100;
+            cache.filter('.max-marker').css('left', '99%');
+            progress_marker.css('width', ((current_freq - inital_freq) / full_percent).toString() + '%');
+            if (current_freq > min_f) {
+                progress_marker.css('background-color', 'rgba(33, 204, 70, 0.75)');
+            } else {
+                progress_marker.css('background-color', 'rgba(219, 223, 104, 0.75)');
+            }
+        } else {
+            // правый упор - текущая частота
+            full_percent = (current_freq - inital_freq) / 100;
+            cache.filter('.max-marker').css('left', ((max_f - inital_freq) / full_percent - 1).toString() + '%');
+            progress_marker.css('width', '100%');
+            progress_marker.css('background-color', 'rgba(233, 86, 86, 0.75)');
+        }
+        cache.filter('.target-marker').css('left', ((target - inital_freq) / full_percent - 1).toString() + '%');
+        cache.filter('.min-marker').css('left', ((min_f - inital_freq) / full_percent).toString() + '%');
+    }
 }

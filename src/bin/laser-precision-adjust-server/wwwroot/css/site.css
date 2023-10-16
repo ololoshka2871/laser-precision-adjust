@@ -121,7 +121,8 @@ hr.thin-hr {
     padding-bottom: 0;
 }
 
-.btn-group-xs > .btn, .btn-xs {
+.btn-group-xs>.btn,
+.btn-xs {
     padding: .25rem .4rem;
     font-size: .875rem;
     line-height: .5;
@@ -131,4 +132,46 @@ hr.thin-hr {
 .bd-callout {
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
+}
+
+/* markerrs
+    ---------------------------------------------------- */
+
+.min-marker {
+    position: absolute;
+    left: 0;
+    width: 1%;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(11, 24, 26, 0.5);
+    z-index: -1;
+}
+
+.target-marker {
+    position: absolute;
+    left: 0;
+    width: 1%;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(91, 12, 86, 0.75);
+    z-index: -1;
+}
+
+.max-marker {
+    position: absolute;
+    left: 0;
+    width: 1%;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(11, 24, 26, 0.5);
+    z-index: -1;
+}
+
+.progress-marker {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(198, 204, 33, 0.75);
+    z-index: -2;
 }

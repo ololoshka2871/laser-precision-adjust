@@ -293,7 +293,7 @@ async fn control_task(
                                 if let Some(prev_f) = &mut prev_freq {
                                     let v_prev_f = *prev_f;
                                     if f > v_prev_f + 100.0 {
-                                        tracing::error!(
+                                        tracing::trace!(
                                             "Random frequency jump detected! {} -> {}",
                                             prev_f,
                                             f

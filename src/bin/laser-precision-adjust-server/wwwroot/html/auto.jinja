@@ -60,6 +60,7 @@
                     <div class="col-5 col-md-2 bg-secondary">
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq-target"
                             placeholder="Цель" value="{{ target_freq }}" data-toggle="tooltip"
+                            precision_hz="{{ precision_hz }}"
                             title="Целевая частота настройки резонаторов"> Гц
                         <input type="text" class="form-control seven-segment-font freq-config" id="freq_adj"
                             placeholder="Поправка" value="{{ work_offset_hz }}" data-toggle="tooltip"
@@ -91,17 +92,25 @@
                             <tr>
                                 <th scope="col">Позиция</th>
                                 <th scope="col">Шаг</th>
-                                <th scope="col">Частота, Гц</th>
+                                <th scope="col">F_cтарт, Гц</th>
+                                <th scope="col">F_тек, Гц</th>
                                 <th scope="col">Состояние</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for rez in rezonators -%}
                             <tr>
-                                <th scope="row" position="{{ loop.index }}">{{ loop.index }}</th>
-                                <td class="position-display" position="{{ loop.index }}">0</th>
-                                <td class="frequency-display" position="{{ loop.index }}">0.0</th>
-                                <td class="status-display" position="{{ loop.index }}">-</th>
+                                <th scope="row" rez-pos="{{ loop.index }}">{{ loop.index }}</th>
+                                <td class="position-display" rez-pos="{{ loop.index }}">0</th>
+                                <td class="start-freq-display" rez-pos="{{ loop.index }}">0.0</th>
+                                <td class="frequency-display" rez-pos="{{ loop.index }}" style="position: relative;">
+                                    <div class="min-marker"></div>
+                                    <div class="target-marker"></div>
+                                    <div class="max-marker"></div>
+                                    <div class="progress-marker"></div>
+                                    0.0
+                                </th>
+                                <td class="status-display" rez-pos="{{ loop.index }}">-</th>
                             </tr>
                             {% endfor -%}
                         </tbody>

@@ -170,29 +170,6 @@ $(() => {
         ev.preventDefault();
     });
 
-    function patch_value(target: HTMLInputElement, field_name: string) {
-        const val = $(target).val() || "0.0";
-
-        const new_value = parseFloat(val as string);
-
-        if (typeof (new_value) !== 'number') {
-            return;
-        }
-
-        let v = {}
-        v[field_name] = new_value;
-
-        $.ajax({
-            url: '/config',
-            method: 'PATCH',
-            data: JSON.stringify(v),
-            contentType: 'application/json',
-            error: (e) => {
-                noty_error(e.responseText || e.statusText);
-            }
-        });
-    }
-
     $('#freq-target').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'TargetFreq'));
     $('#freq_adj').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'WorkOffsetHz'));
 

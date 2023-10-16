@@ -1008,6 +1008,7 @@ pub(super) async fn handle_state(
 
 pub(super) async fn handle_auto_adjust(
     State(engine): State<AppEngine>,
+    State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
@@ -1018,6 +1019,7 @@ pub(super) async fn handle_auto_adjust(
         work_offset_hz: String,
         rezonators: Vec<u32>,
         stage: String,
+        precision_hz: f32,
     }
 
     let (target_freq, work_offset_hz) = {
@@ -1035,6 +1037,7 @@ pub(super) async fn handle_auto_adjust(
             .get_status()
             .status
             .to_string(),
+        precision_hz: config.target_freq_center * config.working_offset_ppm / 1_000_000.0,
     };
 
     RenderHtml(Key("auto".to_owned()), engine, model)
