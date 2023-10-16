@@ -83,6 +83,14 @@ impl ChannelRef {
     fn get_state(&self) -> ChannelState {
         self.state
     }
+
+    fn current_step(&self) -> u32 {
+        self.current_step
+    }
+
+    fn set_step(&mut self, step: u32) {
+        self.current_step = step;
+    }
 }
 
 impl FarLongIteratorItem for ChannelRef {
@@ -576,6 +584,11 @@ async fn adjust_all(
     trys: usize,
     forecast_config: ForecastConfig,
 ) -> anyhow::Result<()> {
+    enum BurnEvent {
+        ErrorBan(u32),
+        Done(u32, u32),
+    }
+
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
     let absolute_low_limit = target - limits.min_freq_offset;
@@ -586,17 +599,27 @@ async fn adjust_all(
     let rx = laser_setup_controller.lock().await.subscribe();
 
     let mut burn_task_handle = None;
-    let mut e_ch_id = None;
-    let mut burn_ch = None;
+
+    let (burn_tx, mut burn_rx) = tokio::sync::mpsc::channel(1);
 
     while let Some(ch_id) = channel_iterator.next() {
-        if let Some(ch_id) = e_ch_id {
-            channel_iterator
-                .get_mut(ch_id)
-                .unwrap()
-                .ban(ChannelState::NoReaction);
-            e_ch_id = None;
-        }
+        let burn_ch = match burn_rx.try_recv() {
+            Ok(BurnEvent::ErrorBan(ch)) => {
+                channel_iterator
+                    .get_mut(ch_id)
+                    .unwrap()
+                    .ban(ChannelState::NoReaction);
+                Some(ch)
+            }
+            Ok(BurnEvent::Done(ch, step)) => {
+                channel_iterator
+                    .get_mut(ch as usize)
+                    .unwrap()
+                    .set_step(step);
+                Some(ch)
+            }
+            Err(_) => None,
+        };
 
         let mut wait_interval = Duration::ZERO;
         if Some(ch_id) != prev_ch {
@@ -622,7 +645,7 @@ async fn adjust_all(
             }
         }
 
-        let step = laser_controller.lock().await.get_current_step();
+        let step = ch.current_step();
 
         tx.send(ProgressReport::new(
             ProgressStatus::Adjusting,
@@ -705,18 +728,26 @@ async fn adjust_all(
                 );
                 1
             } else {
-                ((target - current_freq) / forecast_config.max_freq_grow).ceil() as u32
+                10.max(((target - current_freq) / forecast_config.max_freq_grow).ceil() as u32)
             };
 
             if let Some(burn_task_handle) = burn_task_handle.as_mut() {
                 let res: Result<
-                    Result<(), (u32, laser_precision_adjust::Error)>,
+                    Result<(u32, u32), (u32, laser_precision_adjust::Error)>,
                     tokio::task::JoinError,
                 > = burn_task_handle.await;
-                if let Ok(Err((e_ch, e))) = res {
-                    // ban this channel to prevent infinty loop
-                    tracing::error!("Failed to burn prev step: {:?}", e);
-                    e_ch_id.replace(e_ch as usize);
+                match res {
+                    Ok(Ok((ch, step))) => {
+                        burn_tx.try_send(BurnEvent::Done(ch, step)).ok();
+                    }
+                    Ok(Err((ch, e))) => {
+                        // ban this channel to prevent infinty loop
+                        tracing::error!("Failed to burn prev step: {:?}", e);
+                        burn_tx.try_send(BurnEvent::ErrorBan(ch)).ok();
+                    }
+                    Err(e) => {
+                        tracing::error!("Falied to join burn task: {e}");
+                    }
                 }
             }
             ch.touch();
@@ -728,8 +759,6 @@ async fn adjust_all(
                 Some(trys_counters[ch_id]),
                 soft_mode,
             )));
-
-            burn_ch.replace(ch_id as u32);
         }
     }
 
@@ -791,19 +820,17 @@ async fn burn_task(
     initial_step: Option<u32>,
     trys: Option<usize>,
     soft_mode: bool,
-) -> Result<(), (u32, laser_precision_adjust::Error)> {
+) -> Result<(u32, u32), (u32, laser_precision_adjust::Error)> {
     let mut guard = laser_controller.lock().await;
 
     guard
         .select_channel(channel, initial_step, trys)
         .await
         .map_err(|e| (channel, e))?;
-    /*
     guard
         .burn(burn_count, Some(1), trys, soft_mode)
         .await
         .map_err(|e| (channel, e))?;
-    */
 
-    Ok(())
+    Ok((channel, guard.get_current_step()))
 }
