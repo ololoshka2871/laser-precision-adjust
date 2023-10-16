@@ -662,7 +662,7 @@ pub(super) async fn handle_control(
 
             tracing::info!("Burn with autostep {}", autostep);
 
-            if let Err(e) = precision_adjust.lock().await.burn().await {
+            if let Err(e) = precision_adjust.lock().await.burn(false).await {
                 return Json(ControlResult::error(format!("Не удалось сжечь: {:?}", e)))
                     .into_response();
             }

@@ -219,11 +219,11 @@ impl PrecisionAdjust2 {
         Ok(())
     }
 
-    pub async fn burn(&mut self) -> Result<(), Error> {
+    pub async fn burn(&mut self, soft_mode: bool) -> Result<(), Error> {
         self.laser_controller
             .lock()
             .await
-            .burn(1, Some(1), Some(TRYS))
+            .burn(1, Some(1), Some(TRYS), soft_mode)
             .await?;
         self.ev_tx
             .send(PrivStatusEvent {

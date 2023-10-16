@@ -15,6 +15,7 @@
     "BurnLaserA": 35.0,
     "BurnLaserB": 50000,
     "BurnLaserF": 1000.0,
+    "SoftModeSMultiplier": 0.8,
     "FreqmeterOffset": 0.0,
     "WorkingOffsetPPM": 30.0,
     "TargetFreqCenter": 32768.0,

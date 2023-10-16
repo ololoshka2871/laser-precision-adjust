@@ -6,7 +6,7 @@ pub trait FarLongIteratorItem: Clone {
     fn distance(&self, other: &Self) -> u64;
 
     /// Возвращает штамп времени последнего выбора канала
-    fn last_selected(&self) -> DateTime<Local>;
+    fn last_touched(&self) -> DateTime<Local>;
 
     /// Элемент валиден?
     fn is_valid(&self) -> bool;
@@ -73,7 +73,7 @@ impl<T: FarLongIteratorItem> Iterator for FarLongIterator<T> {
                         Some(ItemDistance {
                             index: i,
                             distance: item.distance(&self.elemnts[c]),
-                            last_selected: item.last_selected(),
+                            last_selected: item.last_touched(),
                         })
                     } else {
                         None
@@ -156,7 +156,7 @@ mod test {
             self.priv_distance(other) as u64
         }
 
-        fn last_selected(&self) -> DateTime<Local> {
+        fn last_touched(&self) -> DateTime<Local> {
             self.last_selected
         }
 

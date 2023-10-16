@@ -20,6 +20,7 @@ pub struct LaserController {
     burn_laser_power: f32,
     burn_laser_frequency: u32,
     burn_laser_feedrate: f32,
+    soft_mode_s_multiplier: f32,
 
     current_channel: u32,
     current_step: u32,
@@ -38,6 +39,7 @@ impl LaserController {
         burn_laser_power: f32,
         burn_laser_frequency: u32,
         burn_laser_feedrate: f32,
+        soft_mode_s_multiplier: f32,
     ) -> Self {
         let laser_port = match tokio_serial::new(path.clone(), 1500000).open_native_async() {
             Ok(p) => p,
@@ -54,6 +56,7 @@ impl LaserController {
             burn_laser_power,
             burn_laser_frequency,
             burn_laser_feedrate,
+            soft_mode_s_multiplier,
 
             current_channel: 0,
             current_step: 0,
@@ -186,12 +189,16 @@ impl LaserController {
         burn_count: u32,
         burn_step: Option<i32>,
         trys: Option<usize>,
+        soft_mode: bool,
     ) -> Result<(), Error> {
         let burn_step = burn_step.unwrap_or(0);
 
         let ch_cfg = self.positions[self.current_channel as usize];
 
-        let s = self.burn_laser_pump_power * ch_cfg.mul_laser_power.unwrap_or(1.0);
+        let mut s = self.burn_laser_pump_power * ch_cfg.mul_laser_power.unwrap_or(1.0);
+        if soft_mode {
+            s *= self.soft_mode_s_multiplier;
+        }
         let f = self.burn_laser_feedrate * ch_cfg.mul_laser_feedrate.unwrap_or(1.0);
 
         let mut commands = vec![GCodeCtrl::M3 { s }];

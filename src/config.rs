@@ -113,6 +113,9 @@ pub struct Config {
     #[serde(rename = "BurnLaserF")]
     pub burn_laser_feedrate: f32,
 
+    #[serde(rename = "SoftModeSMultiplier")]
+    pub soft_mode_s_multiplier: f32,
+
     #[serde(rename = "TotalVerticalSteps")]
     pub total_vertical_steps: u32,
 
@@ -192,6 +195,7 @@ impl std::fmt::Display for Config {
         writeln!(f, "BurnLaserA: {}", self.burn_laser_power)?;
         writeln!(f, "BurnLaserB: {}", self.burn_laser_frequency)?;
         writeln!(f, "BurnLaserF: {}", self.burn_laser_feedrate)?;
+        writeln!(f, "SoftModeSMultiplier: {}", self.soft_mode_s_multiplier)?;
         writeln!(f, "VerticalStep: {}", self.total_vertical_steps)?;
         writeln!(f, "FreqmeterOffset: {}", self.freqmeter_offset)?;
         writeln!(f, "WorkingOffsetPPM: {}", self.working_offset_ppm)?;

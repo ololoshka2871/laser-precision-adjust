@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Local};
-use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits};
+use laser_precision_adjust::{box_plot::BoxPlot, AutoAdjustLimits, ForecastConfig};
 use serde::Serialize;
 use tokio::sync::{watch, Mutex};
 
@@ -39,7 +39,7 @@ impl ChannelState {
 #[derive(Clone)]
 pub struct ChannelRef {
     id: usize,
-    last_selected: DateTime<Local>,
+    last_touched: DateTime<Local>,
     total_channels: usize,
     state: ChannelState,
     current_freq: f32,
@@ -50,7 +50,7 @@ impl ChannelRef {
     pub fn new(id: usize, total_channels: usize) -> Self {
         Self {
             id,
-            last_selected: Local::now(),
+            last_touched: Local::now(),
             total_channels,
             state: ChannelState::UnknownInit,
             current_freq: 0.0,
@@ -59,7 +59,7 @@ impl ChannelRef {
     }
 
     fn touch(&mut self) {
-        self.last_selected = Local::now();
+        self.last_touched = Local::now();
     }
 
     fn update_state(&mut self, state: ChannelState, freq: f32, step: u32) {
@@ -73,6 +73,11 @@ impl ChannelRef {
         self.state = state;
         self.current_freq = freq;
         self.current_step = step;
+    }
+
+    fn ban(&mut self, state: ChannelState) {
+        tracing::debug!("Rezonator {} banned: {:?}", self.id, state);
+        self.state = state;
     }
 
     fn get_state(&self) -> ChannelState {
@@ -96,8 +101,8 @@ impl FarLongIteratorItem for ChannelRef {
         std::cmp::min(forward_distance, wraped_distance) as u64
     }
 
-    fn last_selected(&self) -> DateTime<Local> {
-        self.last_selected
+    fn last_touched(&self) -> DateTime<Local> {
+        self.last_touched
     }
 
     fn is_valid(&self) -> bool {
@@ -209,6 +214,7 @@ pub struct AutoAdjustAllController {
     auto_adjust_limits: AutoAdjustLimits,
     update_interval: Duration,
     precision_ppm: f32,
+    forecast_config: ForecastConfig,
 
     task: Option<tokio::task::JoinHandle<()>>,
     rx: Option<watch::Receiver<ProgressReport>>,
@@ -222,6 +228,7 @@ impl AutoAdjustAllController {
         auto_adjust_limits: AutoAdjustLimits,
         update_interval: Duration,
         precision_ppm: f32,
+        forecast_config: ForecastConfig,
     ) -> Self {
         Self {
             channel_count,
@@ -230,6 +237,7 @@ impl AutoAdjustAllController {
             auto_adjust_limits,
             update_interval,
             precision_ppm,
+            forecast_config,
 
             task: None,
             rx: None,
@@ -258,6 +266,7 @@ impl AutoAdjustAllController {
         let channels = (0..channel_count)
             .map(move |ch_id| ChannelRef::new(ch_id, channel_count))
             .collect::<Vec<_>>();
+        let forecast_config = self.forecast_config;
 
         let (tx, rx) = watch::channel(ProgressReport::default());
 
@@ -274,6 +283,7 @@ impl AutoAdjustAllController {
                 chrono::Duration::from_std(self.update_interval * 2).unwrap(),
             ),
             target,
+            forecast_config,
         )));
 
         Ok(())
@@ -303,8 +313,10 @@ async fn adjust_task(
     precision_ppm: f32,
     mut channel_iterator: FarLongIterator<ChannelRef>,
     target: f32,
+    forecast_config: ForecastConfig,
 ) {
     const TRYS: usize = 10;
+    let switch_channel_wait = Duration::from_millis(750);
 
     if let Err(e) = find_edge(
         &mut tx,
@@ -315,6 +327,7 @@ async fn adjust_task(
         precision_ppm,
         &mut channel_iterator,
         target,
+        switch_channel_wait,
         TRYS,
     )
     .await
@@ -324,16 +337,33 @@ async fn adjust_task(
             gen_rez_info(channel_iterator.iter()),
         ))
         .ok();
+        return;
     }
-    tx.send(ProgressReport::new(
-        ProgressStatus::Adjusting,
-        None,
-        None,
-        gen_rez_info(channel_iterator.iter()),
-    ))
-    .ok();
 
     tokio::time::sleep(Duration::from_secs(1)).await;
+
+    if let Err(e) = adjust_all(
+        &mut tx,
+        laser_controller,
+        &laser_setup_controller,
+        auto_adjust_limits,
+        update_interval,
+        precision_ppm,
+        &mut channel_iterator,
+        target,
+        switch_channel_wait,
+        TRYS,
+        forecast_config,
+    )
+    .await
+    {
+        tx.send(ProgressReport::error(
+            e.to_string(),
+            gen_rez_info(channel_iterator.iter()),
+        ))
+        .ok();
+        return;
+    }
 
     // Готово
     tx.send(ProgressReport::new(
@@ -354,6 +384,7 @@ async fn find_edge(
     precision_ppm: f32,
     channel_iterator: &mut FarLongIterator<ChannelRef>,
     target: f32,
+    switch_channel_wait: Duration,
     trys: usize,
 ) -> anyhow::Result<()> {
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
@@ -391,7 +422,7 @@ async fn find_edge(
             update_interval * 10,
             0.2,
             (upper_limit, target - limits.min_freq_offset),
-            Some(Duration::from_millis(750)),
+            Some(switch_channel_wait),
         )
         .await?
         {
@@ -447,10 +478,15 @@ async fn find_edge(
                 ))
                 .ok();
                 match guard
-                    .burn(1, Some(limits.edge_detect_interval as i32), Some(trys))
+                    .burn(
+                        1,
+                        Some(limits.edge_detect_interval as i32),
+                        Some(trys),
+                        false,
+                    )
                     .await
                 {
-                    Ok(()) => { /* nothing */ }
+                    Ok(()) => channel_iterator.get_mut(ch as usize).unwrap().touch(), // mark resonator as touched
                     Err(laser_precision_adjust::Error::Laser(e)) => {
                         if e.kind() == std::io::ErrorKind::InvalidInput {
                             // Достигнут предел перемещений
@@ -527,6 +563,179 @@ async fn find_edge(
     Ok(())
 }
 
+async fn adjust_all(
+    tx: &mut watch::Sender<ProgressReport>,
+    laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
+    laser_setup_controller: &Mutex<laser_precision_adjust::LaserSetupController>,
+    limits: AutoAdjustLimits,
+    update_interval: Duration,
+    precision_ppm: f32,
+    channel_iterator: &mut FarLongIterator<ChannelRef>,
+    target: f32,
+    switch_channel_wait: Duration,
+    trys: usize,
+    forecast_config: ForecastConfig,
+) -> anyhow::Result<()> {
+    let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
+    let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
+    let absolute_low_limit = target - limits.min_freq_offset;
+    let prev_ch = None;
+
+    let mut trys_counters = vec![trys; channel_iterator.len()];
+
+    let rx = laser_setup_controller.lock().await.subscribe();
+
+    let mut burn_task_handle = None;
+    let mut e_ch_id = None;
+    let mut burn_ch = None;
+
+    while let Some(ch_id) = channel_iterator.next() {
+        if let Some(ch_id) = e_ch_id {
+            channel_iterator
+                .get_mut(ch_id)
+                .unwrap()
+                .ban(ChannelState::NoReaction);
+            e_ch_id = None;
+        }
+
+        let mut wait_interval = Duration::ZERO;
+        if Some(ch_id) != prev_ch {
+            laser_setup_controller
+                .lock()
+                .await
+                .select_channel(ch_id as u32)
+                .await
+                .map_err(|e| {
+                    HardwareLogickError(format!("Не удалось переключить частотомер ({e:?})"))
+                })?;
+            wait_interval += switch_channel_wait;
+        }
+
+        let rez_info = gen_rez_info(channel_iterator.iter());
+        let ch = channel_iterator.get_mut(ch_id).unwrap();
+        {
+            let now = Local::now();
+            let after_last_touch = now - ch.last_touched();
+            if after_last_touch < chrono::Duration::from_std(Duration::from_secs_f32(2.5)).unwrap()
+            {
+                wait_interval += after_last_touch.to_std().unwrap();
+            }
+        }
+
+        let step = laser_controller.lock().await.get_current_step();
+
+        tx.send(ProgressReport::new(
+            ProgressStatus::Adjusting,
+            Some(ch_id as u32),
+            burn_ch,
+            rez_info,
+        ))
+        .ok();
+
+        let current_freq = match measure(
+            rx.clone(),
+            update_interval * 5,
+            0.2,
+            (upper_limit, absolute_low_limit),
+            Some(wait_interval),
+        )
+        .await?
+        {
+            MeasureResult::Stable(f) => {
+                // успешно
+                trys_counters[ch_id] = trys;
+                if f > target || f + forecast_config.median_freq_grow > target {
+                    // stop
+                    tracing::warn!("Ch {} ready: f={}", ch_id, f);
+                    ch.update_state(ChannelState::Ok, f, step);
+                    continue;
+                } else {
+                    // continue
+                    ch.update_state(ChannelState::Adjustig, f, step);
+                    f
+                }
+            }
+            MeasureResult::Unstable(bxplt) => {
+                // Частота нестабильна, возможно резонатор не остыли или сломан
+                trys_counters[ch_id] -= 1;
+                tracing::warn!(
+                    "Ch {} unsatble: {:?}, remaning={}",
+                    ch_id,
+                    bxplt,
+                    trys_counters[ch_id]
+                );
+                if trys_counters[ch_id] > 0 {
+                    ch.update_state(ChannelState::Adjustig, bxplt.q3(), step);
+                    ch.touch();
+                    continue;
+                } else {
+                    ch.update_state(ChannelState::Unsatable, bxplt.q3(), step);
+                    continue;
+                }
+            }
+            MeasureResult::OutOfRange(f) => {
+                // Вышел за прелелы диопазона.
+                trys_counters[ch_id] -= 1;
+                tracing::warn!(
+                    "Ch {} out of range {}, remaning={}",
+                    ch_id,
+                    f,
+                    trys_counters[ch_id]
+                );
+                if trys_counters[ch_id] > 0 {
+                    ch.update_state(ChannelState::Adjustig, f, step);
+                    ch.touch();
+                    continue;
+                } else {
+                    ch.update_state(ChannelState::OutOfRange, f, step);
+                    continue;
+                }
+            }
+        };
+
+        // Ударяем
+        {
+            let soft_mode = current_freq > lower_limit;
+            let steps_to_burn = if soft_mode {
+                // soft touch
+                tracing::warn!(
+                    "f:{} > Lower_limit:{} - soft mode",
+                    current_freq,
+                    lower_limit
+                );
+                1
+            } else {
+                ((target - current_freq) / forecast_config.max_freq_grow).ceil() as u32
+            };
+
+            if let Some(burn_task_handle) = burn_task_handle.as_mut() {
+                let res: Result<
+                    Result<(), (u32, laser_precision_adjust::Error)>,
+                    tokio::task::JoinError,
+                > = burn_task_handle.await;
+                if let Ok(Err((e_ch, e))) = res {
+                    // ban this channel to prevent infinty loop
+                    tracing::error!("Failed to burn prev step: {:?}", e);
+                    e_ch_id.replace(e_ch as usize);
+                }
+            }
+            ch.touch();
+            burn_task_handle.replace(tokio::spawn(burn_task(
+                laser_controller.clone(),
+                steps_to_burn,
+                ch_id as u32,
+                Some(step),
+                Some(trys_counters[ch_id]),
+                soft_mode,
+            )));
+
+            burn_ch.replace(ch_id as u32);
+        }
+    }
+
+    Ok(())
+}
+
 enum MeasureResult {
     Stable(f32),
     Unstable(BoxPlot<f32>),
@@ -573,4 +782,28 @@ fn gen_rez_info<'a>(iter: impl Iterator<Item = &'a ChannelRef>) -> Vec<RezInfo> 
         state: r.get_state().to_status_icon(),
     })
     .collect()
+}
+
+async fn burn_task(
+    laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
+    burn_count: u32,
+    channel: u32,
+    initial_step: Option<u32>,
+    trys: Option<usize>,
+    soft_mode: bool,
+) -> Result<(), (u32, laser_precision_adjust::Error)> {
+    let mut guard = laser_controller.lock().await;
+
+    guard
+        .select_channel(channel, initial_step, trys)
+        .await
+        .map_err(|e| (channel, e))?;
+    /*
+    guard
+        .burn(burn_count, Some(1), trys, soft_mode)
+        .await
+        .map_err(|e| (channel, e))?;
+    */
+
+    Ok(())
 }

@@ -279,11 +279,14 @@ async fn display_progress(
         .await
 }
 
-async fn burn(precision_adjust: &Mutex<PrecisionAdjust2>) -> Result<(), HardwareLogickError> {
+async fn burn(
+    precision_adjust: &Mutex<PrecisionAdjust2>,
+    soft_mode: bool,
+) -> Result<(), HardwareLogickError> {
     precision_adjust
         .lock()
         .await
-        .burn()
+        .burn(soft_mode)
         .await
         .map_err(|e| HardwareLogickError(format!("Не удалось включить лазер ({e:?})")))
 }
@@ -346,7 +349,7 @@ async fn find_edge(
 
     loop {
         // Прожиг
-        burn(precision_adjust).await?;
+        burn(precision_adjust, false).await?;
         display_progress(
             &status_report_q,
             format!("Ожидаине реакции на шаге {current_step}"),
@@ -487,7 +490,7 @@ async fn do_fast_forward_adjust(
         tracing::trace!("Burn {} steps...", steps_forecast);
 
         for _ in 0..steps_forecast {
-            burn(&precision_adjust).await?;
+            burn(&precision_adjust, false).await?;
             sleep_ms((update_interval_ms * 4) as u64).await;
             match step(&precision_adjust, 1).await {
                 Ok(_) => {
@@ -602,7 +605,7 @@ async fn do_precision_adjust(
         }
 
         // прожиг 1 шага
-        burn(&precision_adjust).await?;
+        burn(&precision_adjust, true).await?;
         total_step_counter += 1;
         sleep_ms((update_interval_ms * 4) as u64).await;
         match step(&precision_adjust, 1).await {

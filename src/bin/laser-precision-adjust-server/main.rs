@@ -91,6 +91,7 @@ async fn main() -> Result<(), std::io::Error> {
         config.burn_laser_power,
         config.burn_laser_frequency,
         config.burn_laser_feedrate,
+        config.soft_mode_s_multiplier,
     )));
 
     let laser_setup_controller = Arc::new(Mutex::new(
@@ -142,6 +143,7 @@ async fn main() -> Result<(), std::io::Error> {
         config.auto_adjust_limits,
         std::time::Duration::from_millis(config.update_interval_ms as u64),
         config.working_offset_ppm,
+        config.forecast_config,
     );
 
     // State for our application
