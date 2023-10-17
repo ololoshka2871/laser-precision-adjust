@@ -18,6 +18,7 @@ pub enum ChannelState {
     Unsatable,
     OutOfRange,
     NoReaction,
+    Limit,
     Ok,
 }
 
@@ -30,6 +31,7 @@ impl ChannelState {
             ChannelState::Unsatable => "Сломан или нестабилен",
             ChannelState::OutOfRange => "Вне допазона настройки",
             ChannelState::NoReaction => "Край не обнаружен",
+            ChannelState::Limit => "Превышен лимит шагов",
             ChannelState::Ok => "Настроен",
         }
         .to_owned()
@@ -332,7 +334,7 @@ async fn adjust_task(
     forecast_config: ForecastConfig,
 ) {
     const TRYS: usize = 10;
-    let switch_channel_wait = Duration::from_millis(750);
+    let switch_channel_wait = Duration::from_secs(1);
 
     if let Err(e) = find_edge(
         &mut tx,
@@ -439,6 +441,7 @@ async fn find_edge(
             0.2,
             (upper_limit, target - limits.min_freq_offset),
             Some(switch_channel_wait),
+            2,
         )
         .await?
         {
@@ -531,6 +534,7 @@ async fn find_edge(
                 0.2,
                 (upper_limit, 0.0),
                 None,
+                1,
             )
             .await?
             {
@@ -614,9 +618,9 @@ async fn adjust_all(
         let burn_ch = match burn_rx.try_recv() {
             Ok(BurnEvent::ErrorBan(ch)) => {
                 channel_iterator
-                    .get_mut(ch_id)
+                    .get_mut(ch as usize)
                     .unwrap()
-                    .ban(ChannelState::NoReaction);
+                    .ban(ChannelState::Limit);
                 Some(ch)
             }
             Ok(BurnEvent::Done(ch, step)) => {
@@ -669,12 +673,13 @@ async fn adjust_all(
             0.2,
             (upper_limit, absolute_low_limit),
             Some(wait_interval),
+            1,
         )
         .await?
         {
             MeasureResult::Stable(f) => {
                 // успешно
-                trys_counters[ch_id] = trys;
+                trys_counters[ch_id] = (trys_counters[ch_id] + 1).max(trys);
                 if f > target || f + forecast_config.median_freq_grow > target {
                     // stop
                     tracing::warn!("Ch {} ready: f={}", ch_id, f);
@@ -706,7 +711,7 @@ async fn adjust_all(
             }
             MeasureResult::OutOfRange(f) => {
                 // Вышел за прелелы диопазона.
-                trys_counters[ch_id] -= 1;
+                trys_counters[ch_id] /= 2;
                 tracing::warn!(
                     "Ch {} out of range {}, remaning={}",
                     ch_id,
@@ -785,6 +790,7 @@ async fn measure(
     stable_range: f32,
     work_range: (f32, f32),
     wait_before: Option<Duration>,
+    trys: usize,
 ) -> Result<MeasureResult, watch::error::RecvError> {
     let mut data = vec![];
 
@@ -792,23 +798,28 @@ async fn measure(
         tokio::time::sleep(wait_before).await;
     }
 
-    let start = std::time::Instant::now();
-    while std::time::Instant::now() - start < timeout {
-        m.changed().await?;
-        let status = m.borrow();
-        data.push(status.current_frequency);
+    for i in 0..trys {
+        let start = std::time::Instant::now();
+        while std::time::Instant::now() - start < timeout {
+            m.changed().await?;
+            let status = m.borrow();
+            tracing::trace!("measure(): F={}", status.current_frequency);
+            data.push(status.current_frequency);
+        }
+
+        let boxplot = BoxPlot::new(&data);
+        if boxplot.iqr() < stable_range {
+            return if boxplot.median() > work_range.0 || boxplot.median() < work_range.1 {
+                Ok(MeasureResult::OutOfRange(boxplot.median()))
+            } else {
+                Ok(MeasureResult::Stable(boxplot.median()))
+            };
+        } else if i == trys - 1 {
+            return Ok(MeasureResult::Unstable(boxplot));
+        }
     }
 
-    let boxplot = BoxPlot::new(&data);
-    Ok(if boxplot.iqr() < stable_range {
-        if boxplot.median() > work_range.0 || boxplot.median() < work_range.1 {
-            MeasureResult::OutOfRange(boxplot.median())
-        } else {
-            MeasureResult::Stable(boxplot.median())
-        }
-    } else {
-        MeasureResult::Unstable(boxplot)
-    })
+    panic!("trys == 0")
 }
 
 fn gen_rez_info<'a>(iter: impl Iterator<Item = &'a ChannelRef>) -> Vec<RezInfo> {
@@ -840,6 +851,7 @@ async fn burn_task(
         .burn(burn_count, Some(1), trys, soft_mode)
         .await
         .map_err(|e| (channel, e))?;
+    //tracing::warn!("skip burn {} steps, soft={}", burn_count, soft_mode);
 
     Ok((channel, guard.get_current_step()))
 }

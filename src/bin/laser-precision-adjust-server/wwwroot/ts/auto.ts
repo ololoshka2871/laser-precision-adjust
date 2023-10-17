@@ -60,6 +60,8 @@ $(() => {
             success: (data) => {
                 if (!data.success) {
                     noty_error('Ошибка: ' + data.error);
+                } else if (action == 'close') {
+                    update_vac_button();
                 }
             }
         })
@@ -92,6 +94,8 @@ $(() => {
 
     $('#freq-target').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'TargetFreq'));
     $('#freq_adj').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'WorkOffsetHz'));
+
+    update_vac_button();
 
     start_autoadjust_updater();
 });
@@ -237,5 +241,19 @@ function draw_progress(inital_freq: number, current_freq: number, cell: JQuery<H
         }
         cache.filter('.target-marker').css('left', ((target - inital_freq) / full_percent - 1).toString() + '%');
         cache.filter('.min-marker').css('left', ((min_f - inital_freq) / full_percent).toString() + '%');
+    }
+}
+
+function update_vac_button(secs: number = 20) {
+    var $button = $('button[ctrl-request="vac"]');
+    if (secs > 0) {
+        $button
+            .prop('disabled', 'disabled')
+            .html('<i class="fas fa-spinner fa-pulse"></i> Ждите... (' + secs + ')');
+        setTimeout(update_vac_button, 1000, secs - 1);
+    } else {
+        $button.prop('disabled', false)
+            .prop('data-state', 'enabled')
+            .html('<i class="fa fa-soap"></i> Вакуум');
     }
 }
