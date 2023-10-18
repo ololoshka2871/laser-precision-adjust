@@ -27,8 +27,9 @@ use axum_template::engine::Engine;
 use minijinja::Environment;
 
 use crate::handle_routes::{
-    handle_auto_adjust, handle_config, handle_control, handle_generate_report, handle_stat,
-    handle_stat_rez, handle_state, handle_update_config, handle_work, handle_auto_adjust_status,
+    handle_auto_adjust, handle_auto_adjust_status, handle_config, handle_control,
+    handle_generate_report, handle_stat, handle_stat_rez, handle_state, handle_update_config,
+    handle_work,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -118,6 +119,8 @@ async fn main() -> Result<(), std::io::Error> {
 
     let status_rx = precision_adjust.subscribe_status();
 
+    let precision_adjust = Arc::new(Mutex::new(precision_adjust));
+
     let freqmeter_config = Arc::new(Mutex::new(AdjustConfig {
         target_freq: config.target_freq_center,
         work_offset_hz: config.freqmeter_offset,
@@ -140,10 +143,12 @@ async fn main() -> Result<(), std::io::Error> {
         config.resonator_placement.len(),
         laser_controller,
         laser_setup_controller,
+        precision_adjust.clone(),
         config.auto_adjust_limits,
         std::time::Duration::from_millis(config.update_interval_ms as u64),
         config.working_offset_ppm,
         config.forecast_config,
+        config.auto_adjust_limits.fast_forward_step_limit,
     );
 
     // State for our application
@@ -178,7 +183,7 @@ async fn main() -> Result<(), std::io::Error> {
         config,
         config_file,
         status_rx,
-        precision_adjust: Arc::new(Mutex::new(precision_adjust)),
+        precision_adjust: precision_adjust,
         close_timestamp: Arc::new(Mutex::new(None)),
         select_channel_blocked: Arc::new(Mutex::new(false)),
 

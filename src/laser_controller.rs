@@ -105,15 +105,17 @@ impl LaserController {
                         return Err(Error::Laser(e));
                     }
                 } else {
-                    break; // ok
+                    tracing::trace!("Waiting conformation");
+                    if let Err(e) = self.get_gcode_result().await {
+                        ctrys -= 1;
+                        if ctrys == 0 {
+                            return Err(Error::Laser(e));
+                        }
+                    } else {
+                        break; // ok
+                    }
                 }
             }
-
-            tracing::trace!("Waiting conformation");
-            self.get_gcode_result().await.map_err(|e| {
-                tracing::error!("Can't setup initial position: {:?}", e);
-                Error::Laser(e)
-            })?;
         }
 
         Ok(())
@@ -191,6 +193,8 @@ impl LaserController {
         trys: Option<usize>,
         soft_mode: bool,
     ) -> Result<(), Error> {
+        // на самом деле ходим не прямоугольным зигзагом а "ёлочкой", чтобы меньше G-кода выполнять
+
         let burn_step = burn_step.unwrap_or(0);
 
         let ch_cfg = self.positions[self.current_channel as usize];
@@ -203,28 +207,24 @@ impl LaserController {
 
         let mut commands = vec![GCodeCtrl::M3 { s }];
         let mut side = self.side;
-        let mut current_step = self.current_step;
+        let mut step = self.current_step;
         for _ in 0..burn_count {
             side = side.mirrored();
-            if burn_step < 0 && current_step < (-burn_step) as u32 {
+            if burn_step < 0 && step < (-burn_step) as u32 {
                 return Err(Error::Laser(IoError::new(
                     std::io::ErrorKind::InvalidInput,
                     "Burn step too big",
                 )));
             }
-            if burn_step > 0 && current_step + burn_step as u32 > self.total_vertical_steps {
+            if burn_step > 0 && step + burn_step as u32 > self.total_vertical_steps {
                 return Err(Error::Laser(IoError::new(
                     std::io::ErrorKind::InvalidInput,
                     "Burn step too big",
                 )));
             }
-            current_step = current_step.wrapping_add_signed(burn_step);
-            let new_abs_coordinates = ch_cfg.to_abs(
-                &self.axis_config,
-                current_step,
-                side,
-                self.total_vertical_steps,
-            );
+            step = step.wrapping_add_signed(burn_step);
+            let new_abs_coordinates =
+                ch_cfg.to_abs(&self.axis_config, step, side, self.total_vertical_steps);
             let cmd = GCodeCtrl::G1 {
                 x: new_abs_coordinates.0,
                 y: new_abs_coordinates.1,
@@ -237,7 +237,7 @@ impl LaserController {
         self.execute_gcode_trys(commands, trys).await?;
 
         self.side = side;
-        self.current_step = current_step;
+        self.current_step = step;
 
         Ok(())
     }
@@ -245,11 +245,6 @@ impl LaserController {
     pub async fn step(&mut self, count: i32, trys: Option<usize>) -> Result<(), Error> {
         let ch_cfg = self.positions[self.current_channel as usize];
 
-        let side = if count % 2 == 0 {
-            self.side
-        } else {
-            self.side.mirrored()
-        };
         let current_step = self
             .current_step
             .checked_add_signed(count)
@@ -258,7 +253,7 @@ impl LaserController {
         let new_abs_coordinates = ch_cfg.to_abs(
             &self.axis_config,
             current_step,
-            side,
+            self.side,
             self.total_vertical_steps,
         );
         let cmd = GCodeCtrl::G0 {
@@ -269,7 +264,6 @@ impl LaserController {
 
         self.execute_gcode_trys(commands, trys).await?;
 
-        self.side = side;
         self.current_step = current_step;
 
         Ok(())

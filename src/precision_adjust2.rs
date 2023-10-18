@@ -65,11 +65,11 @@ pub struct Status {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct PrivStatusEvent {
-    chanel_select: Option<u32>,
-    camera: Option<CameraState>,
-    shot_mark: Option<bool>,
-    step: Option<i32>,
+pub struct PrivStatusEvent {
+    pub chanel_select: Option<u32>,
+    pub camera: Option<CameraState>,
+    pub shot_mark: Option<bool>,
+    pub step: Option<i32>,
 }
 
 pub struct PrecisionAdjust2 {
@@ -148,13 +148,11 @@ impl PrecisionAdjust2 {
             .select_channel(channel, None, Some(TRYS))
             .await?;
 
-        self.ev_tx
-            .send(PrivStatusEvent {
-                chanel_select: Some(channel),
-                ..Default::default()
-            })
-            .await
-            .ok();
+        self.push_event(PrivStatusEvent {
+            chanel_select: Some(channel),
+            ..Default::default()
+        })
+        .await;
 
         Ok(())
     }
@@ -167,13 +165,11 @@ impl PrecisionAdjust2 {
             .await
             .map_err(|e| Error::LaserSetup(e))?;
 
-        self.ev_tx
-            .send(PrivStatusEvent {
-                camera: Some(CameraState::Open),
-                ..Default::default()
-            })
-            .await
-            .ok();
+        self.push_event(PrivStatusEvent {
+            camera: Some(CameraState::Open),
+            ..Default::default()
+        })
+        .await;
 
         Ok(())
     }
@@ -190,13 +186,12 @@ impl PrecisionAdjust2 {
                 .await
                 .map_err(|e| Error::LaserSetup(e))?;
         }
-        self.ev_tx
-            .send(PrivStatusEvent {
-                camera: Some(CameraState::Close),
-                ..Default::default()
-            })
-            .await
-            .ok();
+
+        self.push_event(PrivStatusEvent {
+            camera: Some(CameraState::Close),
+            ..Default::default()
+        })
+        .await;
 
         Ok(())
     }
@@ -208,13 +203,11 @@ impl PrecisionAdjust2 {
             .step(count, Some(TRYS))
             .await?;
 
-        self.ev_tx
-            .send(PrivStatusEvent {
-                step: Some(count),
-                ..Default::default()
-            })
-            .await
-            .ok();
+        self.push_event(PrivStatusEvent {
+            step: Some(count),
+            ..Default::default()
+        })
+        .await;
 
         Ok(())
     }
@@ -223,17 +216,19 @@ impl PrecisionAdjust2 {
         self.laser_controller
             .lock()
             .await
-            .burn(1, Some(1), Some(TRYS), soft_mode)
+            .burn(1, None, Some(TRYS), soft_mode)
             .await?;
-        self.ev_tx
-            .send(PrivStatusEvent {
-                shot_mark: Some(true),
-                ..Default::default()
-            })
-            .await
-            .ok();
+        self.push_event(PrivStatusEvent {
+            shot_mark: Some(true),
+            ..Default::default()
+        })
+        .await;
 
         Ok(())
+    }
+
+    pub async fn push_event(&self, ev: PrivStatusEvent) {
+        self.ev_tx.send(ev).await.ok();
     }
 
     pub async fn set_freq_meter_offset(&mut self, offset: f32) {

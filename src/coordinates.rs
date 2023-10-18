@@ -30,11 +30,11 @@ impl CoordiantesCalc for crate::config::ResonatroPlacement {
         &self,
         axis_config: &AxisConfig,
         step: u32,
-        current_side: Side,
+        side: Side,
         total_steps: u32,
     ) -> (f32, f32) {
         let (x, y) = (
-            if (current_side == Side::Left) ^ axis_config.reverse_x {
+            if (side == Side::Left) ^ axis_config.reverse_x {
                 self.x - self.w / 2.0
             } else {
                 self.x + self.w / 2.0
