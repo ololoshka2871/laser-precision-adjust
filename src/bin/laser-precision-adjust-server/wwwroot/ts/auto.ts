@@ -82,7 +82,7 @@ $(() => {
                     start_autoadjust_updater();
                 }
             }
-        })
+        });
         ev.preventDefault();
     });
 
@@ -206,7 +206,7 @@ function draw_progress(inital_freq: number, current_freq: number, cell: JQuery<H
     const cache = cell.children();
     cell.text(round_to_2_digits(current_freq)).append(cache);
 
-    if (inital_freq !== 0.0) {
+    if (inital_freq !== 0.0 || current_freq === 0.0) {
         const $freq_target = $('#freq-target');
         const target = parseFloat($freq_target.val() as string);
         const precision_hz = parseFloat($freq_target.attr('precision_hz'));
