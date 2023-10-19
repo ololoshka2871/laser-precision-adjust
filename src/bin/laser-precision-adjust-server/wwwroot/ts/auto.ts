@@ -101,8 +101,8 @@ $(() => {
 });
 
 function update_autoadjust(report: IProgressReport, progress_string: string) {
-    const measure_class = 'table-success';
-    const burn_class = 'table-danger';
+    const measure_class = 'sensor';
+    const burn_class = 'burner';
 
     $('#adjust-step').text(progress_string);
 
@@ -116,8 +116,7 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
     }
 
     function reset_laser_pos() {
-        $('th').removeClass(burn_class);
-        $('td').removeClass(burn_class);
+        $('tr').removeClass(burn_class);
     }
 
     function reset_freqmeter_pos() {
@@ -148,19 +147,16 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
         }
     }
 
-    if (report.burn_channel_id != undefined) {
-        const td = $(sel_header(report.burn_channel_id));
-        if (!td.hasClass(burn_class)) {
-            const siblings = td.parent().siblings()
-            siblings.children('th').removeClass(burn_class);
-            siblings.children('td').removeClass(burn_class);
-            td.addClass(burn_class).siblings().addClass(burn_class);
+    if (report.burn_channel_id !== undefined) {
+        const tr = $(sel_header(report.burn_channel_id)).parent();
+        if (!tr.hasClass(burn_class)) {
+            tr.addClass(burn_class).siblings().removeClass(burn_class);
         }
     } else {
         reset_laser_pos();
     }
 
-    if (report.measure_channel_id != undefined) {
+    if (report.measure_channel_id !== undefined) {
         const tr = $(sel_header(report.measure_channel_id)).parent();
         if (!tr.hasClass(measure_class)) {
             tr.addClass(measure_class).siblings().removeClass(measure_class);
@@ -215,13 +211,13 @@ function draw_progress(inital_freq: number, current_freq: number, cell: JQuery<H
 
         // Start --- min_f target max_f --- f
         // | -------- | ----- * ----| ----- |
-
-        var full_percent: number;
         const progress_marker = cache.filter('.progress-marker');
-        if (current_freq == inital_freq) {
+        if (current_freq === inital_freq) {
             // Костыль
             inital_freq = Math.min(inital_freq - 2 * precision_hz, min_f);
         }
+
+        var full_percent: number;
         if (max_f > current_freq) {
             // правый упор - маркер max_f
             full_percent = (max_f - inital_freq) / 100;
