@@ -796,7 +796,7 @@ pub(super) async fn handle_control(
                 } else {
                     channel.points.remove(channel.points.len() - points_to_read);
                     let median = BoxPlot::new(
-                        &channel.points[..channel.points.len() - points_to_read]
+                        &channel.points
                             .iter()
                             .map(|p| p.y())
                             .collect::<Vec<_>>(),

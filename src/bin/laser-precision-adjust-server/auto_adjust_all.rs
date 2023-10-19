@@ -7,10 +7,7 @@ use laser_precision_adjust::{
 use serde::Serialize;
 use tokio::sync::{watch, Mutex};
 
-use crate::{
-    auto_adjust_single_controller::HardwareLogickError,
-    far_long_iterator::{FarLongIterator, FarLongIteratorItem, IntoFarLongIterator},
-};
+use crate::far_long_iterator::{FarLongIterator, FarLongIteratorItem, IntoFarLongIterator};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChannelState {
@@ -33,7 +30,7 @@ impl ChannelState {
             ChannelState::UnknownInit => "Неизвестно",
             ChannelState::Adjustig => "Настройка",
             ChannelState::Unsatable => "Сломан или нестабилен",
-            ChannelState::OutOfRange => "Вне допазона настройки",
+            ChannelState::OutOfRange => "Вне диапазона настройки",
             ChannelState::Limit => "Превышен лимит шагов",
             ChannelState::Ok => "Настроен",
         }
@@ -127,7 +124,7 @@ impl FarLongIteratorItem for ChannelRef {
 
     fn is_valid(&self) -> bool {
         match self.state {
-            ChannelState::UnknownInit /*| ChannelState::FindingEdge*/ | ChannelState::Adjustig => true,
+            ChannelState::UnknownInit | ChannelState::Adjustig => true,
             _ => false,
         }
     }
@@ -144,9 +141,6 @@ pub enum ProgressStatus {
     /// Бездействие
     Idle,
 
-    /// Поиск края
-    SearchingEdge { ch: u32, step: u32 },
-
     /// Настройка
     Adjusting,
 
@@ -161,9 +155,6 @@ impl std::fmt::Display for ProgressStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProgressStatus::Idle => write!(f, "Ожидание"),
-            ProgressStatus::SearchingEdge { ch, step } => {
-                write!(f, "Поиск края резонатора {}. Шаг: {}", ch + 1, step)
-            }
             ProgressStatus::Adjusting => write!(f, "Настройка"),
             ProgressStatus::Done => write!(f, "Завершено"),
             ProgressStatus::Error(e) => write!(f, "Ошибка: {e}"),
@@ -332,8 +323,49 @@ impl AutoAdjustAllController {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Trys<const TRYS: u32> {
+    Ok,
+    Unstable(u32),
+    OutOfrange(u32),
+}
+
+impl<const TRYS: u32> Trys<TRYS> {
+    pub fn mark_ok(&mut self) {
+        *self = Self::Ok;
+    }
+
+    pub fn more_trys_avalable(&self) -> bool {
+        match self {
+            Trys::Ok => true,
+            Trys::Unstable(n) => *n > 0,
+            Trys::OutOfrange(n) => *n > 0,
+        }
+    }
+
+    pub fn mark_unstable(&mut self) {
+        match self {
+            Trys::Unstable(n) => *self = Self::Unstable(n.saturating_sub(1)),
+            _ => *self = Self::Unstable(TRYS / 2),
+        }
+    }
+
+    pub fn mark_out_of_range(&mut self) {
+        match self {
+            Trys::OutOfrange(n) => *self = Self::OutOfrange(n.saturating_sub(1)),
+            _ => *self = Self::OutOfrange(2),
+        }
+    }
+}
+
+impl<const TRYS: u32> Default for Trys<TRYS> {
+    fn default() -> Self {
+        Trys::Unstable(TRYS)
+    }
+}
+
 async fn adjust_task(
-    mut tx: watch::Sender<ProgressReport>,
+    tx: watch::Sender<ProgressReport>,
     laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
     laser_setup_controller: Arc<Mutex<laser_precision_adjust::LaserSetupController>>,
     auto_adjust_limits: AutoAdjustLimits,
@@ -345,67 +377,16 @@ async fn adjust_task(
     fast_forward_step_limit: u32,
     precision_adjust: Arc<Mutex<laser_precision_adjust::PrecisionAdjust2>>,
 ) {
-    const TRYS: usize = 10;
+    const TRYS: u32 = 10;
+
     let switch_channel_wait = Duration::from_millis(500);
 
-    if let Err(e) = adjust_all(
-        &mut tx,
-        laser_controller,
-        &laser_setup_controller,
-        auto_adjust_limits,
-        update_interval,
-        precision_ppm,
-        &mut channel_iterator,
-        target,
-        switch_channel_wait,
-        TRYS,
-        forecast_config,
-        fast_forward_step_limit,
-        &precision_adjust,
-    )
-    .await
-    {
-        tx.send(ProgressReport::error(
-            e.to_string(),
-            gen_rez_info(channel_iterator.iter()),
-        ))
-        .ok();
-        return;
-    }
-
-    // Готово
-    tx.send(ProgressReport::new(
-        ProgressStatus::Done,
-        None,
-        None,
-        gen_rez_info(channel_iterator.iter()),
-    ))
-    .ok();
-}
-
-const MEASRE_COUNT_NORMAL: u32 = 3;
-
-async fn adjust_all(
-    tx: &mut watch::Sender<ProgressReport>,
-    laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
-    laser_setup_controller: &Mutex<laser_precision_adjust::LaserSetupController>,
-    limits: AutoAdjustLimits,
-    update_interval: Duration,
-    precision_ppm: f32,
-    channel_iterator: &mut FarLongIterator<ChannelRef>,
-    target: f32,
-    switch_channel_wait: Duration,
-    trys: usize,
-    forecast_config: ForecastConfig,
-    fast_forward_step_limit: u32,
-    precision_adjust: &Mutex<laser_precision_adjust::PrecisionAdjust2>,
-) -> anyhow::Result<()> {
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
-    let absolute_low_limit = target - limits.min_freq_offset;
+    let absolute_low_limit = target - auto_adjust_limits.min_freq_offset;
     let mut prev_ch = None;
 
-    let mut trys_counters = vec![trys; channel_iterator.len()];
+    let mut trys_counters = vec![Trys::<TRYS>::default(); channel_iterator.len()];
 
     let rx = laser_setup_controller.lock().await.subscribe();
 
@@ -434,14 +415,15 @@ async fn adjust_all(
 
         let mut wait_interval = Duration::ZERO;
         let channel_switched = if Some(ch_id) != prev_ch {
-            laser_setup_controller
+            if let Err(e) = laser_setup_controller
                 .lock()
                 .await
                 .select_channel(ch_id as u32)
                 .await
-                .map_err(|e| {
-                    HardwareLogickError(format!("Не удалось переключить частотомер ({e:?})"))
-                })?;
+            {
+                tracing::error!("Failed to switch freqmeter channel: {e:?}");
+                continue;
+            }
 
             precision_adjust
                 .lock()
@@ -494,11 +476,11 @@ async fn adjust_all(
             },
             1,
         )
-        .await?
+        .await
         {
-            MeasureResult::Stable(f) => {
+            Ok(MeasureResult::Stable(f)) => {
                 // успешно
-                trys_counters[ch_id] = (trys_counters[ch_id] + 2).max(trys);
+                trys_counters[ch_id].mark_ok();
                 if f > target || f + forecast_config.median_freq_grow > target {
                     // stop
                     tracing::warn!("Ch {} ready: f={}", ch_id, f);
@@ -510,40 +492,43 @@ async fn adjust_all(
                     f
                 }
             }
-            MeasureResult::Unstable(bxplt) => {
+            Ok(MeasureResult::Unstable(bxplt)) => {
                 // Частота нестабильна, возможно резонатор не остыли или сломан
                 extend_stable_time = true;
-                if channel_switched {
-                    trys_counters[ch_id] = (trys_counters[ch_id] / 2).min(trys_counters[ch_id] - 1);
+
+                if channel_switched && (bxplt.median() - target).abs() > 1000.0 {
+                    // похоже, что канал нерабочий
+                    trys_counters[ch_id].mark_out_of_range();
                 } else {
-                    trys_counters[ch_id] -= 1;
-                }
+                    trys_counters[ch_id].mark_unstable();
+                };
+
                 tracing::warn!(
-                    "Ch {} unsatble: {:?}, remaning={}",
+                    "Ch {} unsatble: {:?}, remaning={:?}",
                     ch_id,
                     bxplt,
                     trys_counters[ch_id]
                 );
-                if trys_counters[ch_id] > 0 {
+
+                if trys_counters[ch_id].more_trys_avalable() {
                     ch.update_state(ChannelState::Adjustig, bxplt.q3(), step, false);
                     ch.touch();
-                    continue;
                 } else {
                     ch.ban(ChannelState::Unsatable);
-                    continue;
                 }
+                continue;
             }
-            MeasureResult::OutOfRange(f) => {
+            Ok(MeasureResult::OutOfRange(f)) => {
                 // Вышел за прелелы диопазона.
                 extend_stable_time = true;
-                trys_counters[ch_id] = 2.min(trys_counters[ch_id] - 1);
+                trys_counters[ch_id].mark_out_of_range();
                 tracing::warn!(
-                    "Ch {} out of range {}, remaning={}",
+                    "Ch {} out of range {}, remaning={:?}",
                     ch_id,
                     f,
                     trys_counters[ch_id]
                 );
-                if trys_counters[ch_id] > 0 {
+                if trys_counters[ch_id].more_trys_avalable() {
                     ch.update_state(ChannelState::Adjustig, f, step, false);
                     ch.touch();
                     continue;
@@ -551,6 +536,16 @@ async fn adjust_all(
                     ch.update_state(ChannelState::OutOfRange, f, step, true);
                     continue;
                 }
+            }
+            Err(e) => {
+                tx.send(ProgressReport::error(
+                    e.to_string(),
+                    gen_rez_info(channel_iterator.iter()),
+                ))
+                .ok();
+                tracing::error!("Failed to measure channel {ch_id}: {e:?}");
+                trys_counters[ch_id].mark_unstable();
+                continue;
             }
         };
 
@@ -586,15 +581,24 @@ async fn adjust_all(
                 steps_to_burn,
                 ch_id as u32,
                 Some(step),
-                Some(trys_counters[ch_id]),
+                Some(TRYS as usize),
                 soft_mode,
                 burn_tx.clone(),
             ));
         }
     }
 
-    Ok(())
+    // Готово
+    tx.send(ProgressReport::new(
+        ProgressStatus::Done,
+        None,
+        None,
+        gen_rez_info(channel_iterator.iter()),
+    ))
+    .ok();
 }
+
+const MEASRE_COUNT_NORMAL: u32 = 3;
 
 enum MeasureResult {
     Stable(f32),
