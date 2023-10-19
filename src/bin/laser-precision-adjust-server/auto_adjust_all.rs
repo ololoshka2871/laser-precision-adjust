@@ -15,24 +15,25 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChannelState {
     UnknownInit,
-    FindingEdge,
     Adjustig,
     Unsatable,
     OutOfRange,
-    NoReaction,
     Limit,
     Ok,
+}
+
+enum BurnEvent {
+    ErrorBan(u32),
+    Done(u32, u32),
 }
 
 impl ChannelState {
     fn to_status_icon(&self) -> String {
         match self {
             ChannelState::UnknownInit => "Неизвестно",
-            ChannelState::FindingEdge => "Поиск края",
             ChannelState::Adjustig => "Настройка",
             ChannelState::Unsatable => "Сломан или нестабилен",
             ChannelState::OutOfRange => "Вне допазона настройки",
-            ChannelState::NoReaction => "Край не обнаружен",
             ChannelState::Limit => "Превышен лимит шагов",
             ChannelState::Ok => "Настроен",
         }
@@ -68,7 +69,7 @@ impl ChannelRef {
         self.last_touched = Local::now();
     }
 
-    fn update_state(&mut self, state: ChannelState, freq: f32, step: u32) {
+    fn update_state(&mut self, state: ChannelState, freq: f32, step: u32, ok: bool) {
         tracing::debug!(
             "Rezonator {} update state {:?}: F={}, step={}",
             self.id,
@@ -77,7 +78,7 @@ impl ChannelRef {
             step
         );
 
-        if self.initial_freq.is_none() {
+        if self.initial_freq.is_none() && ok {
             self.initial_freq.replace(freq);
         }
 
@@ -126,7 +127,7 @@ impl FarLongIteratorItem for ChannelRef {
 
     fn is_valid(&self) -> bool {
         match self.state {
-            ChannelState::UnknownInit | ChannelState::FindingEdge | ChannelState::Adjustig => true,
+            ChannelState::UnknownInit /*| ChannelState::FindingEdge*/ | ChannelState::Adjustig => true,
             _ => false,
         }
     }
@@ -347,31 +348,6 @@ async fn adjust_task(
     const TRYS: usize = 10;
     let switch_channel_wait = Duration::from_millis(500);
 
-    if let Err(e) = find_edge(
-        &mut tx,
-        &laser_controller,
-        &laser_setup_controller,
-        auto_adjust_limits,
-        update_interval,
-        precision_ppm,
-        &mut channel_iterator,
-        target,
-        switch_channel_wait,
-        &precision_adjust,
-        TRYS,
-    )
-    .await
-    {
-        tx.send(ProgressReport::error(
-            e.to_string(),
-            gen_rez_info(channel_iterator.iter()),
-        ))
-        .ok();
-        return;
-    }
-
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
     if let Err(e) = adjust_all(
         &mut tx,
         laser_controller,
@@ -409,217 +385,6 @@ async fn adjust_task(
 
 const MEASRE_COUNT_NORMAL: u32 = 3;
 
-async fn find_edge(
-    tx: &mut watch::Sender<ProgressReport>,
-    laser_controller: &Mutex<laser_precision_adjust::LaserController>,
-    laser_setup_controller: &Mutex<laser_precision_adjust::LaserSetupController>,
-    limits: AutoAdjustLimits,
-    update_interval: Duration,
-    precision_ppm: f32,
-    channel_iterator: &mut FarLongIterator<ChannelRef>,
-    target: f32,
-    switch_channel_wait: Duration,
-    precision_adjust: &Mutex<laser_precision_adjust::PrecisionAdjust2>,
-    trys: usize,
-) -> anyhow::Result<()> {
-    let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
-    let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
-
-    for ch in 0..channel_iterator.len() as u32 {
-        laser_controller
-            .lock()
-            .await
-            .select_channel(ch, None, Some(trys))
-            .await
-            .map_err(|e| {
-                HardwareLogickError(format!("Не удалось переключить канал лазера ({e:?})"))
-            })?;
-
-        precision_adjust
-            .lock()
-            .await
-            .push_event(PrivStatusEvent {
-                chanel_select: Some(ch),
-                ..Default::default()
-            })
-            .await;
-
-        let rx = {
-            let mut guard = laser_setup_controller.lock().await;
-
-            guard.select_channel(ch).await.map_err(|e| {
-                HardwareLogickError(format!("Не удалось переключить частотомер ({e:?})"))
-            })?;
-            guard.subscribe()
-        };
-
-        tx.send(ProgressReport::new(
-            ProgressStatus::SearchingEdge { ch, step: 0 },
-            Some(ch),
-            None,
-            gen_rez_info(channel_iterator.iter()),
-        ))
-        .ok();
-
-        let mut last_freq = match measure(
-            rx.clone(),
-            update_interval * 10,
-            0.2,
-            (upper_limit, target - limits.min_freq_offset),
-            Some(switch_channel_wait),
-            2,
-        )
-        .await?
-        {
-            MeasureResult::Stable(f) => {
-                // Частота стабильна и в диапазоне, можно искать край
-                tracing::info!("Channel {} stable at {} Hz", ch, f);
-                if f < upper_limit && f > lower_limit {
-                    // сразу годный, стоп!
-                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                        ChannelState::Ok,
-                        f,
-                        0,
-                    );
-                    continue;
-                } else {
-                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                        ChannelState::FindingEdge,
-                        f,
-                        0,
-                    );
-                }
-                f
-            }
-            MeasureResult::Unstable(boxplot) => {
-                // Частота нестабильна - брак
-                channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                    ChannelState::Unsatable,
-                    boxplot.median(),
-                    0,
-                );
-                continue;
-            }
-            MeasureResult::OutOfRange(f) => {
-                // Частота вне диапазона - брак
-                channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                    ChannelState::OutOfRange,
-                    f,
-                    0,
-                );
-                continue;
-            }
-        };
-
-        loop {
-            let current_step = {
-                let mut guard = laser_controller.lock().await;
-                let step = guard.get_current_step();
-                tx.send(ProgressReport::new(
-                    ProgressStatus::SearchingEdge { ch, step },
-                    Some(ch),
-                    Some(ch),
-                    gen_rez_info(channel_iterator.iter()),
-                ))
-                .ok();
-                match guard
-                    .burn(
-                        1,
-                        Some(limits.edge_detect_interval as i32),
-                        Some(trys),
-                        false,
-                    )
-                    .await
-                {
-                    Ok(()) => {
-                        channel_iterator.get_mut(ch as usize).unwrap().touch(); // mark resonator as touched
-                        precision_adjust
-                            .lock()
-                            .await
-                            .push_event(PrivStatusEvent {
-                                shot_mark: Some(true),
-                                step: Some(limits.edge_detect_interval as i32),
-                                ..Default::default()
-                            })
-                            .await;
-                    }
-                    Err(laser_precision_adjust::Error::Laser(e)) => {
-                        if e.kind() == std::io::ErrorKind::InvalidInput {
-                            // Достигнут предел перемещений
-                            channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                                ChannelState::NoReaction,
-                                last_freq,
-                                guard.get_current_step(),
-                            );
-                            break;
-                        } else {
-                            Err(HardwareLogickError(format!(
-                                "Не удалось сделать шаг ({e:?})"
-                            )))?;
-                        }
-                    }
-                    Err(e) => Err(HardwareLogickError(format!(
-                        "Не удалось сделать шаг ({e:?})"
-                    )))?,
-                }
-                guard.get_current_step()
-            };
-
-            match measure(
-                rx.clone(),
-                update_interval * MEASRE_COUNT_NORMAL,
-                0.2,
-                (upper_limit, 0.0),
-                None,
-                1,
-            )
-            .await?
-            {
-                MeasureResult::Stable(f) => {
-                    // нет реакции
-                    if f < upper_limit && f > lower_limit {
-                        // годный, стоп!
-                        channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                            ChannelState::Ok,
-                            f,
-                            current_step,
-                        );
-                        break;
-                    } else {
-                        channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                            ChannelState::FindingEdge,
-                            f,
-                            current_step,
-                        );
-                        last_freq = f;
-                        continue;
-                    }
-                }
-                MeasureResult::Unstable(bp) => {
-                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                        ChannelState::Adjustig,
-                        bp.upper_bound(),
-                        current_step,
-                    );
-                    break;
-                }
-                MeasureResult::OutOfRange(f) => {
-                    channel_iterator.get_mut(ch as usize).unwrap().update_state(
-                        ChannelState::OutOfRange,
-                        f,
-                        current_step,
-                    );
-                    break; // Брак
-                }
-            }
-        }
-
-        channel_iterator.get_mut(ch as usize).unwrap().touch();
-    }
-
-    Ok(())
-}
-
 async fn adjust_all(
     tx: &mut watch::Sender<ProgressReport>,
     laser_controller: Arc<Mutex<laser_precision_adjust::LaserController>>,
@@ -635,21 +400,16 @@ async fn adjust_all(
     fast_forward_step_limit: u32,
     precision_adjust: &Mutex<laser_precision_adjust::PrecisionAdjust2>,
 ) -> anyhow::Result<()> {
-    enum BurnEvent {
-        ErrorBan(u32),
-        Done(u32, u32),
-    }
-
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
     let absolute_low_limit = target - limits.min_freq_offset;
-    let prev_ch = None;
+    let mut prev_ch = None;
 
     let mut trys_counters = vec![trys; channel_iterator.len()];
 
     let rx = laser_setup_controller.lock().await.subscribe();
 
-    let mut burn_task_handle = None;
+    let mut extend_stable_time = false;
 
     let (burn_tx, mut burn_rx) = tokio::sync::mpsc::channel(1);
 
@@ -673,7 +433,7 @@ async fn adjust_all(
         };
 
         let mut wait_interval = Duration::ZERO;
-        if Some(ch_id) != prev_ch {
+        let channel_switched = if Some(ch_id) != prev_ch {
             laser_setup_controller
                 .lock()
                 .await
@@ -693,7 +453,12 @@ async fn adjust_all(
                 .await;
 
             wait_interval += switch_channel_wait;
-        }
+            prev_ch = Some(ch_id);
+
+            true
+        } else {
+            false
+        };
 
         let rez_info = gen_rez_info(channel_iterator.iter());
         let ch = channel_iterator.get_mut(ch_id).unwrap();
@@ -721,28 +486,38 @@ async fn adjust_all(
             update_interval * MEASRE_COUNT_NORMAL,
             0.2,
             (upper_limit, absolute_low_limit),
-            Some(wait_interval),
+            if extend_stable_time {
+                extend_stable_time = false;
+                Some(wait_interval * 3)
+            } else {
+                Some(wait_interval)
+            },
             1,
         )
         .await?
         {
             MeasureResult::Stable(f) => {
                 // успешно
-                trys_counters[ch_id] = (trys_counters[ch_id] + 1).max(trys);
+                trys_counters[ch_id] = (trys_counters[ch_id] + 2).max(trys);
                 if f > target || f + forecast_config.median_freq_grow > target {
                     // stop
                     tracing::warn!("Ch {} ready: f={}", ch_id, f);
-                    ch.update_state(ChannelState::Ok, f, step);
+                    ch.update_state(ChannelState::Ok, f, step, true);
                     continue;
                 } else {
                     // continue
-                    ch.update_state(ChannelState::Adjustig, f, step);
+                    ch.update_state(ChannelState::Adjustig, f, step, true);
                     f
                 }
             }
             MeasureResult::Unstable(bxplt) => {
                 // Частота нестабильна, возможно резонатор не остыли или сломан
-                trys_counters[ch_id] -= 1;
+                extend_stable_time = true;
+                if channel_switched {
+                    trys_counters[ch_id] = (trys_counters[ch_id] / 2).min(trys_counters[ch_id] - 1);
+                } else {
+                    trys_counters[ch_id] -= 1;
+                }
                 tracing::warn!(
                     "Ch {} unsatble: {:?}, remaning={}",
                     ch_id,
@@ -750,17 +525,18 @@ async fn adjust_all(
                     trys_counters[ch_id]
                 );
                 if trys_counters[ch_id] > 0 {
-                    ch.update_state(ChannelState::Adjustig, bxplt.q3(), step);
+                    ch.update_state(ChannelState::Adjustig, bxplt.q3(), step, false);
                     ch.touch();
                     continue;
                 } else {
-                    ch.update_state(ChannelState::Unsatable, bxplt.q3(), step);
+                    ch.ban(ChannelState::Unsatable);
                     continue;
                 }
             }
             MeasureResult::OutOfRange(f) => {
                 // Вышел за прелелы диопазона.
-                trys_counters[ch_id] /= 2;
+                extend_stable_time = true;
+                trys_counters[ch_id] = 2.min(trys_counters[ch_id] - 1);
                 tracing::warn!(
                     "Ch {} out of range {}, remaning={}",
                     ch_id,
@@ -768,11 +544,11 @@ async fn adjust_all(
                     trys_counters[ch_id]
                 );
                 if trys_counters[ch_id] > 0 {
-                    ch.update_state(ChannelState::Adjustig, f, step);
+                    ch.update_state(ChannelState::Adjustig, f, step, false);
                     ch.touch();
                     continue;
                 } else {
-                    ch.update_state(ChannelState::OutOfRange, f, step);
+                    ch.update_state(ChannelState::OutOfRange, f, step, true);
                     continue;
                 }
             }
@@ -791,28 +567,9 @@ async fn adjust_all(
                 1
             } else {
                 fast_forward_step_limit
-                    .max(((target - current_freq) / forecast_config.max_freq_grow).ceil() as u32)
+                    .min(((target - current_freq) / forecast_config.max_freq_grow).ceil() as u32)
             };
 
-            if let Some(burn_task_handle) = burn_task_handle.as_mut() {
-                let res: Result<
-                    Result<(u32, u32), (u32, laser_precision_adjust::Error)>,
-                    tokio::task::JoinError,
-                > = burn_task_handle.await;
-                match res {
-                    Ok(Ok((ch, step))) => {
-                        burn_tx.try_send(BurnEvent::Done(ch, step)).ok();
-                    }
-                    Ok(Err((ch, e))) => {
-                        // ban this channel to prevent infinty loop
-                        tracing::error!("Failed to burn prev step: {:?}", e);
-                        burn_tx.try_send(BurnEvent::ErrorBan(ch)).ok();
-                    }
-                    Err(e) => {
-                        tracing::error!("Falied to join burn task: {e}");
-                    }
-                }
-            }
             ch.touch();
             precision_adjust
                 .lock()
@@ -823,14 +580,16 @@ async fn adjust_all(
                     ..Default::default()
                 })
                 .await;
-            burn_task_handle.replace(tokio::spawn(burn_task(
+
+            tokio::spawn(burn_task(
                 laser_controller.clone(),
                 steps_to_burn,
                 ch_id as u32,
                 Some(step),
                 Some(trys_counters[ch_id]),
                 soft_mode,
-            )));
+                burn_tx.clone(),
+            ));
         }
     }
 
@@ -899,18 +658,29 @@ async fn burn_task(
     initial_step: Option<u32>,
     trys: Option<usize>,
     soft_mode: bool,
-) -> Result<(u32, u32), (u32, laser_precision_adjust::Error)> {
+    burn_tx: tokio::sync::mpsc::Sender<BurnEvent>,
+) {
     let mut guard = laser_controller.lock().await;
 
-    guard
-        .select_channel(channel, initial_step, trys)
-        .await
-        .map_err(|e| (channel, e))?;
-    guard
-        .burn(burn_count, Some(1), trys, soft_mode)
-        .await
-        .map_err(|e| (channel, e))?;
-    //tracing::warn!("skip burn {} steps, soft={}", burn_count, soft_mode);
+    let post_result = move |res| {
+        match res {
+            Ok((ch, step)) => {
+                burn_tx.try_send(BurnEvent::Done(ch, step)).ok();
+            }
+            Err((ch, e)) => {
+                // ban this channel to prevent infinty loop
+                tracing::error!("Failed to burn prev step: {:?}", e);
+                burn_tx.try_send(BurnEvent::ErrorBan(ch)).ok();
+            }
+        }
+    };
 
-    Ok((channel, guard.get_current_step()))
+    if let Err(e) = guard.select_channel(channel, initial_step, trys).await {
+        post_result(Err((channel, e)));
+        return;
+    }
+    match guard.burn(burn_count, Some(1), trys, soft_mode).await {
+        Ok(_) => post_result(Ok((channel, guard.get_current_step()))),
+        Err(e) => post_result(Err((channel, e))),
+    }
 }

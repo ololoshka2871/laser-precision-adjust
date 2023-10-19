@@ -102,7 +102,7 @@ $(() => {
 
 function update_autoadjust(report: IProgressReport, progress_string: string) {
     const measure_class = 'table-success';
-    const burn_class = 'border border-3 border-danger';
+    const burn_class = 'table-danger';
 
     $('#adjust-step').text(progress_string);
 
