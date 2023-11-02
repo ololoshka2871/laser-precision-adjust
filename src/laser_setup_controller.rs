@@ -63,11 +63,22 @@ impl laser_setup_interface::ControlState for LaserCtrl {
     }
 }
 
+enum LaserCtrlWDelay {
+    Ctrl(LaserCtrl),
+    Delay(Duration),
+}
+
+impl From<LaserCtrl> for LaserCtrlWDelay {
+    fn from(value: LaserCtrl) -> Self {
+        Self::Ctrl(value)
+    }
+}
+
 pub struct LaserSetupController {
     channels_count: u32,
     laser_setup: Arc<Mutex<LaserSetup>>,
     status_rx: Receiver<LaserSetupStatus>,
-    control_tx: tokio::sync::mpsc::Sender<LaserCtrl>,
+    control_tx: tokio::sync::mpsc::Sender<LaserCtrlWDelay>,
 
     i2c_init_comands: Vec<I2CCommand>,
     freq_meter_i2c_addr: u8,
@@ -140,10 +151,13 @@ impl LaserSetupController {
             )));
         }
         self.control_tx
-            .send(LaserCtrl {
-                channel: Some(channel),
-                ..Default::default()
-            })
+            .send(
+                LaserCtrl {
+                    channel: Some(channel),
+                    ..Default::default()
+                }
+                .into(),
+            )
             .await
             .ok();
 
@@ -153,10 +167,13 @@ impl LaserSetupController {
     /// Управление камерой
     pub async fn camera_control(&mut self, state: CameraState) -> Result<(), Error> {
         self.control_tx
-            .send(LaserCtrl {
-                camera: Some(state),
-                ..Default::default()
-            })
+            .send(
+                LaserCtrl {
+                    camera: Some(state),
+                    ..Default::default()
+                }
+                .into(),
+            )
             .await
             .ok();
 
@@ -166,10 +183,13 @@ impl LaserSetupController {
     /// Управление вакуумным клапаном
     pub async fn valve_control(&mut self, state: ValveState) -> Result<(), Error> {
         self.control_tx
-            .send(LaserCtrl {
-                valve: Some(state),
-                ..Default::default()
-            })
+            .send(
+                LaserCtrl {
+                    valve: Some(state),
+                    ..Default::default()
+                }
+                .into(),
+            )
             .await
             .ok();
 
@@ -179,10 +199,13 @@ impl LaserSetupController {
     /// Установить поправку частотомера
     pub async fn set_freq_meter_offset(&mut self, offset: f32) {
         self.control_tx
-            .send(LaserCtrl {
-                freqmeter_offset: Some(offset),
-                ..Default::default()
-            })
+            .send(
+                LaserCtrl {
+                    freqmeter_offset: Some(offset),
+                    ..Default::default()
+                }
+                .into(),
+            )
             .await
             .ok();
     }
@@ -202,15 +225,23 @@ impl LaserSetupController {
         self.status_rx.borrow().current_frequency
     }
 
+    // Test communication
     pub async fn test_connection(&self) -> Result<(), Error> {
         self.laser_setup.lock().await.read().await?;
         Ok(())
+    }
+
+    pub async fn delay(&mut self, delay: Duration) {
+        self.control_tx
+            .send(LaserCtrlWDelay::Delay(delay))
+            .await
+            .ok();
     }
 }
 
 async fn control_task(
     tx: Sender<LaserSetupStatus>,
-    mut rx: tokio::sync::mpsc::Receiver<LaserCtrl>,
+    mut rx: tokio::sync::mpsc::Receiver<LaserCtrlWDelay>,
     laser_setup: Arc<Mutex<LaserSetup>>,
 
     freq_meter_i2c_addr: u8,
@@ -219,8 +250,6 @@ async fn control_task(
     initial_freq_offset: f32,
 ) {
     const TRYS: usize = 3;
-
-    let mut prev_freq: Option<f32> = None;
 
     // read curent status
     let mut current_status = {
@@ -253,7 +282,7 @@ async fn control_task(
     loop {
         // wait for control command or timeout=update_interval
         match tokio::time::timeout(update_interval, rx.recv()).await {
-            Ok(Some(ctrl)) => {
+            Ok(Some(LaserCtrlWDelay::Ctrl(ctrl))) => {
                 // read control command
                 for i in 0..TRYS {
                     // write control command to device
@@ -270,6 +299,7 @@ async fn control_task(
                     }
                 }
             }
+            Ok(Some(LaserCtrlWDelay::Delay(d))) => tokio::time::sleep(d).await,
             _ => {
                 // read current status
                 for _ in 0..TRYS {
@@ -290,30 +320,7 @@ async fn control_task(
                                     f32::from_le_bytes(byte_array)
                                 };
 
-                                if let Some(prev_f) = &mut prev_freq {
-                                    let v_prev_f = *prev_f;
-                                    if f > v_prev_f + 100.0 {
-                                        tracing::trace!(
-                                            "Random frequency jump detected! {} -> {}",
-                                            prev_f,
-                                            f
-                                        );
-                                        prev_freq.replace(f);
-                                    } else if f > 0.0 && f < 49.0 {
-                                        tracing::error!("Empty result");
-                                        prev_freq = None;
-                                    } else if (f.is_nan() || f < 49.0) && !v_prev_f.is_nan() {
-                                        tracing::error!("Invalid result: {}", f);
-                                        prev_freq = None;
-                                    } else {
-                                        current_status.update_freq(f + current_status.freq_offset);
-                                        prev_freq.replace(f);
-                                    }
-                                } else {
-                                    prev_freq.replace(f);
-                                    current_status.update_freq(f + current_status.freq_offset);
-                                }
-
+                                current_status.update_freq(f + current_status.freq_offset);
                                 tx.send(current_status).ok();
 
                                 break;

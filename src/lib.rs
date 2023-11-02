@@ -18,6 +18,8 @@ pub use laser_controller::LaserController;
 pub use laser_setup_controller::{LaserSetupController, LaserSetupStatus};
 pub use precision_adjust2::{Error, PrecisionAdjust2, Status, PrivStatusEvent};
 
+pub const SWITCH_CHANNEL_WAIT_MS: u64 = 500;
+
 #[derive(Clone)]
 pub struct AdjustConfig {
     pub target_freq: f32,

@@ -109,7 +109,7 @@ async fn main() -> Result<(), std::io::Error> {
     ));
 
     let mut precision_adjust =
-        PrecisionAdjust2::new(laser_setup_controller.clone(), laser_controller.clone()).await;
+        PrecisionAdjust2::new(laser_setup_controller.clone(), laser_controller.clone(), config.update_interval_ms).await;
     tracing::warn!("Testing connections...");
     if let Err(e) = precision_adjust.test_connection().await {
         panic!("Failed to connect to: {:?}", e);

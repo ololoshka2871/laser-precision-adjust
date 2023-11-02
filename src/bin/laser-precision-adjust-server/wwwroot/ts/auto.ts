@@ -212,8 +212,7 @@ function draw_progress(inital_freq: number, current_freq: number, cell: JQuery<H
         // Start --- min_f target max_f --- f
         // | -------- | ----- * ----| ----- |
         const progress_marker = cache.filter('.progress-marker');
-        if (current_freq === inital_freq) {
-            // Костыль
+        if (current_freq < inital_freq || Math.abs(current_freq - inital_freq) < 0.2) {
             inital_freq = Math.min(inital_freq - 2 * precision_hz, min_f);
         }
 
