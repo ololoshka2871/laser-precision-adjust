@@ -252,6 +252,7 @@ pub struct AutoAdjustAllController {
     precision_ppm: f32,
     forecast_config: ForecastConfig,
     fast_forward_step_limit: u32,
+    switch_channel_delay_ms: u32,
 
     task: Option<tokio::task::JoinHandle<()>>,
     rx: Option<watch::Receiver<ProgressReport>>,
@@ -268,6 +269,7 @@ impl AutoAdjustAllController {
         precision_ppm: f32,
         forecast_config: ForecastConfig,
         fast_forward_step_limit: u32,
+        switch_channel_delay_ms: u32,
     ) -> Self {
         Self {
             channel_count,
@@ -279,6 +281,7 @@ impl AutoAdjustAllController {
             precision_ppm,
             forecast_config,
             fast_forward_step_limit,
+            switch_channel_delay_ms,
 
             task: None,
             rx: None,
@@ -326,6 +329,7 @@ impl AutoAdjustAllController {
             self.forecast_config,
             self.fast_forward_step_limit,
             self.precision_adjust.clone(),
+            self.switch_channel_delay_ms,
         )));
 
         Ok(())
@@ -399,10 +403,11 @@ async fn adjust_task(
     forecast_config: ForecastConfig,
     fast_forward_step_limit: u32,
     precision_adjust: Arc<Mutex<laser_precision_adjust::PrecisionAdjust2>>,
+    switch_channel_delay_ms: u32,
 ) {
     const TRYS: u32 = 5;
 
-    let switch_channel_wait = Duration::from_millis(laser_precision_adjust::SWITCH_CHANNEL_WAIT_MS);
+    let switch_channel_wait = Duration::from_millis(switch_channel_delay_ms as u64);
 
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
@@ -488,7 +493,7 @@ async fn adjust_task(
         let current_freq = match measure(
             rx.clone(),
             update_interval * MEASRE_COUNT_NORMAL,
-            0.2,
+            (upper_limit - lower_limit) / 2.0,
             (upper_limit, absolute_low_limit),
             if extend_stable_time {
                 extend_stable_time = false;

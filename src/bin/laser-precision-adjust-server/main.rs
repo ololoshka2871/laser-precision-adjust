@@ -108,8 +108,12 @@ async fn main() -> Result<(), std::io::Error> {
         ),
     ));
 
-    let mut precision_adjust =
-        PrecisionAdjust2::new(laser_setup_controller.clone(), laser_controller.clone(), config.update_interval_ms).await;
+    let mut precision_adjust = PrecisionAdjust2::new(
+        laser_setup_controller.clone(),
+        laser_controller.clone(),
+        config.switch_channel_delay_ms,
+    )
+    .await;
     tracing::warn!("Testing connections...");
     if let Err(e) = precision_adjust.test_connection().await {
         panic!("Failed to connect to: {:?}", e);
@@ -149,6 +153,7 @@ async fn main() -> Result<(), std::io::Error> {
         config.working_offset_ppm,
         config.forecast_config,
         config.auto_adjust_limits.fast_forward_step_limit,
+        config.switch_channel_delay_ms,
     );
 
     // State for our application

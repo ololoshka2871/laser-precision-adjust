@@ -77,7 +77,7 @@ pub struct PrecisionAdjust2 {
     laser_controller: Arc<Mutex<LaserController>>,
     status_rx: Receiver<Status>,
     ev_tx: tokio::sync::mpsc::Sender<PrivStatusEvent>,
-    measure_time_ms: u32,
+    switch_channel_delay_ms: u32,
 }
 
 pub const TRYS: usize = 3;
@@ -86,7 +86,7 @@ impl PrecisionAdjust2 {
     pub async fn new(
         laser_setup: Arc<Mutex<LaserSetupController>>,
         laser_controller: Arc<Mutex<LaserController>>,
-        measure_time_ms: u32,
+        switch_channel_delay_ms: u32,
     ) -> Self {
         let (status_tx, status_rx) = tokio::sync::watch::channel(Status {
             current_channel: 0,
@@ -112,7 +112,7 @@ impl PrecisionAdjust2 {
             laser_controller,
             status_rx,
             ev_tx,
-            measure_time_ms,
+            switch_channel_delay_ms,
         }
     }
 
@@ -146,9 +146,7 @@ impl PrecisionAdjust2 {
                 .await
                 .map_err(|e| Error::LaserSetup(e))?;
             guard
-                .delay(Duration::from_millis(
-                    ((self.measure_time_ms * 2) as u64).max(crate::SWITCH_CHANNEL_WAIT_MS),
-                ))
+                .delay(Duration::from_millis(self.switch_channel_delay_ms as u64))
                 .await;
         }
         self.laser_controller

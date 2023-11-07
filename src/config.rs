@@ -131,6 +131,9 @@ pub struct Config {
     #[serde(rename = "UpdateIntervalMs")]
     pub update_interval_ms: u32,
 
+    #[serde(rename = "SwitchChannelDelayMs")]
+    pub switch_channel_delay_ms: u32,
+
     #[serde(rename = "DisplayPointsCount")]
     pub display_points_count: usize,
 
@@ -201,6 +204,7 @@ impl std::fmt::Display for Config {
         writeln!(f, "WorkingOffsetPPM: {}", self.working_offset_ppm)?;
         writeln!(f, "TargetFreqCenter: {}", self.target_freq_center)?;
         writeln!(f, "UpdateIntervalMs: {}", self.update_interval_ms)?;
+        writeln!(f, "SwitchChannelDelayMs: {}", self.switch_channel_delay_ms)?;
         writeln!(f, "DisplayPointsCount: {}", self.display_points_count)?;
 
         writeln!(f, "ForecastConfig:")?;

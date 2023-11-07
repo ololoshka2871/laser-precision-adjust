@@ -20,6 +20,7 @@
     "WorkingOffsetPPM": 30.0,
     "TargetFreqCenter": 32768.0,
     "UpdateIntervalMs": 100,
+    "SwitchChannelDelayMs": 250,
     "DisplayPointsCount": 100,
     "ForecastConfig": {
         "MinFreqGrow": 0.1,
@@ -54,6 +55,6 @@
     "I2CCommands": [
         { "Addr": 134, "Data": [100, 0] },
         { "Addr": 136, "Data": [100, 0] },
-        { "Addr": 61, "Data": [7] }
+        { "Addr": 96, "Data": [7] }
     ]
 }

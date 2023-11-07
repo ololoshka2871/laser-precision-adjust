@@ -279,10 +279,14 @@ async fn control_task(
 
     tx.send(current_status).ok();
 
+    let mut interval = update_interval;
+
     loop {
         // wait for control command or timeout=update_interval
-        match tokio::time::timeout(update_interval, rx.recv()).await {
+        match tokio::time::timeout(interval, rx.recv()).await {
             Ok(Some(LaserCtrlWDelay::Ctrl(ctrl))) => {
+                interval = update_interval;
+
                 // read control command
                 for i in 0..TRYS {
                     // write control command to device
@@ -294,43 +298,42 @@ async fn control_task(
                         }
                     } else {
                         current_status.update(&ctrl);
+                        current_status.update_freq(f32::NAN);
                         tx.send(current_status).ok();
                         break;
                     }
                 }
             }
-            Ok(Some(LaserCtrlWDelay::Delay(d))) => tokio::time::sleep(d).await,
+            Ok(Some(LaserCtrlWDelay::Delay(d))) => interval = d,
             _ => {
+                interval = update_interval;
+
                 // read current status
-                for _ in 0..TRYS {
-                    match i2c_read(
-                        laser_setup.lock().await.deref_mut(),
-                        freq_meter_i2c_addr,
-                        0x08,
-                        std::mem::size_of::<f32>(),
-                    )
-                    .await
-                    {
-                        Ok(r) => {
-                            if r.len() == std::mem::size_of::<f32>() {
-                                let f = if let Some(fake_freq) = emulate_center {
-                                    generate_fake_freq(fake_freq)
-                                } else {
-                                    let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
-                                    f32::from_le_bytes(byte_array)
-                                };
-
-                                current_status.update_freq(f + current_status.freq_offset);
-                                tx.send(current_status).ok();
-
-                                break;
+                match i2c_read(
+                    laser_setup.lock().await.deref_mut(),
+                    freq_meter_i2c_addr,
+                    0x08,
+                    std::mem::size_of::<f32>(),
+                )
+                .await
+                {
+                    Ok(r) => {
+                        if r.len() == std::mem::size_of::<f32>() {
+                            let f = if let Some(fake_freq) = emulate_center {
+                                generate_fake_freq(fake_freq)
                             } else {
-                                tracing::debug!("Freqmeter returned invalid data, skipping...");
-                            }
+                                let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
+                                f32::from_le_bytes(byte_array)
+                            };
+
+                            current_status.update_freq(f + current_status.freq_offset);
+                            tx.send(current_status).ok();
+                        } else {
+                            tracing::debug!("Freqmeter returned invalid data, skipping...");
                         }
-                        Err(e) => {
-                            tracing::error!("Can't read status: {:?}", e);
-                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Can't read status: {:?}", e);
                     }
                 }
             }
