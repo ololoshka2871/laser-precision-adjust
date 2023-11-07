@@ -4,6 +4,7 @@ use chrono::{DateTime, Local};
 use laser_precision_adjust::{
     box_plot::BoxPlot, AutoAdjustLimits, ForecastConfig, PrivStatusEvent,
 };
+
 use serde::Serialize;
 use tokio::sync::{watch, Mutex};
 
@@ -118,7 +119,7 @@ impl ChannelRef {
 
     fn age_found(&self) -> bool {
         if let Some(initial_freq) = self.initial_freq {
-            self.current_freq - initial_freq > 0.5
+            (self.current_freq - initial_freq).abs() > 0.25
         } else {
             false
         }
@@ -373,12 +374,14 @@ impl<const TRYS: u32> Trys<TRYS> {
     pub fn mark_unstable(&mut self) {
         match self {
             Trys::Unstable(n) => *self = Self::Unstable(n.saturating_sub(1)),
+            Trys::OutOfrange(n) => *self = Self::Unstable(n.saturating_sub(1).min(1)),
             _ => *self = Self::Unstable(TRYS / 2),
         }
     }
 
     pub fn mark_out_of_range(&mut self) {
         match self {
+            Trys::Unstable(n) => *self = Self::OutOfrange(n.saturating_sub(1).min(1)),
             Trys::OutOfrange(n) => *self = Self::OutOfrange(n.saturating_sub(1)),
             _ => *self = Self::OutOfrange(2),
         }
@@ -418,8 +421,6 @@ async fn adjust_task(
 
     let rx = laser_setup_controller.lock().await.subscribe();
 
-    let mut extend_stable_time = false;
-
     let (burn_tx, mut burn_rx) = tokio::sync::mpsc::channel(1);
 
     while let Some(ch_id) = channel_iterator.next() {
@@ -442,7 +443,7 @@ async fn adjust_task(
         };
 
         let mut wait_interval = Duration::ZERO;
-        let channel_switched = if Some(ch_id) != prev_ch {
+        if Some(ch_id) != prev_ch {
             let mut guard = laser_setup_controller.lock().await;
             if let Err(e) = guard.select_channel(ch_id as u32).await {
                 tracing::error!("Failed to switch freqmeter channel: {e:?}");
@@ -461,11 +462,7 @@ async fn adjust_task(
 
             wait_interval += switch_channel_wait;
             prev_ch = Some(ch_id);
-
-            true
-        } else {
-            false
-        };
+        }
 
         let rez_info = gen_rez_info(channel_iterator.iter());
         let ch = channel_iterator.get_mut(ch_id).unwrap();
@@ -490,24 +487,20 @@ async fn adjust_task(
         ))
         .ok();
 
+        let tc = &mut trys_counters[ch_id];
         let current_freq = match measure(
             rx.clone(),
             update_interval * MEASRE_COUNT_NORMAL,
-            (upper_limit - lower_limit) / 2.0,
+            (upper_limit - lower_limit) / 4.0,
             (upper_limit, absolute_low_limit),
-            if extend_stable_time {
-                extend_stable_time = false;
-                Some(wait_interval * 3)
-            } else {
-                Some(wait_interval)
-            },
-            1,
+            wait_interval,
+            2,
         )
         .await
         {
             Ok(MeasureResult::Stable(f)) => {
                 // успешно
-                trys_counters[ch_id].mark_ok();
+                tc.mark_ok();
                 if f > target || f + forecast_config.median_freq_grow > target {
                     // stop
                     tracing::warn!("Ch {} verify: f={}", ch_id, f);
@@ -522,24 +515,17 @@ async fn adjust_task(
             }
             Ok(MeasureResult::Unstable(bxplt)) => {
                 // Частота нестабильна, возможно резонатор не остыли или сломан
-                extend_stable_time = true;
-
-                if channel_switched && (bxplt.median() - target).abs() > 1000.0 {
+                if bxplt.q1() > upper_limit || bxplt.q3() < absolute_low_limit {
                     // похоже, что канал нерабочий
-                    trys_counters[ch_id].mark_out_of_range();
+                    tc.mark_out_of_range();
                 } else {
-                    trys_counters[ch_id].mark_unstable();
+                    tc.mark_unstable();
                 };
 
-                tracing::warn!(
-                    "Ch {} unsatble: {:?}, remaning={:?}",
-                    ch_id,
-                    bxplt,
-                    trys_counters[ch_id]
-                );
+                tracing::warn!("Ch {} unsatble: {:?}, remaning={:?}", ch_id, bxplt, tc);
 
-                if trys_counters[ch_id].more_trys_avalable() {
-                    ch.update_state(ChannelState::Adjustig, bxplt.q3(), step, false);
+                if tc.more_trys_avalable() {
+                    ch.update_state(ChannelState::Adjustig, bxplt.median(), step, false);
                     ch.touch();
                 } else {
                     ch.ban(ChannelState::Unsatable);
@@ -548,30 +534,31 @@ async fn adjust_task(
             }
             Ok(MeasureResult::OutOfRange(f)) => {
                 // Вышел за прелелы диопазона, но стабилен
-                trys_counters[ch_id].mark_out_of_range();
-                tracing::warn!(
-                    "Ch {} out of range {}, remaning={:?}",
-                    ch_id,
-                    f,
-                    trys_counters[ch_id]
-                );
-                if trys_counters[ch_id].more_trys_avalable() {
+                tc.mark_out_of_range();
+                tracing::warn!("Ch {} out of range {}, remaning={:?}", ch_id, f, tc);
+                if tc.more_trys_avalable() {
                     ch.update_state(ChannelState::Adjustig, f, step, false);
                     ch.touch();
-                    continue;
                 } else {
                     ch.update_state(ChannelState::OutOfRange, f, step, true);
-                    continue;
                 }
+                continue;
             }
             Err(e) => {
+                if tc.more_trys_avalable() {
+                    ch.touch();
+                    tc.mark_unstable();
+                } else {
+                    ch.ban(ChannelState::Unsatable);
+                }
+
                 tx.send(ProgressReport::error(
                     e.to_string(),
                     gen_rez_info(channel_iterator.iter()),
                 ))
                 .ok();
                 tracing::error!("Failed to measure channel {ch_id}: {e:?}");
-                trys_counters[ch_id].mark_unstable();
+
                 continue;
             }
         };
@@ -586,7 +573,12 @@ async fn adjust_task(
                     current_freq,
                     lower_limit
                 );
-                1
+                if ch.age_found() {
+                    1
+                } else {
+                    // Резонатор изначально очень близок, но край не найден
+                    auto_adjust_limits.edge_detect_interval / 2
+                }
             } else if !ch.age_found() {
                 auto_adjust_limits.edge_detect_interval
             } else {
@@ -632,16 +624,30 @@ async fn measure(
     timeout: Duration,
     stable_range: f32,
     work_range: (f32, f32),
-    wait_before: Option<Duration>,
+    wait_before: Duration,
     trys: usize,
 ) -> Result<MeasureResult, watch::error::RecvError> {
-    let mut data = vec![];
+    fn to_result(data: &[f32], boxplot: &BoxPlot<f32>, work_range: &(f32, f32)) -> MeasureResult {
+        let last_f = *data.last().unwrap();
+        let f = if last_f > boxplot.q1() && last_f < boxplot.q3() {
+            last_f
+        } else {
+            boxplot.median()
+        };
 
-    if let Some(wait_before) = wait_before {
-        tokio::time::sleep(wait_before).await;
+        if f > work_range.0 || f < work_range.1 {
+            MeasureResult::OutOfRange(f)
+        } else {
+            MeasureResult::Stable(f)
+        }
     }
 
-    for i in 0..trys {
+    let mut boxplot = BoxPlot::<f32>::zero();
+    for _ in 0..trys {
+        tokio::time::sleep(wait_before).await;
+
+        let mut data = vec![];
+
         let start = std::time::Instant::now();
         while std::time::Instant::now() - start < timeout {
             m.changed().await?;
@@ -650,19 +656,19 @@ async fn measure(
             data.push(status.current_frequency);
         }
 
-        let boxplot = BoxPlot::new(&data);
+        boxplot = BoxPlot::new(&data);
         if boxplot.iqr() < stable_range {
-            return if boxplot.median() > work_range.0 || boxplot.median() < work_range.1 {
-                Ok(MeasureResult::OutOfRange(boxplot.median()))
-            } else {
-                Ok(MeasureResult::Stable(boxplot.median()))
-            };
-        } else if i == trys - 1 {
-            return Ok(MeasureResult::Unstable(boxplot));
+            return Ok(to_result(&data, &boxplot, &work_range));
+        } else if data.len() > 3 {
+            // пробуем без первой точки
+            boxplot = BoxPlot::new(&data[1..]);
+            if boxplot.iqr() < stable_range {
+                return Ok(to_result(&data, &boxplot, &work_range));
+            }
         }
     }
 
-    panic!("trys == 0")
+    return Ok(MeasureResult::Unstable(boxplot));
 }
 
 fn gen_rez_info<'a>(iter: impl Iterator<Item = &'a ChannelRef>) -> Vec<RezInfo> {

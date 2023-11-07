@@ -81,4 +81,15 @@ where
     pub fn bound(&self, m: T) -> T {
         (if m < T::zero() { self.q1 } else { self.q3 }) + m * self.iqr
     }
+
+    pub fn zero() -> Self {
+        Self {
+            median: T::zero(),
+            q1: T::zero(),
+            q3: T::zero(),
+            iqr: T::zero(),
+            lower_bound: T::zero(),
+            upper_bound: T::zero(),
+        }
+    }
 }
