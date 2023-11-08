@@ -127,7 +127,7 @@ impl ChannelRef {
     fn age_found(&self, offset: f32) -> bool {
         if let Some(initial_freq) = self.initial_freq {
             if let Some(current_freq) = self.current_freq {
-                return (current_freq - initial_freq).abs() > offset;
+                return current_freq - initial_freq > offset;
             }
         }
         false
@@ -483,7 +483,7 @@ async fn adjust_task(
         };
 
         let mut wait_interval = Duration::ZERO;
-        if Some(ch_id) != prev_ch {
+        let channel_swithced = if Some(ch_id) != prev_ch {
             let mut guard = laser_setup_controller.lock().await;
             if let Err(e) = guard.select_channel(ch_id as u32).await {
                 tracing::error!("Failed to switch freqmeter channel: {e:?}");
@@ -502,7 +502,10 @@ async fn adjust_task(
 
             wait_interval += switch_channel_wait;
             prev_ch = Some(ch_id);
-        }
+            true
+        } else {
+            false
+        };
 
         let rez_info = gen_rez_info(channel_iterator.iter(), AGE_DETECT_F_OFFSET);
         let ch = channel_iterator.get_mut(ch_id).unwrap();
@@ -537,7 +540,7 @@ async fn adjust_task(
                 upper_limit,
                 // частота должна только рости и быть не ниже absolute_low_limit
                 ch.current_stable_freq()
-                    .map(|f| f - forecast_config.min_freq_grow)
+                    .map(|f| f - forecast_config.median_freq_grow)
                     .unwrap_or(absolute_low_limit)
                     .max(absolute_low_limit),
             ),
@@ -663,14 +666,27 @@ async fn adjust_task(
                 })
                 .await;
 
-            tokio::spawn(burn_task(
-                laser_controller.clone(),
-                steps_to_burn,
-                ch_id as u32,
-                Some(step),
-                soft_mode,
-                burn_tx.clone(),
-            ));
+            if channel_swithced {
+                tokio::spawn(burn_task(
+                    laser_controller.clone(),
+                    steps_to_burn,
+                    ch_id as u32,
+                    Some(step),
+                    soft_mode,
+                    burn_tx.clone(),
+                ));
+            } else {
+                // dont't use separate burn if last channel adjusting
+                burn_task(
+                    laser_controller.clone(),
+                    steps_to_burn,
+                    ch_id as u32,
+                    Some(step),
+                    soft_mode,
+                    burn_tx.clone(),
+                )
+                .await;
+            }
         }
     }
 
