@@ -18,10 +18,10 @@ enum MeasureResult {
     OutOfRange(f32),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ChannelState {
     UnknownInit,
-    Adjustig,
+    Adjustig(String),
     Unsatable,
     OutOfRange,
     Limit,
@@ -37,15 +37,22 @@ enum BurnEvent {
 impl ChannelState {
     fn to_status_icon(&self) -> String {
         match self {
-            ChannelState::UnknownInit => "Неизвестно",
-            ChannelState::Adjustig => "Настройка",
-            ChannelState::Unsatable => "Сломан или нестабилен",
-            ChannelState::OutOfRange => "Вне диапазона настройки",
-            ChannelState::Limit => "Превышен лимит шагов",
-            ChannelState::Verify => "Проверка",
-            ChannelState::Ok => "Настроен",
+            ChannelState::UnknownInit => "Неизвестно".to_owned(),
+            ChannelState::Adjustig(s) => format!("Настройка [{s}]"),
+            ChannelState::Unsatable => "Сломан или нестабилен".to_owned(),
+            ChannelState::OutOfRange => "Вне диапазона настройки".to_owned(),
+            ChannelState::Limit => "Превышен лимит шагов".to_owned(),
+            ChannelState::Verify => "Проверка".to_owned(),
+            ChannelState::Ok => "Настроен".to_owned(),
         }
-        .to_owned()
+    }
+
+    fn is_adjusting(&self) -> bool {
+        if let ChannelState::Adjustig(_) = *self {
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -56,7 +63,7 @@ pub struct ChannelRef {
     total_channels: usize,
     state: ChannelState,
     initial_freq: Option<f32>,
-    current_freq: f32,
+    current_freq: Option<f32>,
     current_step: u32,
 }
 
@@ -68,7 +75,7 @@ impl ChannelRef {
             total_channels,
             state: ChannelState::UnknownInit,
             initial_freq: None,
-            current_freq: 0.0,
+            current_freq: None,
             current_step: 0,
         }
     }
@@ -96,7 +103,7 @@ impl ChannelRef {
             state
         };
 
-        self.current_freq = freq;
+        self.current_freq = Some(freq);
         self.current_step = step;
     }
 
@@ -106,7 +113,7 @@ impl ChannelRef {
     }
 
     fn get_state(&self) -> ChannelState {
-        self.state
+        self.state.clone()
     }
 
     fn current_step(&self) -> u32 {
@@ -117,11 +124,20 @@ impl ChannelRef {
         self.current_step = step;
     }
 
-    fn age_found(&self) -> bool {
+    fn age_found(&self, offset: f32) -> bool {
         if let Some(initial_freq) = self.initial_freq {
-            (self.current_freq - initial_freq).abs() > 0.25
-        } else {
-            false
+            if let Some(current_freq) = self.current_freq {
+                return (current_freq - initial_freq).abs() > offset;
+            }
+        }
+        false
+    }
+
+    fn current_stable_freq(&self) -> Option<f32> {
+        match self.state {
+            ChannelState::UnknownInit | ChannelState::Unsatable | ChannelState::OutOfRange => None,
+            ChannelState::Adjustig(_) => self.current_freq,
+            ChannelState::Limit | ChannelState::Verify | ChannelState::Ok => self.current_freq,
         }
     }
 }
@@ -148,7 +164,8 @@ impl FarLongIteratorItem for ChannelRef {
 
     fn is_valid(&self) -> bool {
         match self.state {
-            ChannelState::UnknownInit | ChannelState::Verify | ChannelState::Adjustig => true,
+            ChannelState::UnknownInit | ChannelState::Verify => true,
+            ChannelState::Adjustig(_) => true,
             _ => false,
         }
     }
@@ -218,6 +235,15 @@ impl ProgressReport {
             status: progress,
             measure_channel_id,
             burn_channel_id,
+            rezonator_info,
+        }
+    }
+
+    pub fn done(rezonator_info: Vec<RezInfo>) -> Self {
+        Self {
+            status: ProgressStatus::Done,
+            measure_channel_id: None,
+            burn_channel_id: None,
             rezonator_info,
         }
     }
@@ -375,7 +401,7 @@ impl<const TRYS: u32> Trys<TRYS> {
         match self {
             Trys::Unstable(n) => *self = Self::Unstable(n.saturating_sub(1)),
             Trys::OutOfrange(n) => *self = Self::Unstable(n.saturating_sub(1).min(1)),
-            _ => *self = Self::Unstable(TRYS / 2),
+            _ => *self = Self::Unstable(TRYS),
         }
     }
 
@@ -384,6 +410,14 @@ impl<const TRYS: u32> Trys<TRYS> {
             Trys::Unstable(n) => *self = Self::OutOfrange(n.saturating_sub(1).min(1)),
             Trys::OutOfrange(n) => *self = Self::OutOfrange(n.saturating_sub(1)),
             _ => *self = Self::OutOfrange(2),
+        }
+    }
+
+    pub fn counter(&self) -> u32 {
+        match self {
+            Trys::Ok => 0,
+            Trys::Unstable(n) => *n,
+            Trys::OutOfrange(n) => *n,
         }
     }
 }
@@ -408,18 +442,24 @@ async fn adjust_task(
     precision_adjust: Arc<Mutex<laser_precision_adjust::PrecisionAdjust2>>,
     switch_channel_delay_ms: u32,
 ) {
-    const TRYS: u32 = 5;
+    const WORK_TRYS: u32 = 3;
+    const MIN_TOUCH_WAIT: f32 = 3.5;
+    const MEASURE_TRYS: usize = 2;
+    const AGE_DETECT_F_OFFSET: f32 = 0.25;
 
     let switch_channel_wait = Duration::from_millis(switch_channel_delay_ms as u64);
 
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
+
+    let stable_range = (upper_limit - lower_limit) / 4.0;
+
     let absolute_low_limit = target - auto_adjust_limits.min_freq_offset;
     let mut prev_ch = None;
 
-    let mut trys_counters = vec![Trys::<TRYS>::default(); channel_iterator.len()];
+    let mut trys_counters = vec![Trys::<WORK_TRYS>::default(); channel_iterator.len()];
 
-    let rx = laser_setup_controller.lock().await.subscribe();
+    let mut rx = laser_setup_controller.lock().await.subscribe();
 
     let (burn_tx, mut burn_rx) = tokio::sync::mpsc::channel(1);
 
@@ -464,12 +504,13 @@ async fn adjust_task(
             prev_ch = Some(ch_id);
         }
 
-        let rez_info = gen_rez_info(channel_iterator.iter());
+        let rez_info = gen_rez_info(channel_iterator.iter(), AGE_DETECT_F_OFFSET);
         let ch = channel_iterator.get_mut(ch_id).unwrap();
         {
             let now = Local::now();
             let after_last_touch = now - ch.last_touched();
-            let min_touch_wait = chrono::Duration::from_std(Duration::from_secs_f32(3.5)).unwrap();
+            let min_touch_wait =
+                chrono::Duration::from_std(Duration::from_secs_f32(MIN_TOUCH_WAIT)).unwrap();
             wait_interval = if after_last_touch < min_touch_wait {
                 wait_interval.max((min_touch_wait - after_last_touch).to_std().unwrap())
             } else {
@@ -489,19 +530,26 @@ async fn adjust_task(
 
         let tc = &mut trys_counters[ch_id];
         let current_freq = match measure(
-            rx.clone(),
-            update_interval * MEASRE_COUNT_NORMAL,
-            (upper_limit - lower_limit) / 4.0,
-            (upper_limit, absolute_low_limit),
+            &mut rx,
+            update_interval * (MEASRE_COUNT_NORMAL + 1),
+            stable_range,
+            (
+                upper_limit,
+                // частота должна только рости и быть не ниже absolute_low_limit
+                ch.current_stable_freq()
+                    .map(|f| f - forecast_config.min_freq_grow)
+                    .unwrap_or(absolute_low_limit)
+                    .max(absolute_low_limit),
+            ),
             wait_interval,
-            2,
+            MEASURE_TRYS,
         )
         .await
         {
             Ok(MeasureResult::Stable(f)) => {
                 // успешно
                 tc.mark_ok();
-                if f > target || f + forecast_config.median_freq_grow > target {
+                if (f > lower_limit) && (f + forecast_config.median_freq_grow > target) {
                     // stop
                     tracing::warn!("Ch {} verify: f={}", ch_id, f);
                     ch.update_state(ChannelState::Verify, f, step, true);
@@ -509,7 +557,7 @@ async fn adjust_task(
                     continue;
                 } else {
                     // continue
-                    ch.update_state(ChannelState::Adjustig, f, step, true);
+                    ch.update_state(ChannelState::Adjustig("Норма".to_owned()), f, step, true);
                     f
                 }
             }
@@ -525,7 +573,16 @@ async fn adjust_task(
                 tracing::warn!("Ch {} unsatble: {:?}, remaning={:?}", ch_id, bxplt, tc);
 
                 if tc.more_trys_avalable() {
-                    ch.update_state(ChannelState::Adjustig, bxplt.median(), step, false);
+                    ch.update_state(
+                        ChannelState::Adjustig(format!(
+                            "Нестабилен: Δ={} ({})",
+                            bxplt.iqr(),
+                            tc.counter()
+                        )),
+                        bxplt.median(),
+                        step,
+                        false,
+                    );
                     ch.touch();
                 } else {
                     ch.ban(ChannelState::Unsatable);
@@ -537,7 +594,12 @@ async fn adjust_task(
                 tc.mark_out_of_range();
                 tracing::warn!("Ch {} out of range {}, remaning={:?}", ch_id, f, tc);
                 if tc.more_trys_avalable() {
-                    ch.update_state(ChannelState::Adjustig, f, step, false);
+                    ch.update_state(
+                        ChannelState::Adjustig("Вне диапазона".to_owned()),
+                        f,
+                        step,
+                        false,
+                    );
                     ch.touch();
                 } else {
                     ch.update_state(ChannelState::OutOfRange, f, step, true);
@@ -554,7 +616,7 @@ async fn adjust_task(
 
                 tx.send(ProgressReport::error(
                     e.to_string(),
-                    gen_rez_info(channel_iterator.iter()),
+                    gen_rez_info(channel_iterator.iter(), AGE_DETECT_F_OFFSET),
                 ))
                 .ok();
                 tracing::error!("Failed to measure channel {ch_id}: {e:?}");
@@ -573,15 +635,19 @@ async fn adjust_task(
                     current_freq,
                     lower_limit
                 );
-                if ch.age_found() {
+                if ch.age_found(AGE_DETECT_F_OFFSET) {
+                    // всегда 1, самый точный режим
                     1
                 } else {
                     // Резонатор изначально очень близок, но край не найден
                     auto_adjust_limits.edge_detect_interval / 2
                 }
-            } else if !ch.age_found() {
+            } else if !ch.age_found(AGE_DETECT_F_OFFSET) {
+                // край еще не найден
                 auto_adjust_limits.edge_detect_interval
             } else {
+                // расчет количества шагов
+                // кол_во = (целевое_изменеие / прогноз.макс_изменение).ceil()
                 fast_forward_step_limit
                     .min(((target - current_freq) / forecast_config.max_freq_grow).ceil() as u32)
             };
@@ -602,7 +668,6 @@ async fn adjust_task(
                 steps_to_burn,
                 ch_id as u32,
                 Some(step),
-                Some(TRYS as usize),
                 soft_mode,
                 burn_tx.clone(),
             ));
@@ -610,17 +675,15 @@ async fn adjust_task(
     }
 
     // Готово
-    tx.send(ProgressReport::new(
-        ProgressStatus::Done,
-        None,
-        None,
-        gen_rez_info(channel_iterator.iter()),
-    ))
+    tx.send(ProgressReport::done(gen_rez_info(
+        channel_iterator.iter(),
+        AGE_DETECT_F_OFFSET,
+    )))
     .ok();
 }
 
 async fn measure(
-    mut m: watch::Receiver<laser_precision_adjust::LaserSetupStatus>,
+    mq: &mut watch::Receiver<laser_precision_adjust::LaserSetupStatus>,
     timeout: Duration,
     stable_range: f32,
     work_range: (f32, f32),
@@ -650,8 +713,8 @@ async fn measure(
 
         let start = std::time::Instant::now();
         while std::time::Instant::now() - start < timeout {
-            m.changed().await?;
-            let status = m.borrow();
+            mq.changed().await?;
+            let status = mq.borrow();
             tracing::trace!("measure(): F={}", status.current_frequency);
             data.push(status.current_frequency);
         }
@@ -659,7 +722,7 @@ async fn measure(
         boxplot = BoxPlot::new(&data);
         if boxplot.iqr() < stable_range {
             return Ok(to_result(&data, &boxplot, &work_range));
-        } else if data.len() > 3 {
+        } else if data.len() > MEASRE_COUNT_NORMAL as usize {
             // пробуем без первой точки
             boxplot = BoxPlot::new(&data[1..]);
             if boxplot.iqr() < stable_range {
@@ -671,15 +734,18 @@ async fn measure(
     return Ok(MeasureResult::Unstable(boxplot));
 }
 
-fn gen_rez_info<'a>(iter: impl Iterator<Item = &'a ChannelRef>) -> Vec<RezInfo> {
+fn gen_rez_info<'a>(
+    iter: impl Iterator<Item = &'a ChannelRef>,
+    adge_found_offset: f32,
+) -> Vec<RezInfo> {
     iter.map(|r| RezInfo {
         id: r.id,
-        initial_freq: r.initial_freq.unwrap_or(0.0),
-        current_freq: r.current_freq,
+        initial_freq: r.initial_freq.unwrap_or(f32::NAN),
+        current_freq: r.current_freq.unwrap_or(f32::NAN),
         current_step: r.current_step,
         state: {
             let state = r.get_state();
-            if state != ChannelState::Adjustig || r.age_found() {
+            if !state.is_adjusting() || r.age_found(adge_found_offset) {
                 state.to_status_icon()
             } else {
                 "Поиск края".to_owned()
@@ -694,10 +760,11 @@ async fn burn_task(
     burn_count: u32,
     channel: u32,
     initial_step: Option<u32>,
-    trys: Option<usize>,
     soft_mode: bool,
     burn_tx: tokio::sync::mpsc::Sender<BurnEvent>,
 ) {
+    const BURN_TRYS: usize = 5;
+
     let mut guard = laser_controller.lock().await;
 
     let post_result = move |res| {
@@ -713,11 +780,17 @@ async fn burn_task(
         }
     };
 
-    if let Err(e) = guard.select_channel(channel, initial_step, trys).await {
+    if let Err(e) = guard
+        .select_channel(channel, initial_step, Some(BURN_TRYS))
+        .await
+    {
         post_result(Err((channel, e)));
         return;
     }
-    match guard.burn(burn_count, Some(1), trys, soft_mode).await {
+    match guard
+        .burn(burn_count, Some(1), Some(BURN_TRYS), soft_mode)
+        .await
+    {
         Ok(_) => post_result(Ok((channel, guard.get_current_step()))),
         Err(e) => post_result(Err((channel, e))),
     }
