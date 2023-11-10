@@ -11,6 +11,7 @@ use tokio::sync::{watch, Mutex};
 use crate::far_long_iterator::{FarLongIterator, FarLongIteratorItem, IntoFarLongIterator};
 
 const MEASRE_COUNT_NORMAL: u32 = 3;
+const MIN_TOUCH_WAIT: f32 = 5.0;
 
 enum MeasureResult {
     Stable(f32),
@@ -68,10 +69,10 @@ pub struct ChannelRef {
 }
 
 impl ChannelRef {
-    pub fn new(id: usize, total_channels: usize) -> Self {
+    pub fn new(id: usize, total_channels: usize, last_touched: DateTime<Local>) -> Self {
         Self {
             id,
-            last_touched: Local::now(),
+            last_touched,
             total_channels,
             state: ChannelState::UnknownInit,
             initial_freq: None,
@@ -334,8 +335,9 @@ impl AutoAdjustAllController {
         }
 
         let channel_count = self.channel_count;
+        let fake_last_touch = Local::now() - Duration::from_secs_f32(MIN_TOUCH_WAIT);
         let channels = (0..channel_count)
-            .map(move |ch_id| ChannelRef::new(ch_id, channel_count))
+            .map(move |ch_id| ChannelRef::new(ch_id, channel_count, fake_last_touch))
             .collect::<Vec<_>>();
 
         let (tx, rx) = watch::channel(ProgressReport::default());
@@ -443,7 +445,6 @@ async fn adjust_task(
     switch_channel_delay_ms: u32,
 ) {
     const WORK_TRYS: u32 = 3;
-    const MIN_TOUCH_WAIT: f32 = 5.0;
     const MEASURE_TRYS: usize = 2;
     const AGE_DETECT_F_OFFSET: f32 = 0.25;
 
@@ -452,7 +453,7 @@ async fn adjust_task(
     let upper_limit = target * (1.0 + precision_ppm / 1_000_000.0);
     let lower_limit = target * (1.0 - precision_ppm / 1_000_000.0);
 
-    let stable_range = (upper_limit - lower_limit) / 4.0;
+    let stable_range = (upper_limit - lower_limit) / 6.0;
 
     let absolute_low_limit = target - auto_adjust_limits.min_freq_offset;
     let mut prev_ch = None;
@@ -500,7 +501,9 @@ async fn adjust_task(
                 })
                 .await;
 
-            wait_interval += switch_channel_wait;
+            if prev_ch.is_some() {
+                wait_interval += switch_channel_wait;
+            }
             prev_ch = Some(ch_id);
             true
         } else {
@@ -722,7 +725,13 @@ async fn measure(
     }
 
     let mut boxplot = BoxPlot::<f32>::zero();
-    for _ in 0..trys {
+    for i in 0..trys {
+        tracing::warn!(
+            "Measure try {}/{} (wait_before={:?})",
+            i + 1,
+            trys,
+            wait_before
+        );
         tokio::time::sleep(wait_before).await;
 
         let mut data = vec![];
@@ -731,7 +740,7 @@ async fn measure(
         while std::time::Instant::now() - start < timeout {
             mq.changed().await?;
             let status = mq.borrow();
-            tracing::trace!("measure(): F={}", status.current_frequency);
+            tracing::trace!("\tF={}", status.current_frequency);
             data.push(status.current_frequency);
         }
 
