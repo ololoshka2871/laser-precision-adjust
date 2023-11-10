@@ -443,7 +443,7 @@ async fn adjust_task(
     switch_channel_delay_ms: u32,
 ) {
     const WORK_TRYS: u32 = 3;
-    const MIN_TOUCH_WAIT: f32 = 3.5;
+    const MIN_TOUCH_WAIT: f32 = 5.0;
     const MEASURE_TRYS: usize = 2;
     const AGE_DETECT_F_OFFSET: f32 = 0.25;
 
@@ -578,7 +578,7 @@ async fn adjust_task(
                 if tc.more_trys_avalable() {
                     ch.update_state(
                         ChannelState::Adjustig(format!(
-                            "Нестабилен: Δ={} ({})",
+                            "Нестабилен: Δ={:.2} ({})",
                             bxplt.iqr(),
                             tc.counter()
                         )),
