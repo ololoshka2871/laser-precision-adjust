@@ -669,6 +669,7 @@ async fn adjust_task(
                 })
                 .await;
 
+            tracing::warn!("Burn {} with {} steps (soft: {})", ch_id, step, soft_mode);
             if channel_swithced {
                 tokio::spawn(burn_task(
                     laser_controller.clone(),

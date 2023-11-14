@@ -166,6 +166,8 @@ function update_autoadjust(report: IProgressReport, progress_string: string) {
         reset_freqmeter_pos();
     }
 
+    console.log("Measure: [" + report.measure_channel_id + "] Burn: [" + report.burn_channel_id + "]");
+
     for (const rez of report.rezonator_info) {
         const posid: string = '[rez-pos="' + (rez.id + 1).toString() + '"]';
         update_text_if_changed('td.position-display' + posid, rez.current_step.toString());
