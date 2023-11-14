@@ -2,6 +2,7 @@ use std::{
     borrow::Borrow,
     cmp::min,
     collections::HashSet,
+    io::Cursor,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -177,7 +178,7 @@ impl Limits {
         } else if f > self.upper_limit {
             "▲"
         } else {
-            "◇"
+            "✔"
         }
     }
 
@@ -795,13 +796,9 @@ pub(super) async fn handle_control(
                     channel.initial_freq = channel.points.last().map(|p| p.y() as f32);
                 } else {
                     channel.points.remove(channel.points.len() - points_to_read);
-                    let median = BoxPlot::new(
-                        &channel.points
-                            .iter()
-                            .map(|p| p.y())
-                            .collect::<Vec<_>>(),
-                    )
-                    .median();
+                    let median =
+                        BoxPlot::new(&channel.points.iter().map(|p| p.y()).collect::<Vec<_>>())
+                            .median();
                     channel.initial_freq = Some(median as f32);
                 }
             }
@@ -1162,6 +1159,125 @@ pub(super) async fn handle_generate_report(
     };
 
     RenderHtml(Key("report.html".to_owned()), engine, model).into_response()
+}
+
+// Генерация Excell отчета
+pub(super) async fn handle_generate_report_excel(
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
+    State(config): State<Config>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    Path(part_id): Path<String>,
+) -> impl IntoResponse {
+    use crate::into_body::IntoBody;
+
+    const ROW_OFFSET: usize = 12;
+    let report_template_xlsx = include_bytes!("report.xlsx");
+
+    if let Ok(mut book) =
+        umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(report_template_xlsx), true)
+    {
+        let sheet = book.get_sheet_by_name_mut("report").unwrap();
+
+        {
+            // date
+            use chrono::{DateTime, Local};
+
+            let system_time = SystemTime::now();
+            let datetime: DateTime<Local> = system_time.into();
+            let date = datetime.format("%d.%m.%Y %T").to_string();
+            let time = datetime.format("%T").to_string();
+            sheet.get_cell_value_mut("F2").set_value(date);
+            sheet.get_cell_value_mut("G2").set_value(time);
+        }
+
+        // Обозначение партии
+        sheet.get_cell_value_mut("C4").set_value(part_id.clone());
+
+        // Диопазон
+        let (freq_target, work_offset_hz) = {
+            let guard = freqmeter_config.lock().await;
+            (guard.target_freq, guard.work_offset_hz)
+        };
+
+        sheet
+            .get_cell_value_mut("C7")
+            .set_value(format2digits(freq_target));
+
+        // ppm
+        sheet
+            .get_cell_value_mut("E7")
+            .set_value(format2digits(config.working_offset_ppm));
+
+        // min-max
+        let limits = Limits::from_config(freq_target, &config);
+        sheet
+            .get_cell_value_mut("G7")
+            .set_value(format2digits(limits.lower_limit));
+        sheet
+            .get_cell_value_mut("H7")
+            .set_value(format2digits(limits.upper_limit));
+
+        // поправка частотомера
+        sheet
+            .get_cell_value_mut("C8")
+            .set_value(format2digits(work_offset_hz));
+
+        // таблица
+        let report = auto_adjust_all_ctrl.lock().await.get_status();
+        if !report.rezonator_info.is_empty() {
+            for (i, r) in report.rezonator_info.iter().enumerate() {
+                let row = ROW_OFFSET + i; // row in table
+
+                let current_freq = r.current_freq;
+                sheet
+                    .get_cell_value_mut(format!("C{row}"))
+                    .set_value(format2digits(current_freq));
+
+                let start = format2digits(r.initial_freq);
+                sheet.get_cell_value_mut(format!("B{row}")).set_value(start);
+
+                let ppm = format2digits(limits.ppm(current_freq));
+                sheet.get_cell_value_mut(format!("D{row}")).set_value(ppm);
+
+                let ok = limits.to_status_icon(current_freq).to_owned();
+                sheet.get_cell_value_mut(format!("E{row}")).set_value(ok);
+            }
+        } else {
+            // clear table
+            for row in ROW_OFFSET..ROW_OFFSET + config.resonator_placement.len() {
+                for col in ['B', 'C', 'D', 'E'] {
+                    sheet
+                        .get_cell_value_mut(format!("{col}{row}"))
+                        .set_value("-");
+                }
+            }
+        }
+
+        let mut buf = vec![];
+        match umya_spreadsheet::writer::xlsx::write_writer(&book, Cursor::new(&mut buf)) {
+            Ok(_) => {
+                let filename = format!("attachment; filename=\"{}\".xlsx", part_id);
+                let headers = [
+                    (
+                        axum::http::header::CONTENT_TYPE,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Common_types
+                    ),
+                    (axum::http::header::CONTENT_DISPOSITION, filename.as_str()),
+                ];
+                (headers, buf.into_body()).into_response()
+            }
+            Err(e) => {
+                let err = format!("Failed to generate report: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, err).into_response()
+            }
+        }
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to load report template",
+        )
+            .into_response()
+    }
 }
 
 //-----------------------------------------------------------------------------

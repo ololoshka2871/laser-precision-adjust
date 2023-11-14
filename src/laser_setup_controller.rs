@@ -319,14 +319,21 @@ async fn control_task(
                 {
                     Ok(r) => {
                         if r.len() == std::mem::size_of::<f32>() {
-                            let f = if let Some(fake_freq) = emulate_center {
+                            let mut f = if let Some(fake_freq) = emulate_center {
                                 generate_fake_freq(fake_freq)
                             } else {
                                 let byte_array: [u8; 4] = r[0..4].try_into().unwrap();
                                 f32::from_le_bytes(byte_array)
                             };
 
-                            current_status.update_freq(f + current_status.freq_offset);
+                            // prevent f < 0
+                            f = if f + current_status.freq_offset <= 0.0 {
+                                0.0
+                            } else {
+                                f + current_status.freq_offset
+                            };
+
+                            current_status.update_freq(f);
                             tx.send(current_status).ok();
                         } else {
                             tracing::debug!("Freqmeter returned invalid data, skipping...");

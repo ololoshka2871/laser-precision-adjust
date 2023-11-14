@@ -206,11 +206,11 @@ impl std::fmt::Display for ProgressStatus {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RezInfo {
-    id: usize,
-    current_step: u32,
-    initial_freq: f32,
-    current_freq: f32,
-    state: String,
+    pub id: usize,
+    pub current_step: u32,
+    pub initial_freq: f32,
+    pub current_freq: f32,
+    pub state: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -369,12 +369,12 @@ impl AutoAdjustAllController {
             if !task.is_finished() {
                 task.abort();
                 self.task = None;
-                self.rx = None;
+                //self.rx = None;
 
                 return Ok(());
             }
         }
-        self.rx = None;
+        //self.rx = None;
         Err(Error::NothingToCancel)
     }
 }

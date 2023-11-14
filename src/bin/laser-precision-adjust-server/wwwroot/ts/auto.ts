@@ -89,7 +89,8 @@ $(() => {
     // report
     $('#gen-report').on('click', (ev) => {
         let report_id = prompt('Введите номер партии:');
-        gen_report(report_id);
+        gen_report2(report_id);
+        ev.preventDefault();
     });
 
     $('#freq-target').on('input', (ev) => patch_value(ev.target as HTMLInputElement, 'TargetFreq'));
@@ -251,4 +252,15 @@ function update_vac_button(secs: number = 20) {
             .prop('data-state', 'enabled')
             .html('<i class="fa fa-soap"></i> Вакуум');
     }
+}
+
+function gen_report2(report_id: string) {
+    var link = document.createElement("a");
+    // If you don't know the name or want to use
+    // the webserver default set name = ''
+    link.setAttribute('download', report_id);
+    link.href = '/report2/' + report_id;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 }

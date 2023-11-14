@@ -55,6 +55,9 @@ minijinja = { version = "1" }
 iftree = "1"
 mime_guess = "2"
 
+### excel report
+umya-spreadsheet = "1"
+
 [lib]
 name = "laser_precision_adjust"
 

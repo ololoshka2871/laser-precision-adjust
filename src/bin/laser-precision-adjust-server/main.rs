@@ -29,7 +29,7 @@ use minijinja::Environment;
 use crate::handle_routes::{
     handle_auto_adjust, handle_auto_adjust_status, handle_config, handle_control,
     handle_generate_report, handle_stat, handle_stat_rez, handle_state, handle_update_config,
-    handle_work,
+    handle_work, handle_generate_report_excel,
 };
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
@@ -208,6 +208,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/stat", get(handle_stat))
         .route("/stat/:rez_id", get(handle_stat_rez))
         .route("/report/:part_id", get(handle_generate_report))
+        .route("/report2/:part_id", get(handle_generate_report_excel))
         .route("/config", get(handle_config).patch(handle_update_config))
         .route("/static/:path/:file", get(static_files::handle_static))
         .route("/lib/*path", get(static_files::handle_lib))
