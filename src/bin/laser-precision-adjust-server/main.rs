@@ -202,6 +202,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/stat_manual", get(handle_stat_manual))
         .route("/stat_manual/:rez_id", get(handle_stat_rez_manual))
         .route("/stat_auto", get(handle_stat_auto))
+        .route("/stat_auto/:rez_id", get(handle_stat_rez_auto))
         .route("/report/:part_id", get(handle_generate_report))
         .route("/report2/:part_id", get(handle_generate_report_excel))
         .route("/config", get(handle_config).patch(handle_update_config))

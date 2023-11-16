@@ -1,32 +1,30 @@
 /*
-interface IDataPoint {
-    x: number,
-    y: number,
-}
-
-interface IDisplayFragment {
-    points: IDataPoint[],
-    color_code_rgba: string,
-}
-
 interface IHystogramFragment {
     start: number,
     end: number,
     count: number,
 }
-
+*/
 interface ILimits {
     UpperLimit: number,
     LowerLimit: number,
     Target: number,
 }
 
-interface IAdjustReport {
-    DisplayFragments: IDisplayFragment[],
-    Hystogramm: IHystogramFragment[],
+interface BoxPlot {
+    median: number,
+    q1: number,
+    q3: number,
+    iqr: number,
+    lower_bound: number,
+    upper_bound: number,
+}
+
+interface IAutoAdjustReport {
+    DisplayBoxes: BoxPlot[],
+    //Hystogramm: IHystogramFragment[],
     Limits: ILimits,
 }
-*/
 
 // on page loaded jquery
 $(() => {
@@ -58,12 +56,12 @@ $(() => {
                 .attr('row-index')) - 1;
         }
 
-        select_row_table(channel_to_select);
+        select_row_table_a(channel_to_select);
     });
 });
 
-/*
-function select_row_table(rez: number): void {
+
+function select_row_table_a(rez: number): void {
     const primary_class = 'bg-primary';
     const newly_selected = $('#rez-' + (rez + 1).toString() + '-row');
     if (!newly_selected.hasClass(primary_class)) {
@@ -71,17 +69,18 @@ function select_row_table(rez: number): void {
     }
 
     $.ajax({
-        url: '/stat_manual/' + rez,
+        url: '/stat_auto/' + rez,
         method: 'GET',
         contentType: 'application/json',
-        success: (data: IAdjustReport) => {
-            plot_history(data.DisplayFragments, data.Limits);
-            plot_hystogramm(data.Hystogramm);
+        success: (data: IAutoAdjustReport) => {
+            plot_history_a(data.DisplayBoxes, data.Limits);
+            //plot_hystogramm(data.Hystogramm);
         }
     })
 }
 
-function plot_history(fragments: IDisplayFragment[], limits: ILimits) {
+function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
+    /*
     const total_points = fragments.reduce((a, f) => a + f.points.length, 0);
 
     const labels = [];
@@ -159,8 +158,9 @@ function plot_history(fragments: IDisplayFragment[], limits: ILimits) {
 
     new Chart(
         $('#adj-history-plot').get()[0] as HTMLCanvasElement, config);
+    */
 }
-
+/*
 function plot_hystogramm(hysto_data: IHystogramFragment[]) {
     const config = {
         type: 'bar',

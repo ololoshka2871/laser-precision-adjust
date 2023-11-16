@@ -2,19 +2,22 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    response::IntoResponse, Json,
+    response::IntoResponse,
+    Json,
 };
 use axum_template::{Key, RenderHtml};
-use laser_precision_adjust::{predict::Predictor, AdjustConfig, Config, IDataPoint};
+use laser_precision_adjust::{
+    predict::Predictor, AdjustConfig, Config, IDataPoint,
+};
 use serde::Serialize;
 use tokio::sync::Mutex;
 
-use crate::{
-    auto_adjust_all::AutoAdjustAllController,
-    AppEngine, ChannelState, DataPoint,
-};
+use crate::{auto_adjust_all::AutoAdjustAllController, AppEngine, ChannelState, DataPoint};
 
-use super::{limits::{RezStatus, Limits}, common::format2digits};
+use super::{
+    common::format2digits,
+    limits::{Limits, RezStatus},
+};
 
 #[derive(Serialize)]
 struct RezData {
@@ -195,9 +198,8 @@ pub(crate) async fn handle_stat_rez_manual(
     }))
 }
 
-/*
 pub(crate) async fn handle_stat_rez_auto(
-    State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
     State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Path(rez_id): Path<u32>,
@@ -242,25 +244,17 @@ pub(crate) async fn handle_stat_rez_auto(
         DrawLimits::new(Limits::from_config(target, &config), target)
     };
 
-    let fragments = predictor.lock().await.get_fragments(rez_id, None).await;
+    let fragments = auto_adjust_all_ctrl
+        .lock()
+        .await
+        .get_status()
+        .rezonator_info;
 
-    let mut display_fragments: Vec<DisplayFragment> = vec![];
-    let mut adj_values: Vec<f64> = vec![];
-    for (i, fragment) in fragments.iter().enumerate() {
-        let opacity = 0.25 + ((1.0 - 0.25) / fragments.len() as f32 * (i + 1) as f32);
-        display_fragments.push(DisplayFragment {
-            points: fragment.points().to_vec(),
-            color_code_rgba: format!("rgba(103, 145, 102, {opacity:.2})"),
-        });
+    let res_history = &fragments[rez_id as usize].history;
 
-        adj_values.push(if let Some((a, _)) = fragment.aprox_coeffs() {
-            fragment.points()[fragment.minimum_index()].y() + a - fragment.points()[0].y()
-        } else {
-            let box_plot = fragment.box_plot();
-            box_plot.upper_bound() - fragment.points()[0].y()
-        });
-    }
+    let boxes = res_history.iter().map(|h| h.boxplt).collect::<Vec<_>>();
 
+    /*
     let interval_count = ((adj_values.len() as f64).log(10.0) * 3.0 + 1.0).floor() as u32;
     let hystogramm = if interval_count > 1 {
         adj_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -286,11 +280,11 @@ pub(crate) async fn handle_stat_rez_auto(
     } else {
         vec![]
     };
+    */
 
     Json(json!({
-            "DisplayFragments": display_fragments,
-            "Hystogramm": hystogramm,
+            "DisplayBoxes": boxes,
+            //"Hystogramm": hystogramm,
             "Limits": limits,
     }))
 }
-*/

@@ -57,14 +57,56 @@ pub(crate) async fn handle_auto_adjust(
 pub(crate) async fn handle_auto_adjust_status(
     State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
 ) -> impl IntoResponse {
-    use crate::auto_adjust_all::ProgressReport;
+    use crate::auto_adjust_all::{ProgressReport, ProgressStatus};
 
     const MAX_STEPS: usize = 100;
+
+    #[derive(Debug, Clone, Serialize)]
+    pub struct AARezInfo {
+        pub id: usize,
+        pub current_step: u32,
+        pub initial_freq: f32,
+        pub current_freq: f32,
+        pub state: String,
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    pub struct AAProgressReport {
+        pub status: ProgressStatus,
+
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub measure_channel_id: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub burn_channel_id: Option<u32>,
+
+        pub rezonator_info: Vec<AARezInfo>,
+    }
+
+    impl From<ProgressReport> for AAProgressReport {
+        fn from(value: ProgressReport) -> Self {
+            Self {
+                status: value.status,
+                measure_channel_id: value.measure_channel_id,
+                burn_channel_id: value.burn_channel_id,
+                rezonator_info: value
+                    .rezonator_info
+                    .into_iter()
+                    .map(|i| AARezInfo {
+                        id: i.id,
+                        current_step: i.current_step,
+                        initial_freq: i.initial_freq,
+                        current_freq: i.current_freq,
+                        state: i.state,
+                    })
+                    .collect(),
+            }
+        }
+    }
 
     #[derive(Serialize)]
     struct AutoAdjustStatusReport {
         progress_string: String,
-        report: ProgressReport,
+        report: AAProgressReport,
         reset_marker: bool,
     }
 
@@ -85,7 +127,7 @@ pub(crate) async fn handle_auto_adjust_status(
                     let report = rx.borrow().clone();
                     yield AutoAdjustStatusReport {
                         progress_string: report.status.to_string(),
-                        report,
+                        report: report.into(),
                         reset_marker,
                     };
 

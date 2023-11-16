@@ -1,7 +1,8 @@
 use num_traits::{Float, FromPrimitive, NumOps};
+use serde::Serialize;
 
-#[derive(Clone, Copy, Debug)]
-pub struct BoxPlot<T> {
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct BoxPlot<T: Serialize> {
     median: T,
     q1: T,
     q3: T,
@@ -36,6 +37,7 @@ where
 impl<T> BoxPlot<T>
 where
     T: Float + NumOps + FromPrimitive + Copy,
+    T: Serialize,
 {
     pub fn new(series: &[T]) -> Self {
         let poltora = unsafe { T::from_f64(2.0).unwrap_unchecked() };

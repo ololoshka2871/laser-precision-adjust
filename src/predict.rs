@@ -310,7 +310,7 @@ unsafe impl<T: Float + Serialize> Send for Fragment<T> {}
 
 //-----------------------------------------------------------------------------
 
-fn hard_filter<T: Float + num_traits::NumOps + num_traits::FromPrimitive + Copy>(data: &mut [T]) {
+fn hard_filter<T: Float + num_traits::NumOps + num_traits::FromPrimitive + serde::Serialize + Copy>(data: &mut [T]) {
     let raw_box_plot = BoxPlot::new(data);
     let mut prev_y = None;
 
@@ -325,7 +325,12 @@ fn hard_filter<T: Float + num_traits::NumOps + num_traits::FromPrimitive + Copy>
 
 fn smooth_filter<'a, T>(x: &Vec<T>, y: &Vec<T>) -> csaps::Result<Vec<T>>
 where
-    T: Float + num_traits::NumOps + num_traits::FromPrimitive + csaps::Real + Copy,
+    T: Float
+        + num_traits::NumOps
+        + num_traits::FromPrimitive
+        + csaps::Real
+        + serde::Serialize
+        + Copy,
 {
     let pg = unsafe { T::from_f64(0.85).unwrap_unchecked() };
     let mut y = y.clone();

@@ -58,7 +58,7 @@ impl ChannelState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Measure {
     pub boxplt: BoxPlot<f32>,
     pub burn: Option<u32>,
@@ -248,24 +248,21 @@ impl std::fmt::Display for ProgressStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct RezInfo {
     pub id: usize,
     pub current_step: u32,
     pub initial_freq: f32,
     pub current_freq: f32,
     pub state: String,
+    pub history: Vec<Measure>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct ProgressReport {
     pub status: ProgressStatus,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub measure_channel_id: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub burn_channel_id: Option<u32>,
-
     pub rezonator_info: Vec<RezInfo>,
 }
 
@@ -853,6 +850,7 @@ fn gen_rez_info<'a>(
                 "Поиск края".to_owned()
             }
         },
+        history: r.history.clone(),
     })
     .collect()
 }
