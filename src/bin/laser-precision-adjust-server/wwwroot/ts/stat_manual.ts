@@ -76,7 +76,7 @@ function select_row_table(rez: number): void {
     }
 
     $.ajax({
-        url: '/stat/' + rez,
+        url: '/stat_manual/' + rez,
         method: 'GET',
         contentType: 'application/json',
         success: (data: IAdjustReport) => {

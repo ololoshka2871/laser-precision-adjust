@@ -28,7 +28,7 @@ use minijinja::Environment;
 
 use crate::handle_routes::{
     handle_auto_adjust, handle_auto_adjust_status, handle_config, handle_control,
-    handle_generate_report, handle_stat, handle_stat_rez, handle_state, handle_update_config,
+    handle_generate_report, handle_stat_manual, handle_stat_rez_manual, handle_state, handle_update_config,
     handle_work, handle_generate_report_excel,
 };
 
@@ -165,7 +165,7 @@ async fn main() -> Result<(), std::io::Error> {
         .add_template("auto", include_str!("wwwroot/html/auto.jinja"))
         .unwrap();
     minijinja
-        .add_template("stat", include_str!("wwwroot/html/stat.jinja"))
+        .add_template("stat_manual", include_str!("wwwroot/html/stat_manual.jinja"))
         .unwrap();
     minijinja
         .add_template("config", include_str!("wwwroot/html/config.jinja"))
@@ -205,8 +205,8 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/work", get(handle_work))
         .route("/auto", get(handle_auto_adjust))
         .route("/auto_status", get(handle_auto_adjust_status))
-        .route("/stat", get(handle_stat))
-        .route("/stat/:rez_id", get(handle_stat_rez))
+        .route("/stat_manual", get(handle_stat_manual))
+        .route("/stat_manual/:rez_id", get(handle_stat_rez_manual))
         .route("/report/:part_id", get(handle_generate_report))
         .route("/report2/:part_id", get(handle_generate_report_excel))
         .route("/config", get(handle_config).patch(handle_update_config))

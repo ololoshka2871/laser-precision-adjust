@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::{
+    auto_adjust_all::AutoAdjustAllController,
     auto_adjust_single_controller::AutoAdjustSingleController, AdjustConfig, AppEngine,
     ChannelState,
 };
@@ -258,8 +259,60 @@ pub(super) async fn handle_work(
     )
 }
 
-pub(super) async fn handle_stat(
+pub(super) async fn handle_stat_manual(
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
+    State(config): State<Config>,
+    State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
+    State(engine): State<AppEngine>,
+) -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct RezData {
+        current_step: u32,
+        initial_freq: String,
+        current_freq: String,
+        status: RezStatus,
+        ppm: String,
+    }
+
+    #[derive(Serialize)]
+    struct Model {
+        rezonators: Vec<RezData>,
+    }
+
+    // maybe?
+    // _precision_adjust.lock().await.select_channel(None);
+
+    let limits = Limits::from_config(freqmeter_config.lock().await.target_freq, &config);
+
+    RenderHtml(
+        Key("stat_manual".to_owned()),
+        engine,
+        Model {
+            rezonators: channels
+                .lock()
+                .await
+                .iter()
+                .map(|r| {
+                    let current_freq = r.points.last().cloned().unwrap_or_default().y() as f32;
+                    RezData {
+                        current_step: r.current_step,
+                        initial_freq: r
+                            .initial_freq
+                            .map(|f| format2digits(f))
+                            .unwrap_or("0".to_owned()),
+                        current_freq: format2digits(current_freq),
+                        status: limits.to_status(current_freq),
+                        ppm: format2digits(limits.ppm(current_freq)),
+                    }
+                })
+                .collect(),
+        },
+    )
+}
+
+/*
+pub(super) async fn handle_stat_auto(
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
     State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(engine): State<AppEngine>,
@@ -308,8 +361,9 @@ pub(super) async fn handle_stat(
         },
     )
 }
+*/
 
-pub(super) async fn handle_stat_rez(
+pub(super) async fn handle_stat_rez_manual(
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
@@ -476,7 +530,7 @@ pub(super) async fn handle_control(
     State(auto_adjust_ctrl): State<Arc<Mutex<AutoAdjustSingleController>>>,
     State(predictor): State<Arc<Mutex<Predictor<f64>>>>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
-    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
     Json(payload): Json<ControlRequest>,
 ) -> impl IntoResponse {
     const POINTS_TO_AVG: usize = 15;
@@ -1008,7 +1062,7 @@ pub(super) async fn handle_auto_adjust(
     State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
-    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
 ) -> impl IntoResponse {
     #[derive(Serialize)]
     struct Model {
@@ -1041,7 +1095,7 @@ pub(super) async fn handle_auto_adjust(
 }
 
 pub(super) async fn handle_auto_adjust_status(
-    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
 ) -> impl IntoResponse {
     use crate::auto_adjust_all::ProgressReport;
 
@@ -1163,7 +1217,7 @@ pub(super) async fn handle_generate_report(
 
 // Генерация Excell отчета
 pub(super) async fn handle_generate_report_excel(
-    State(auto_adjust_all_ctrl): State<Arc<Mutex<crate::auto_adjust_all::AutoAdjustAllController>>>,
+    State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
     State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Path(part_id): Path<String>,
