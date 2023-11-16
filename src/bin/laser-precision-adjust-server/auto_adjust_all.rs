@@ -12,11 +12,12 @@ use crate::far_long_iterator::{FarLongIterator, FarLongIteratorItem, IntoFarLong
 
 const MEASRE_COUNT_NORMAL: u32 = 3;
 const MIN_TOUCH_WAIT: f32 = 5.0;
+const MAX_NEG_DRIFT_HZ: f32 = 0.1;
 
 enum MeasureResult {
-    Stable(f32),
+    Stable(f32, BoxPlot<f32>),
     Unstable(BoxPlot<f32>),
-    OutOfRange(f32),
+    OutOfRange(f32, BoxPlot<f32>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -58,6 +59,13 @@ impl ChannelState {
 }
 
 #[derive(Clone)]
+pub struct Measure {
+    pub boxplt: BoxPlot<f32>,
+    pub burn: Option<u32>,
+    pub result: ChannelState,
+}
+
+#[derive(Clone)]
 pub struct ChannelRef {
     id: usize,
     last_touched: DateTime<Local>,
@@ -66,6 +74,7 @@ pub struct ChannelRef {
     initial_freq: Option<f32>,
     current_freq: Option<f32>,
     current_step: u32,
+    history: Vec<Measure>,
 }
 
 impl ChannelRef {
@@ -78,6 +87,7 @@ impl ChannelRef {
             initial_freq: None,
             current_freq: None,
             current_step: 0,
+            history: vec![],
         }
     }
 
@@ -85,14 +95,28 @@ impl ChannelRef {
         self.last_touched = Local::now();
     }
 
-    fn update_state(&mut self, state: ChannelState, freq: f32, step: u32, ok: bool) {
+    fn update_state(
+        &mut self,
+        state: ChannelState,
+        freq: f32,
+        step: u32,
+        ok: bool,
+        history_boxplot: BoxPlot<f32>,
+    ) {
         tracing::debug!(
-            "Rezonator {} update state {:?}: F={}, step={}",
+            "Rezonator {} update state {:?}: F={}, step={}, ok={}",
             self.id,
             state,
             freq,
-            step
+            step,
+            ok
         );
+
+        self.history.push(Measure {
+            boxplt: history_boxplot,
+            burn: None,
+            result: state.clone(),
+        });
 
         if self.initial_freq.is_none() && ok {
             self.initial_freq.replace(freq);
@@ -122,7 +146,11 @@ impl ChannelRef {
     }
 
     fn set_step(&mut self, step: u32) {
+        let steps_burned = step.saturating_sub(self.current_step);
         self.current_step = step;
+        self.history
+            .last_mut()
+            .map(|l| l.burn.replace(steps_burned));
     }
 
     fn age_found(&self, offset: f32) -> bool {
@@ -139,6 +167,22 @@ impl ChannelRef {
             ChannelState::UnknownInit | ChannelState::Unsatable | ChannelState::OutOfRange => None,
             ChannelState::Adjustig(_) => self.current_freq,
             ChannelState::Limit | ChannelState::Verify | ChannelState::Ok => self.current_freq,
+        }
+    }
+
+    fn sutable(&self, f: f32) -> bool {
+        if let Some(last_success) = self
+            .history
+            .iter()
+            .filter_map(|hi| match hi.result {
+                ChannelState::Verify | ChannelState::Ok => Some(hi.boxplt.median()),
+                _ => None,
+            })
+            .last()
+        {
+            last_success - MAX_NEG_DRIFT_HZ <= f
+        } else {
+            true
         }
     }
 }
@@ -382,6 +426,7 @@ impl AutoAdjustAllController {
 #[derive(Clone, Copy, Debug)]
 enum Trys<const TRYS: u32> {
     Ok,
+    Incorrect(u32),
     Unstable(u32),
     OutOfrange(u32),
 }
@@ -394,8 +439,16 @@ impl<const TRYS: u32> Trys<TRYS> {
     pub fn more_trys_avalable(&self) -> bool {
         match self {
             Trys::Ok => true,
+            Trys::Incorrect(n) => *n > 0,
             Trys::Unstable(n) => *n > 0,
             Trys::OutOfrange(n) => *n > 0,
+        }
+    }
+
+    pub fn mark_incorrect(&mut self) {
+        match self {
+            Trys::Incorrect(n) => *self = Self::Incorrect(n.saturating_sub(1)),
+            _ => *self = Self::Incorrect(TRYS),
         }
     }
 
@@ -418,6 +471,7 @@ impl<const TRYS: u32> Trys<TRYS> {
     pub fn counter(&self) -> u32 {
         match self {
             Trys::Ok => 0,
+            Trys::Incorrect(n) => *n,
             Trys::Unstable(n) => *n,
             Trys::OutOfrange(n) => *n,
         }
@@ -426,7 +480,7 @@ impl<const TRYS: u32> Trys<TRYS> {
 
 impl<const TRYS: u32> Default for Trys<TRYS> {
     fn default() -> Self {
-        Trys::Unstable(TRYS)
+        Trys::Incorrect(TRYS)
     }
 }
 
@@ -552,19 +606,39 @@ async fn adjust_task(
         )
         .await
         {
-            Ok(MeasureResult::Stable(f)) => {
-                // успешно
-                tc.mark_ok();
-                if (f > lower_limit) && (f + forecast_config.median_freq_grow > target) {
-                    // stop
-                    tracing::warn!("Ch {} verify: f={}", ch_id, f);
-                    ch.update_state(ChannelState::Verify, f, step, true);
+            Ok(MeasureResult::Stable(f, b)) => {
+                if ch.sutable(f) {
+                    tc.mark_ok();
+                    // успешно
+                    if (f > lower_limit) && (f + forecast_config.median_freq_grow > target) {
+                        // stop
+                        tracing::warn!("Ch {} verify: f={}", ch_id, f);
+                        ch.update_state(ChannelState::Verify, f, step, true, b);
+                        ch.touch();
+                        continue;
+                    } else {
+                        // continue
+                        ch.update_state(
+                            ChannelState::Adjustig("Норма".to_owned()),
+                            f,
+                            step,
+                            true,
+                            b,
+                        );
+                        f
+                    }
+                } else {
+                    // возможно частота не та, например ниже ожидаемой, бракуем это измерение
+                    tc.mark_incorrect();
+                    ch.update_state(
+                        ChannelState::Adjustig("Некорректное измерение".to_owned()),
+                        b.median(),
+                        step,
+                        false,
+                        b,
+                    );
                     ch.touch();
                     continue;
-                } else {
-                    // continue
-                    ch.update_state(ChannelState::Adjustig("Норма".to_owned()), f, step, true);
-                    f
                 }
             }
             Ok(MeasureResult::Unstable(bxplt)) => {
@@ -588,6 +662,7 @@ async fn adjust_task(
                         bxplt.median(),
                         step,
                         false,
+                        bxplt,
                     );
                     ch.touch();
                 } else {
@@ -595,7 +670,7 @@ async fn adjust_task(
                 }
                 continue;
             }
-            Ok(MeasureResult::OutOfRange(f)) => {
+            Ok(MeasureResult::OutOfRange(f, b)) => {
                 // Вышел за прелелы диопазона, но стабилен
                 tc.mark_out_of_range();
                 tracing::warn!("Ch {} out of range {}, remaning={:?}", ch_id, f, tc);
@@ -605,10 +680,11 @@ async fn adjust_task(
                         f,
                         step,
                         false,
+                        b,
                     );
                     ch.touch();
                 } else {
-                    ch.update_state(ChannelState::OutOfRange, f, step, true);
+                    ch.update_state(ChannelState::OutOfRange, f, step, true, b);
                 }
                 continue;
             }
@@ -710,7 +786,7 @@ async fn measure(
     wait_before: Duration,
     trys: usize,
 ) -> Result<MeasureResult, watch::error::RecvError> {
-    fn to_result(data: &[f32], boxplot: &BoxPlot<f32>, work_range: &(f32, f32)) -> MeasureResult {
+    fn to_result(data: &[f32], boxplot: BoxPlot<f32>, work_range: &(f32, f32)) -> MeasureResult {
         let last_f = *data.last().unwrap();
         let f = if last_f > boxplot.q1() && last_f < boxplot.q3() {
             last_f
@@ -719,9 +795,9 @@ async fn measure(
         };
 
         if f > work_range.0 || f < work_range.1 {
-            MeasureResult::OutOfRange(f)
+            MeasureResult::OutOfRange(f, boxplot)
         } else {
-            MeasureResult::Stable(f)
+            MeasureResult::Stable(f, boxplot)
         }
     }
 
@@ -747,12 +823,12 @@ async fn measure(
 
         boxplot = BoxPlot::new(&data);
         if boxplot.iqr() < stable_range {
-            return Ok(to_result(&data, &boxplot, &work_range));
+            return Ok(to_result(&data, boxplot, &work_range));
         } else if data.len() > MEASRE_COUNT_NORMAL as usize {
             // пробуем без первой точки
             boxplot = BoxPlot::new(&data[1..]);
             if boxplot.iqr() < stable_range {
-                return Ok(to_result(&data, &boxplot, &work_range));
+                return Ok(to_result(&data, boxplot, &work_range));
             }
         }
     }
