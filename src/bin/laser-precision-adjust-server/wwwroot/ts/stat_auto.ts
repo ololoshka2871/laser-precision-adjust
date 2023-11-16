@@ -1,3 +1,4 @@
+/*
 interface IDataPoint {
     x: number,
     y: number,
@@ -25,7 +26,7 @@ interface IAdjustReport {
     Hystogramm: IHystogramFragment[],
     Limits: ILimits,
 }
-
+*/
 
 // on page loaded jquery
 $(() => {
@@ -61,7 +62,7 @@ $(() => {
     });
 });
 
-
+/*
 function select_row_table(rez: number): void {
     const primary_class = 'bg-primary';
     const newly_selected = $('#rez-' + (rez + 1).toString() + '-row');
@@ -195,3 +196,4 @@ function plot_hystogramm(hysto_data: IHystogramFragment[]) {
     new Chart(
         $('#hystogramm-plot').get()[0] as HTMLCanvasElement, config);
 }
+*/

@@ -11,32 +11,33 @@ use maplit::hashmap;
 use mime_guess::mime;
 use typescript_converter_macro::include_ts_relative;
 
-use crate::into_body::IntoBody;
+use super::into_body::IntoBody;
 
 lazy_static::lazy_static! {
     // js with map
     static ref JS_DATA: HashMap<&'static str, (&'static str, &'static str, &'static str)> = hashmap! {
-        "common" => include_ts_relative!("wwwroot/ts/common.ts"),
-        "work" => include_ts_relative!("wwwroot/ts/work.ts"),
-        "stat_manual" => include_ts_relative!("wwwroot/ts/stat_manual.ts"),
-        "auto" => include_ts_relative!("wwwroot/ts/auto.ts"),
+        "common" => include_ts_relative!("../wwwroot/ts/common.ts"),
+        "work" => include_ts_relative!("../wwwroot/ts/work.ts"),
+        "stat_manual" => include_ts_relative!("../wwwroot/ts/stat_manual.ts"),
+        "stat_auto" => include_ts_relative!("../wwwroot/ts/stat_auto.ts"),
+        "auto" => include_ts_relative!("../wwwroot/ts/auto.ts"),
     };
 
     // css
     static ref CSS_DATA: HashMap<&'static str, &'static str> = hashmap! {
-        "site.css" => include_str!("wwwroot/css/site.css"),
-        "docs.min.css" => include_str!("wwwroot/css/docs.min.css"),
+        "site.css" => include_str!("../wwwroot/css/site.css"),
+        "docs.min.css" => include_str!("../wwwroot/css/docs.min.css"),
     };
 
     // images
     static ref IMAGE_DATA: HashMap<&'static str, (&'static [u8], &'static str)> = hashmap! {
-        "favicon.ico" => (include_bytes!("wwwroot/images/favicon.ico").as_ref(), mime::IMAGE.as_ref()),
-        "rez.png" => (include_bytes!("wwwroot/images/rez.png").as_ref(), mime::IMAGE_PNG.as_ref()),
+        "favicon.ico" => (include_bytes!("../wwwroot/images/favicon.ico").as_ref(), mime::IMAGE.as_ref()),
+        "rez.png" => (include_bytes!("../wwwroot/images/rez.png").as_ref(), mime::IMAGE_PNG.as_ref()),
     };
 
     // fonts
     static ref FONTS_DATA: HashMap<&'static str, &'static [u8]> = hashmap! {
-        "7Segment.ttf" => include_bytes!("wwwroot/fonts/7Segment.ttf").as_ref(),
+        "7Segment.ttf" => include_bytes!("../wwwroot/fonts/7Segment.ttf").as_ref(),
     };
 }
 

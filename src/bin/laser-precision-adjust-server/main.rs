@@ -3,9 +3,7 @@
 mod auto_adjust_all;
 mod auto_adjust_single_controller;
 mod far_long_iterator;
-mod handle_routes;
-mod into_body;
-mod static_files;
+mod handlers;
 
 use std::{net::SocketAddr, sync::Arc};
 
@@ -26,11 +24,7 @@ use axum_template::engine::Engine;
 
 use minijinja::Environment;
 
-use crate::handle_routes::{
-    handle_auto_adjust, handle_auto_adjust_status, handle_config, handle_control,
-    handle_generate_report, handle_stat_manual, handle_stat_rez_manual, handle_state, handle_update_config,
-    handle_work, handle_generate_report_excel,
-};
+use handlers::*;
 
 pub(crate) type AppEngine = Engine<Environment<'static>>;
 
@@ -165,7 +159,7 @@ async fn main() -> Result<(), std::io::Error> {
         .add_template("auto", include_str!("wwwroot/html/auto.jinja"))
         .unwrap();
     minijinja
-        .add_template("stat_manual", include_str!("wwwroot/html/stat_manual.jinja"))
+        .add_template("stat", include_str!("wwwroot/html/stat.jinja"))
         .unwrap();
     minijinja
         .add_template("config", include_str!("wwwroot/html/config.jinja"))
@@ -207,6 +201,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/auto_status", get(handle_auto_adjust_status))
         .route("/stat_manual", get(handle_stat_manual))
         .route("/stat_manual/:rez_id", get(handle_stat_rez_manual))
+        .route("/stat_auto", get(handle_stat_auto))
         .route("/report/:part_id", get(handle_generate_report))
         .route("/report2/:part_id", get(handle_generate_report_excel))
         .route("/config", get(handle_config).patch(handle_update_config))
