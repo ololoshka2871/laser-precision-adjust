@@ -6,9 +6,7 @@ use axum::{
     Json,
 };
 use axum_template::{Key, RenderHtml};
-use laser_precision_adjust::{
-    predict::Predictor, AdjustConfig, Config, IDataPoint,
-};
+use laser_precision_adjust::{predict::Predictor, AdjustConfig, Config, IDataPoint};
 use serde::Serialize;
 use tokio::sync::Mutex;
 
@@ -204,6 +202,7 @@ pub(crate) async fn handle_stat_rez_auto(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     Path(rez_id): Path<u32>,
 ) -> impl IntoResponse {
+    use itertools::Itertools;
     use serde_json::json;
 
     #[derive(Serialize)]
@@ -254,37 +253,52 @@ pub(crate) async fn handle_stat_rez_auto(
 
     let boxes = res_history.iter().map(|h| h.boxplt).collect::<Vec<_>>();
 
-    /*
-    let interval_count = ((adj_values.len() as f64).log(10.0) * 3.0 + 1.0).floor() as u32;
+    let mut diffs = res_history
+        .iter()
+        .tuple_windows()
+        .filter_map(|(a, b)| {
+            if let Some(steps) = a.burn {
+                Some(vec![
+                    (b.boxplt.median() - a.boxplt.median()) / steps as f32;
+                    steps as usize
+                ])
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+
+    let interval_count = ((diffs.len() as f32).log(10.0) * 3.0 + 1.0).floor() as u32;
     let hystogramm = if interval_count > 1 {
-        adj_values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        let start = adj_values.first().unwrap_or(&0.0);
-        let step = adj_values
+        diffs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let start = diffs.first().unwrap_or(&0.0);
+        let step = diffs
             .last()
             .map(|v| *v - start)
-            .map(|v| v / interval_count as f64)
+            .map(|v| v / interval_count as f32)
             .unwrap();
 
         (0..interval_count)
             .map(|interval_n| {
-                let start = start + interval_n as f64 * step;
+                let start = start + interval_n as f32 * step;
                 let end = start + step;
 
-                let count = adj_values
-                    .iter()
-                    .filter(|v| **v >= start && **v <= end)
-                    .count();
-                HystogramFragment { start, end, count }
+                let count = diffs.iter().filter(|v| **v >= start && **v <= end).count();
+                HystogramFragment {
+                    start: start as f64,
+                    end: end as f64,
+                    count,
+                }
             })
             .collect::<Vec<_>>()
     } else {
         vec![]
     };
-    */
 
     Json(json!({
             "DisplayBoxes": boxes,
-            //"Hystogramm": hystogramm,
+            "Hystogramm": hystogramm,
             "Limits": limits,
     }))
 }

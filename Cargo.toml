@@ -20,6 +20,7 @@ async-stream = { version = "0.3" }
 chrono = "0.4"
 num-traits = "0.2"
 anyhow = "1"
+itertools = "0.12"
 
 ### async
 tokio = { version = "1", features = ["full"] }

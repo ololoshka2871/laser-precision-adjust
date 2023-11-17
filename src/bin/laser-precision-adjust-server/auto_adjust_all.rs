@@ -37,7 +37,7 @@ enum BurnEvent {
 }
 
 impl ChannelState {
-    fn to_status_icon(&self) -> String {
+    pub fn to_status_icon(&self) -> String {
         match self {
             ChannelState::UnknownInit => "Неизвестно".to_owned(),
             ChannelState::Adjustig(s) => format!("Настройка [{s}]"),
@@ -49,11 +49,19 @@ impl ChannelState {
         }
     }
 
-    fn is_adjusting(&self) -> bool {
+    pub fn is_adjusting(&self) -> bool {
         if let ChannelState::Adjustig(_) = *self {
             true
         } else {
             false
+        }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        match self {
+            ChannelState::Adjustig(_) => true,
+            ChannelState::Verify | ChannelState::Ok => true,
+            _ => false,
         }
     }
 }

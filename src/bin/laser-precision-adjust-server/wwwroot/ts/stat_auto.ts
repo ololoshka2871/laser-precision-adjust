@@ -1,10 +1,9 @@
-/*
 interface IHystogramFragment {
     start: number,
     end: number,
     count: number,
 }
-*/
+
 interface ILimits {
     UpperLimit: number,
     LowerLimit: number,
@@ -22,7 +21,7 @@ interface BoxPlot {
 
 interface IAutoAdjustReport {
     DisplayBoxes: BoxPlot[],
-    //Hystogramm: IHystogramFragment[],
+    Hystogramm: IHystogramFragment[],
     Limits: ILimits,
 }
 
@@ -97,7 +96,7 @@ function select_row_table_a(rez: number): void {
         contentType: 'application/json',
         success: (data: IAutoAdjustReport) => {
             plot_history_a(data.DisplayBoxes, data.Limits);
-            //plot_hystogramm_a(data.Hystogramm);
+            plot_hystogramm_a(data.Hystogramm);
         }
     })
 }
@@ -188,7 +187,7 @@ function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
     new Chart(
         $('#adj-history-plot').get()[0] as HTMLCanvasElement, config);
 }
-/*
+
 function plot_hystogramm_a(hysto_data: IHystogramFragment[]) {
     const config = {
         type: 'bar',
@@ -224,4 +223,3 @@ function plot_hystogramm_a(hysto_data: IHystogramFragment[]) {
     new Chart(
         $('#hystogramm-plot').get()[0] as HTMLCanvasElement, config);
 }
-*/
