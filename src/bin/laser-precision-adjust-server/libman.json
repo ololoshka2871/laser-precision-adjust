@@ -98,6 +98,14 @@
       ]
     },
     {
+      "provider": "jsdelivr",
+      "library": "chartjs-chart-box-and-violin-plot@4.0.0",
+      "destination": "wwwroot/lib/chartjs-chart-box-and-violin-plot/",
+      "files": [
+        "build/Chart.BoxPlot.min.js"
+      ]
+    },
+    {
       "library": "jquery-noty@2.4.1",
       "destination": "wwwroot/lib/jquery-noty/",
       "files": [

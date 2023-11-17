@@ -74,7 +74,7 @@ function select_row_table_a(rez: number): void {
         contentType: 'application/json',
         success: (data: IAutoAdjustReport) => {
             plot_history_a(data.DisplayBoxes, data.Limits);
-            //plot_hystogramm(data.Hystogramm);
+            //plot_hystogramm_a(data.Hystogramm);
         }
     })
 }
@@ -161,7 +161,7 @@ function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
     */
 }
 /*
-function plot_hystogramm(hysto_data: IHystogramFragment[]) {
+function plot_hystogramm_a(hysto_data: IHystogramFragment[]) {
     const config = {
         type: 'bar',
         data: {
