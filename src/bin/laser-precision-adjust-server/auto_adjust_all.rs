@@ -358,7 +358,12 @@ impl AutoAdjustAllController {
     }
 
     pub fn subscribe(&self) -> Option<watch::Receiver<ProgressReport>> {
-        self.rx.as_ref().map(|rx| rx.clone())
+        if let Some(task) = &self.task {
+            if !task.is_finished() {
+                return self.rx.as_ref().map(|rx| rx.clone());
+            }
+        }
+        None
     }
 
     pub fn get_status(&self) -> ProgressReport {

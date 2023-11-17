@@ -26,6 +26,29 @@ interface IAutoAdjustReport {
     Limits: ILimits,
 }
 
+// -- for chartjs-chart-box-and-violin-plot --
+
+interface IBaseItem {
+    min: number;
+    median: number;
+    max: number;
+    /**
+     * values of the raw items used for rendering jittered background points
+     */
+    items?: number[];
+}
+
+interface IBoxPlotItem extends IBaseItem {
+    q1: number;
+    q3: number;
+    whiskerMin?: number;
+    whiskerMax?: number;
+    /**
+     * list of box plot outlier values
+     */
+    outliers?: number[];
+}
+
 // on page loaded jquery
 $(() => {
     // https://www.chartjs.org/docs/2.9.4/getting-started/integration.html#content-security-policy
@@ -80,12 +103,16 @@ function select_row_table_a(rez: number): void {
 }
 
 function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
-    /*
-    const total_points = fragments.reduce((a, f) => a + f.points.length, 0);
+    const total_points = boxes.length;
 
-    const labels = [];
+    let labels: Array<string> = [];
+    for (var i = 0; i < total_points; ++i) {
+        labels.push((i + 1).toString())
+    }
+
     const datasets = [
         { // 0
+            type: 'line',
             label: 'Upper Limit',
             lineTension: 0,
             pointRadius: 0,
@@ -95,6 +122,7 @@ function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
             data: Array<number>(total_points).fill(limits.UpperLimit),
         },
         { // 1
+            type: 'line',
             label: 'Lower Limit',
             lineTension: 0,
             pointRadius: 0,
@@ -104,37 +132,38 @@ function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
             data: Array<number>(total_points).fill(limits.LowerLimit),
         },
         { // 2
+            type: 'line',
             label: 'Target',
             lineTension: 0,
             pointRadius: 0,
             fill: false,
             borderColor: 'rgb(8, 150, 38)',
             data: Array<number>(total_points).fill(limits.Target),
+        },
+        { // 3
+            label: 'Freq',
+            backgroundColor: "rgba(0,23,230,0.5)",
+            borderColor: "rgb(0,23,230)",
+            borderWidth: 1,
+            outlierColor: "#999999",
+            padding: 10,
+            itemRadius: 0,
+            data:
+                boxes.map(b => ({
+                    min: b.lower_bound,
+                    median: b.median,
+                    max: b.upper_bound,
+                    q1: b.q1,
+                    q3: b.q3,
+                })) as IBoxPlotItem[] as any[],
         }
     ];
-    for (const fragment of fragments) {
-        const before_len = labels.length;
-        labels.push(...fragment.points.map((p) => p.x));
-
-        const data = Array<number>(before_len).fill(NaN);
-        data.push(...fragment.points.map((p) => p.y));
-
-        datasets.push({
-            label: null,
-            lineTension: 0,
-            pointRadius: 0,
-            fill: 'false',
-            backgroundColor: null,
-            borderColor: fragment.color_code_rgba,
-            data: data,
-        })
-    }
 
     const config = {
-        type: 'line',
+        type: 'boxplot',
         data: {
+            datasets: datasets,
             labels: labels,
-            datasets: datasets
         },
         options: {
             tooltips: {
@@ -154,11 +183,10 @@ function plot_history_a(boxes: BoxPlot[], limits: ILimits) {
                 }],
             }
         }
-    }
+    };
 
     new Chart(
         $('#adj-history-plot').get()[0] as HTMLCanvasElement, config);
-    */
 }
 /*
 function plot_hystogramm_a(hysto_data: IHystogramFragment[]) {
