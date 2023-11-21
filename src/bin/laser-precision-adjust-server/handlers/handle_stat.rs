@@ -38,7 +38,12 @@ pub(crate) async fn handle_stat_manual(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(engine): State<AppEngine>,
 ) -> impl IntoResponse {
-    let limits = Limits::from_config(freqmeter_config.lock().await.target_freq, &config);
+    let (target_freq, working_offset_ppm) = {
+        let guard = freqmeter_config.lock().await;
+        (guard.target_freq, guard.working_offset_ppm)
+    };
+
+    let limits = Limits::from_config(target_freq, &config, working_offset_ppm);
 
     RenderHtml(
         Key("stat".to_owned()),
@@ -73,7 +78,11 @@ pub(crate) async fn handle_stat_auto(
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(engine): State<AppEngine>,
 ) -> impl IntoResponse {
-    let limits = Limits::from_config(freqmeter_config.lock().await.target_freq, &config);
+    let (target_freq, working_offset_ppm) = {
+        let guard = freqmeter_config.lock().await;
+        (guard.target_freq, guard.working_offset_ppm)
+    };
+    let limits = Limits::from_config(target_freq, &config, working_offset_ppm);
 
     RenderHtml(
         Key("stat".to_owned()),
@@ -140,8 +149,14 @@ pub(crate) async fn handle_stat_rez_manual(
     }
 
     let limits = {
-        let target = freqmeter_config.lock().await.target_freq;
-        DrawLimits::new(Limits::from_config(target, &config), target)
+        let (target_freq, working_offset_ppm) = {
+            let guard = freqmeter_config.lock().await;
+            (guard.target_freq, guard.working_offset_ppm)
+        };
+        DrawLimits::new(
+            Limits::from_config(target_freq, &config, working_offset_ppm),
+            target_freq,
+        )
     };
 
     let fragments = predictor.lock().await.get_fragments(rez_id, None).await;
@@ -239,8 +254,14 @@ pub(crate) async fn handle_stat_rez_auto(
     }
 
     let limits = {
-        let target = freqmeter_config.lock().await.target_freq;
-        DrawLimits::new(Limits::from_config(target, &config), target)
+        let (target_freq, working_offset_ppm) = {
+            let guard = freqmeter_config.lock().await;
+            (guard.target_freq, guard.working_offset_ppm)
+        };
+        DrawLimits::new(
+            Limits::from_config(target_freq, &config, working_offset_ppm),
+            target_freq,
+        )
     };
 
     let fragments = auto_adjust_all_ctrl

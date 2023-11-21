@@ -21,6 +21,7 @@ lazy_static::lazy_static! {
         "stat_manual" => include_ts_relative!("../wwwroot/ts/stat_manual.ts"),
         "stat_auto" => include_ts_relative!("../wwwroot/ts/stat_auto.ts"),
         "auto" => include_ts_relative!("../wwwroot/ts/auto.ts"),
+        "config" => include_ts_relative!("../wwwroot/ts/config.ts"),
     };
 
     // css

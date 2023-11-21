@@ -157,25 +157,48 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load() -> (Self, PathBuf) {
+    fn get_path() -> PathBuf {
         use std::path;
 
         if let Some(base_dirs) = directories::BaseDirs::new() {
-            let path = base_dirs
+            base_dirs
                 .config_dir()
                 .join(path::Path::new("laser-precision-adjust"))
-                .join(path::Path::new("config.json"));
-
-            if let Ok(contents) = std::fs::read_to_string(path.clone()) {
-                (serde_json::from_str::<Config>(&contents).unwrap(), path)
-            } else {
-                panic!(
-                    "Failed to read {:?} file! Please copy config.json.example and fill it!",
-                    path
-                );
-            }
+                .join(path::Path::new("config.json"))
         } else {
             panic!("Failed to get config directory!");
+        }
+    }
+
+    pub fn load() -> (Self, PathBuf) {
+        let path = Self::get_path();
+        if let Ok(contents) = std::fs::read_to_string(path.clone()) {
+            (serde_json::from_str::<Config>(&contents).unwrap(), path)
+        } else {
+            panic!(
+                "Failed to read {:?} file! Please copy config.json.example and fill it!",
+                path
+            );
+        }
+    }
+
+    pub fn save(
+        &mut self,
+        target_freq_override: f32,
+        freqmeter_offset_hz_override: f32,
+        working_offset_ppm_override: f32,
+    ) {
+        tracing::debug!("Save settings");
+
+        self.target_freq_center = target_freq_override;
+        self.freqmeter_offset = freqmeter_offset_hz_override;
+        self.working_offset_ppm = working_offset_ppm_override;
+
+        let path = Self::get_path();
+
+        match std::fs::File::create(path) {
+            Ok(f) => serde_json::to_writer_pretty(f, self).expect("Failed to save settings"),
+            Err(e) => tracing::error!("Faled to save settings: {e}"),
         }
     }
 }

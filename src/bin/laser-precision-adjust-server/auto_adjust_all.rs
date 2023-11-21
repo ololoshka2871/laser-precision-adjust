@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Local};
 use laser_precision_adjust::{
-    box_plot::BoxPlot, AutoAdjustLimits, ForecastConfig, PrivStatusEvent,
+    box_plot::BoxPlot, AutoAdjustLimits, ForecastConfig, PrivStatusEvent, AdjustConfig,
 };
 
 use serde::Serialize;
@@ -326,10 +326,10 @@ pub struct AutoAdjustAllController {
     precision_adjust: Arc<Mutex<laser_precision_adjust::PrecisionAdjust2>>,
     auto_adjust_limits: AutoAdjustLimits,
     update_interval: Duration,
-    precision_ppm: f32,
     forecast_config: ForecastConfig,
     fast_forward_step_limit: u32,
     switch_channel_delay_ms: u32,
+    freqmeter_config: Arc<Mutex<AdjustConfig>>,
 
     task: Option<tokio::task::JoinHandle<()>>,
     rx: Option<watch::Receiver<ProgressReport>>,
@@ -343,10 +343,10 @@ impl AutoAdjustAllController {
         precision_adjust: Arc<Mutex<laser_precision_adjust::PrecisionAdjust2>>,
         auto_adjust_limits: AutoAdjustLimits,
         update_interval: Duration,
-        precision_ppm: f32,
         forecast_config: ForecastConfig,
         fast_forward_step_limit: u32,
         switch_channel_delay_ms: u32,
+        freqmeter_config: Arc<Mutex<AdjustConfig>>,
     ) -> Self {
         Self {
             channel_count,
@@ -355,10 +355,10 @@ impl AutoAdjustAllController {
             precision_adjust,
             auto_adjust_limits,
             update_interval,
-            precision_ppm,
             forecast_config,
             fast_forward_step_limit,
             switch_channel_delay_ms,
+            freqmeter_config,
 
             task: None,
             rx: None,
@@ -381,7 +381,7 @@ impl AutoAdjustAllController {
             .unwrap_or(ProgressReport::default())
     }
 
-    pub fn adjust(&mut self, target: f32) -> Result<(), Error> {
+    pub async fn adjust(&mut self, target: f32) -> Result<(), Error> {
         if let Some(task) = &self.task {
             if !task.is_finished() {
                 return Err(Error::AdjustInProgress);
@@ -395,6 +395,7 @@ impl AutoAdjustAllController {
             .collect::<Vec<_>>();
 
         let (tx, rx) = watch::channel(ProgressReport::default());
+        let precision_ppm = self.freqmeter_config.lock().await.working_offset_ppm;
 
         self.rx.replace(rx);
 
@@ -404,7 +405,7 @@ impl AutoAdjustAllController {
             self.laser_setup_controller.clone(),
             self.auto_adjust_limits,
             self.update_interval,
-            self.precision_ppm,
+            precision_ppm,
             channels.into_far_long_iterator(
                 chrono::Duration::from_std(self.update_interval * 2).unwrap(),
             ),

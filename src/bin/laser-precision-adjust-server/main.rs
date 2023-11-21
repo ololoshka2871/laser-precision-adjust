@@ -10,7 +10,7 @@ use std::{net::SocketAddr, sync::Arc};
 use axum::{
     extract::FromRef,
     response::Redirect,
-    routing::{get, post},
+    routing::{get, patch, post},
     Router,
 };
 use laser_precision_adjust::{predict::Predictor, AdjustConfig, DataPoint, PrecisionAdjust2};
@@ -53,6 +53,14 @@ struct AppState {
     predictor: Arc<Mutex<Predictor<f64>>>,
     auto_adjust_ctrl: Arc<Mutex<auto_adjust_single_controller::AutoAdjustSingleController>>,
     auto_adjust_all_ctrl: Arc<Mutex<auto_adjust_all::AutoAdjustAllController>>,
+}
+
+fn float2dgt(value: String) -> String {
+    if let Ok(v) = value.parse::<f32>() {
+        format!("{v:.2}")
+    } else {
+        value
+    }
 }
 
 #[tokio::main]
@@ -122,6 +130,7 @@ async fn main() -> Result<(), std::io::Error> {
     let freqmeter_config = Arc::new(Mutex::new(AdjustConfig {
         target_freq: config.target_freq_center,
         work_offset_hz: config.freqmeter_offset,
+        working_offset_ppm: config.working_offset_ppm,
     }));
 
     let predictor = Predictor::new(
@@ -134,7 +143,7 @@ async fn main() -> Result<(), std::io::Error> {
     let auto_adjust_controller = auto_adjust_single_controller::AutoAdjustSingleController::new(
         config.auto_adjust_limits,
         config.update_interval_ms,
-        config.working_offset_ppm,
+        freqmeter_config.clone(),
     );
 
     let auto_adjust_all_controller = auto_adjust_all::AutoAdjustAllController::new(
@@ -144,10 +153,10 @@ async fn main() -> Result<(), std::io::Error> {
         precision_adjust.clone(),
         config.auto_adjust_limits,
         std::time::Duration::from_millis(config.update_interval_ms as u64),
-        config.working_offset_ppm,
         config.forecast_config,
         config.auto_adjust_limits.fast_forward_step_limit,
         config.switch_channel_delay_ms,
+        freqmeter_config.clone(),
     );
 
     // State for our application
@@ -167,6 +176,8 @@ async fn main() -> Result<(), std::io::Error> {
     minijinja
         .add_template("report.html", include_str!("wwwroot/html/report.jinja"))
         .unwrap();
+
+    minijinja.add_filter("float2dgt", float2dgt);
 
     let app_state = AppState {
         channels: Arc::new(Mutex::new(vec![
@@ -206,6 +217,7 @@ async fn main() -> Result<(), std::io::Error> {
         .route("/report/:part_id", get(handle_generate_report))
         .route("/report2/:part_id", get(handle_generate_report_excel))
         .route("/config", get(handle_config).patch(handle_update_config))
+        .route("/config-and-save", patch(handle_config_and_save))
         .route("/static/:path/:file", get(static_files::handle_static))
         .route("/lib/*path", get(static_files::handle_lib))
         .with_state(app_state)

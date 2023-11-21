@@ -52,6 +52,35 @@
             <h4>Текущая конфигурация установки</h4>
             <p>Файл: <code class="highlighter-rouge">{{ config_file }}</code></p>
             <hr />
+            <div class="bd-callout bd-callout-danger">
+                <h4>Настраиваемое</h4>
+                <table class="table table-sm table-bordered table-hover">
+                    {% macro table_row_editable_float(name, param, value, mu='') -%}
+                    <tr>
+                        <th scope="row"><code class="text-muted">{{ param }}</code></th>
+                        <td>{{name}}</td>
+                        <td><input type="text" class="form-control adj-input" name="{{ param }}"
+                                placeholder="{{ value|float2dgt }}" value="{{ value|float2dgt }}"></td>
+                        <td>{{mu}}</td>
+                    </tr>
+                    {% endmacro -%}
+                    <thead>
+                        <tr>
+                            <th scope="col">Обозначение</th>
+                            <th scope="col">Параметр</th>
+                            <th scope="col">Значение</th>
+                            <th scope="col">ед. изм.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ table_row_editable_float('Точность настройки', 'WorkingOffsetPPM', config.WorkingOffsetPPM,
+                        'ppm') }}
+                        {{ table_row_editable_float('Цель настройки', 'TargetFreqCenter', config.TargetFreqCenter, "Гц") }}
+                        {{ table_row_editable_float('Смещенние показания частотомера', 'FreqmeterOffset',
+                        config.FreqmeterOffset, 'Гц') }}
+                    </tbody>
+                </table>
+            </div>
             <div class="bd-callout bd-callout-info">
                 <h4>Общее</h4>
                 <table class="table table-sm table-bordered table-hover">
@@ -68,6 +97,13 @@
                             <th scope="row"><code class="text-muted">{{ param }}</code></th>
                             <td>{{name}}</td>
                             <td>{{value}} {{mu}}</td>
+                        </tr>
+                        {% endmacro -%}
+                        {% macro table_row_float(name, param, value, mu='') -%}
+                        <tr>
+                            <th scope="row"><code class="text-muted">{{ param }}</code></th>
+                            <td>{{ name }}</td>
+                            <td>{{ value|float2dgt }} {{ mu }}</td>
                         </tr>
                         {% endmacro -%}
                         {% macro table_row_checkbox(name, param, value) -%}
@@ -103,28 +139,26 @@
                         'Гц') }}
                         {{ table_row_simple('Подача при рабочем проходе', 'BurnLaserF', config.BurnLaserF,
                         'уе./мин') }}
-                        {{ table_row_simple('Множитель S для мягкого режима', 'SoftModeSMultiplier',
+                        {{ table_row_float('Множитель S для мягкого режима', 'SoftModeSMultiplier',
                         config.SoftModeSMultiplier) }}
                         {{ table_row_simple('Максимальное количество рабочих проходов', 'TotalVerticalSteps',
                         config.TotalVerticalSteps, 'шт.') }}
-                        {{ table_row_simple('Смещенние показания частотомера', 'FreqmeterOffset',
-                        config.FreqmeterOffset, 'Гц') }}
-                        {{ table_row_simple('Точность настройки', 'WorkingOffsetPPM', config.WorkingOffsetPPM, 'ppm') }}
-                        {{ table_row_simple('Цель настройки', 'TargetFreqCenter', config.TargetFreqCenter, "Гц") }}
+
                         {{ table_row_simple('Интервал опроса', 'UpdateIntervalMs', config.UpdateIntervalMs, "мс.") }}
                         {{ table_row_simple('Задержка на переключение канала', 'SwitchChannelDelayMs',
                         config.SwitchChannelDelayMs, "мс.") }}
                         {{ table_row_simple('Длина истории на графике', 'DisplayPointsCount', config.DisplayPointsCount,
                         'шт.')}}
-                        {{ table_row_simple('Минимальное ожидаемое изменение частоты', 'ForecastConfig.MinFreqGrow',
+
+                        {{ table_row_float('Минимальное ожидаемое изменение частоты', 'ForecastConfig.MinFreqGrow',
                         config.ForecastConfig.MinFreqGrow, 'Гц') }}
-                        {{ table_row_simple('Максимальное ожидаемое изменение частоты', 'ForecastConfig.MaxFreqGrow',
+                        {{ table_row_float('Максимальное ожидаемое изменение частоты', 'ForecastConfig.MaxFreqGrow',
                         config.ForecastConfig.MaxFreqGrow, 'Гц') }}
-                        {{ table_row_simple('Медианное ожидаемое изменение частоты', 'ForecastConfig.MedianFreqGrow',
+                        {{ table_row_float('Медианное ожидаемое изменение частоты', 'ForecastConfig.MedianFreqGrow',
                         config.ForecastConfig.MedianFreqGrow, 'Гц') }}
                         {{ table_row_simple('Время остывания', 'CooldownTimeMs', config.CooldownTimeMs, 'мс.') }}
 
-                        {{ table_row_simple('Максимально-возможнная настройка в автоматическом режиме',
+                        {{ table_row_float('Максимально-возможнная настройка в автоматическом режиме',
                         'AutoAdjustLimits.MinFreqOffset', config.AutoAdjustLimits.MinFreqOffset, 'Гц') }}
                         {{ table_row_simple('Максимальное количество шагов настройки после обнаружения края резонатора',
                         'AutoAdjustLimits.MaxForwardSteps', config.AutoAdjustLimits.MaxForwardSteps, 'шт.') }}
@@ -133,7 +167,7 @@
                         {{ table_row_simple('Интервал в шагах при поиске края резонатора',
                         'AutoAdjustLimits.EdgeDetectSintervalSt', config.AutoAdjustLimits.EdgeDetectSintervalSt, 'шаг.')
                         }}
-                        {{ table_row_simple('Максимальный разброс частот, при котором она считается стабильной',
+                        {{ table_row_float('Максимальный разброс частот, при котором она считается стабильной',
                         'StableVal', config.StableVal, 'Гц')}}
                     </tbody>
                 </table>
@@ -159,15 +193,15 @@
                     <tbody>
                         {% for rez in config.ResonatorsPlacement -%}
                         <tr>
-                            <th scope="row">{{loop.index}}</th>
-                            <td><code class="text-dark">{{rez.Xcenter}}</code></td>
-                            <td><code class="text-dark">{{rez.Ycenter}}</code></td>
-                            <td><code class="text-dark">{{rez.Width}}</code></td>
-                            <td><code class="text-dark">{{rez.Height}}</code></td>
-                            <td><code class="text-dark">{{rez.MulS}}</code></td>
-                            <td><code class="text-dark">{{rez.MulA}}</code></td>
-                            <td><code class="text-dark">{{rez.MulB}}</code></td>
-                            <td><code class="text-dark">{{rez.MulF}}</code></td>
+                            <th scope="row">{{ loop.index }}</th>
+                            <td><code class="text-dark">{{ rez.Xcenter|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.Ycenter|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.Width|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.Height|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.MulS|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.MulA|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.MulB|float2dgt }}</code></td>
+                            <td><code class="text-dark">{{ rez.MulF|float2dgt }}</code></td>
                         </tr>
                         {% endfor -%}
                     </tbody>
@@ -182,6 +216,9 @@
     <script src="/lib/font-awesome/js/all.min.js"></script>
     <script src="/lib/jquery-noty/packaged/jquery.noty.packaged.min.js"></script>
     <script src="/static/js/common.js"></script>
+
+    <!-- Specific scripts -->
+    <script src="/static/js/config.js"></script>
 </body>
 
 </html>

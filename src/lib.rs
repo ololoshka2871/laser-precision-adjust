@@ -22,6 +22,7 @@ pub use precision_adjust2::{Error, PrecisionAdjust2, Status, PrivStatusEvent};
 pub struct AdjustConfig {
     pub target_freq: f32,
     pub work_offset_hz: f32,
+    pub working_offset_ppm: f32,
 }
 
 pub trait IDataPoint<T> {

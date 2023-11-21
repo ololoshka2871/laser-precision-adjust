@@ -19,7 +19,6 @@ use crate::{
 
 pub(crate) async fn handle_auto_adjust(
     State(engine): State<AppEngine>,
-    State(config): State<Config>,
     State(freqmeter_config): State<Arc<Mutex<AdjustConfig>>>,
     State(channels): State<Arc<Mutex<Vec<ChannelState>>>>,
     State(auto_adjust_all_ctrl): State<Arc<Mutex<AutoAdjustAllController>>>,
@@ -33,9 +32,14 @@ pub(crate) async fn handle_auto_adjust(
         precision_hz: f32,
     }
 
-    let (target_freq, work_offset_hz) = {
+    let (target_freq, work_offset_hz, target_freq_center, working_offset_ppm) = {
         let guard = freqmeter_config.lock().await;
-        (guard.target_freq, guard.work_offset_hz)
+        (
+            guard.target_freq,
+            guard.work_offset_hz,
+            guard.target_freq,
+            guard.working_offset_ppm,
+        )
     };
 
     let model = Model {
@@ -48,7 +52,7 @@ pub(crate) async fn handle_auto_adjust(
             .get_status()
             .status
             .to_string(),
-        precision_hz: config.target_freq_center * config.working_offset_ppm / 1_000_000.0,
+        precision_hz: target_freq_center * working_offset_ppm / 1_000_000.0,
     };
 
     RenderHtml(Key("auto".to_owned()), engine, model)
@@ -178,9 +182,13 @@ pub(crate) async fn handle_generate_report_excel(
         sheet.get_cell_value_mut("C4").set_value(part_id.clone());
 
         // Диопазон
-        let (freq_target, work_offset_hz) = {
+        let (freq_target, work_offset_hz, working_offset_ppm) = {
             let guard = freqmeter_config.lock().await;
-            (guard.target_freq, guard.work_offset_hz)
+            (
+                guard.target_freq,
+                guard.work_offset_hz,
+                guard.working_offset_ppm,
+            )
         };
 
         sheet
@@ -190,10 +198,10 @@ pub(crate) async fn handle_generate_report_excel(
         // ppm
         sheet
             .get_cell_value_mut("E7")
-            .set_value(format2digits(config.working_offset_ppm));
+            .set_value(format2digits(working_offset_ppm));
 
         // min-max
-        let limits = Limits::from_config(freq_target, &config);
+        let limits = Limits::from_config(freq_target, &config, working_offset_ppm);
         sheet
             .get_cell_value_mut("G7")
             .set_value(format2digits(limits.lower_limit));

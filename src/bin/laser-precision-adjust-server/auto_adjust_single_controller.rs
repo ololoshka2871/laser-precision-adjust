@@ -9,7 +9,7 @@ use tokio::{
 use laser_precision_adjust::{
     box_plot::BoxPlot,
     predict::{Fragment, Predictor},
-    AutoAdjustLimits, PrecisionAdjust2,
+    AutoAdjustLimits, PrecisionAdjust2, AdjustConfig,
 };
 
 #[derive(PartialEq, Clone, Copy)]
@@ -54,17 +54,17 @@ pub enum AutoAdjustSingleStateReport {
 pub struct AutoAdjustSingleController {
     config: AutoAdjustLimits,
     update_interval_ms: u32,
-    precision_ppm: f32,
+    freqmeter_config: Arc<Mutex<AdjustConfig>>,
     state: Arc<Mutex<State>>,
     task: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
 
 impl AutoAdjustSingleController {
-    pub fn new(config: AutoAdjustLimits, update_interval_ms: u32, precision_ppm: f32) -> Self {
+    pub fn new(config: AutoAdjustLimits, update_interval_ms: u32, freqmeter_config: Arc<Mutex<AdjustConfig>>) -> Self {
         Self {
             config,
             update_interval_ms,
-            precision_ppm,
+            freqmeter_config,
             state: Arc::new(Mutex::new(State::Idle)),
             task: None,
         }
@@ -90,7 +90,7 @@ impl AutoAdjustSingleController {
                 precision_adjust,
                 self.config,
                 traget_frequency as f64,
-                self.precision_ppm as f64,
+                self.freqmeter_config.clone(),
             )));
 
             Ok(rx)
@@ -137,7 +137,7 @@ async fn adjust_task(
     precision_adjust: Arc<Mutex<PrecisionAdjust2>>,
     config: AutoAdjustLimits,
     traget_frequency: f64,
-    precision_ppm: f64,
+    freqmeter_config: Arc<Mutex<AdjustConfig>>,
 ) -> anyhow::Result<()> {
     const PRECISION_ADJ_ZAPAS: u32 = 3;
 
@@ -181,7 +181,7 @@ async fn adjust_task(
     // Стадия 2: "Грубая" настройка
     let (new_state, fast_forward_end_freq, fast_forward_steps_used) = match do_fast_forward_adjust(
         traget_frequency,
-        precision_ppm,
+        freqmeter_config.lock().await.working_offset_ppm as f64,
         last_freq_boxplot,
         &status_report_q,
         &precision_adjust,
@@ -217,7 +217,7 @@ async fn adjust_task(
         if new_state == State::PrecisionStepping {
             match do_precision_adjust(
                 traget_frequency,
-                precision_ppm,
+                freqmeter_config.lock().await.working_offset_ppm as f64,
                 fast_forward_end_freq,
                 config.max_forward_steps - fast_forward_steps_used,
                 update_interval_ms,

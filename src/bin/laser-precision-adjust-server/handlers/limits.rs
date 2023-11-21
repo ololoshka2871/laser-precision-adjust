@@ -55,8 +55,8 @@ impl Limits {
         (f - f_center) / f_center * 1_000_000.0
     }
 
-    pub fn from_config(target: f32, config: &Config) -> Self {
-        let ppm2hz = target * config.working_offset_ppm / 1_000_000.0;
+    pub fn from_config(target: f32, config: &Config, working_offset_ppm: f32) -> Self {
+        let ppm2hz = target * working_offset_ppm / 1_000_000.0;
         Self {
             upper_limit: target + ppm2hz,
             lower_limit: target - ppm2hz,

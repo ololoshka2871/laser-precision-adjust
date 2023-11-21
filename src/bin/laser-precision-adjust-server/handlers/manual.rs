@@ -104,12 +104,16 @@ pub(crate) async fn handle_work(
     // force release lock
     *select_channel_blocked.lock().await = false;
 
-    let (target_freq, work_offset_hz) = {
+    let (target_freq, work_offset_hz, working_offset_ppm) = {
         let guard = freqmeter_config.lock().await;
-        (guard.target_freq, guard.work_offset_hz)
+        (
+            guard.target_freq,
+            guard.work_offset_hz,
+            guard.working_offset_ppm,
+        )
     };
 
-    let limits = Limits::from_config(target_freq, &config);
+    let limits = Limits::from_config(target_freq, &config, working_offset_ppm);
 
     RenderHtml(
         Key("work".to_owned()),
@@ -160,7 +164,13 @@ pub(crate) async fn handle_state(
             status_rx.changed().await.ok();
 
             let status = status_rx.borrow().clone();
-            let freq_target = freqmeter_config.lock().await.target_freq;
+            let (target_freq, working_offset_ppm) = {
+                let guard = freqmeter_config.lock().await;
+                (
+                    guard.target_freq,
+                    guard.working_offset_ppm,
+                )
+            };
 
             let timestamp = status.since_start.as_millis();
             let (initial_freq, points) = {
@@ -224,14 +234,14 @@ pub(crate) async fn handle_state(
             prediction.as_mut().map(|p| p.start_offset = config.display_points_count - MEDIAN_LEN);
 
             // status code
-            let limits = Limits::from_config(freq_target, &config);
+            let limits = Limits::from_config(target_freq, &config, working_offset_ppm);
 
             yield StateResult {
                 timestamp,
                 seleced_channel: status.current_channel,
                 current_freq: status.current_frequency,
-                target_freq: freq_target,
-                work_offset_hz: freq_target * config.working_offset_ppm / 1_000_000.0,
+                target_freq: target_freq,
+                work_offset_hz: target_freq * working_offset_ppm / 1_000_000.0,
                 channel_step: status.current_step,
                 initial_freq,
                 points: points.iter().map(|p| (p.x(), p.y())).collect(),
@@ -284,12 +294,16 @@ pub(crate) async fn handle_generate_report(
         rezonators: Vec<RezInfo>,
     }
 
-    let (freq_target, work_offset_hz) = {
+    let (freq_target, work_offset_hz, working_offset_ppm) = {
         let guard = freqmeter_config.lock().await;
-        (guard.target_freq, guard.work_offset_hz)
+        (
+            guard.target_freq,
+            guard.work_offset_hz,
+            guard.working_offset_ppm,
+        )
     };
 
-    let limits = Limits::from_config(freq_target, &config);
+    let limits = Limits::from_config(freq_target, &config, working_offset_ppm);
 
     let model = Model {
         part_id: part_id.clone(),
@@ -300,7 +314,7 @@ pub(crate) async fn handle_generate_report(
         },
 
         freq_target: format2digits(freq_target),
-        ppm: format2digits(config.working_offset_ppm),
+        ppm: format2digits(working_offset_ppm),
         f_min: format2digits(limits.lower_limit),
         f_max: format2digits(limits.upper_limit),
         work_offset_hz: format2digits(work_offset_hz),
