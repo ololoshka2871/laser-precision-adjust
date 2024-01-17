@@ -436,7 +436,8 @@ pub(crate) async fn handle_control(
         }
         "adjust-all" => {
             let mut guard = auto_adjust_all_ctrl.lock().await;
-            match guard.adjust(freqmeter_config.lock().await.target_freq).await {
+            let target = freqmeter_config.lock().await.target_freq;
+            match guard.adjust(target).await {
                 Ok(_) => Json(ControlResult::success(Some(
                     "Автонастройка начата.".to_owned(),
                 )))
