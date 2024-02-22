@@ -18,5 +18,7 @@ swc_ecma_parser = "0.139"
 swc_ecma_transforms_typescript = "0.182"
 swc_ecma_visit = "0.95"
 
+swc_config = "=0.1.7" # этоп прибито гвоздями, иначе не собирается.
+
 regex = "1"
 lazy_static = "1"
