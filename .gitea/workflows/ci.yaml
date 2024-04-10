@@ -1,0 +1,46 @@
+name: Build
+on: 
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install x86_64-w64-mingw32-gcc
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-mingw-w64-x86-64 protobuf-compiler dotnet-sdk-8.0
+
+      - name: Install Libman
+        run: dotnet tool install -g Microsoft.Web.LibraryManager.Cli
+
+      - run: echo "${HOME}/.dotnet/tools" >> $GITHUB_PATH
+      - run: libman --version
+
+      - name: Install Rust nightly with x86_64-pc-windows-gnu target
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain nightly --target x86_64-pc-windows-gnu,x86_64-unknown-linux-gnu --profile minimal
+          echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+
+      - uses: actions/checkout@master
+        with:
+          submodules: recursive
+
+      - name: Compile Windows
+        run: |
+          cargo build --release --target x86_64-pc-windows-gnu
+
+      - name: Compile Linux
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu
+
+      - uses: akkuman/gitea-release-action@v1
+        with:
+          body: This is an automatic release!
+          prerelease: true
+          files: |
+            target/x86_64-pc-windows-gnu/release/claser-precision-adjust-server.exe
+            target/x86_64-unknown-linux-gnu/release/laser-precision-adjust-server
+      
