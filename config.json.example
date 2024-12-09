@@ -56,5 +56,6 @@
         { "Addr": 134, "Data": [100, 0] },
         { "Addr": 136, "Data": [100, 0] },
         { "Addr": 96, "Data": [7] }
-    ]
+    ],
+    "ReportDirectory": "~/adjust-reports"
 }
