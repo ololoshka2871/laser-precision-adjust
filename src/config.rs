@@ -206,9 +206,15 @@ impl Config {
     }
 
     pub fn report_directory(&self) -> PathBuf {
-        self.report_directory
+        let path = self.report_directory
             .clone()
-            .unwrap_or(Self::get_path().parent().unwrap().join("reports"))
+            .unwrap_or(Self::get_path().parent().unwrap().join("reports"));
+
+        if !path.exists() {
+            std::fs::create_dir_all(&path).expect("Failed to create report directory");
+        }
+
+        path
     }
 }
 

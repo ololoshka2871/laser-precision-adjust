@@ -157,6 +157,7 @@ async fn main() -> Result<(), std::io::Error> {
         config.auto_adjust_limits.fast_forward_step_limit,
         config.switch_channel_delay_ms,
         freqmeter_config.clone(),
+        config.report_directory(),
     );
 
     // State for our application

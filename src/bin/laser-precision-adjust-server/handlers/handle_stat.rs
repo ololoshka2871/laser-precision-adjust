@@ -272,15 +272,15 @@ pub(crate) async fn handle_stat_rez_auto(
 
     let res_history = &fragments[rez_id as usize].history;
 
-    let boxes = res_history.iter().map(|h| h.boxplt).collect::<Vec<_>>();
+    let boxes = res_history.iter().map(|h| h.current_boxplt).collect::<Vec<_>>();
 
     let mut diffs = res_history
         .iter()
         .tuple_windows()
         .filter_map(|(a, b)| {
-            if let Some(steps) = a.burn {
+            if let Some(steps) = a.steps_burned {
                 Some(vec![
-                    (b.boxplt.median() - a.boxplt.median()) / steps as f32;
+                    (b.current_boxplt.median() - a.current_boxplt.median()) / steps as f32;
                     steps as usize
                 ])
             } else {
