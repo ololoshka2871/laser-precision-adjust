@@ -8,6 +8,19 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
+      - name: Set apt proxy if needed
+        run: |
+          if [ -n "${{ vars.HTTP_PROXY }}" ]; then
+            echo "Acquire::http::Proxy \"${{ vars.HTTP_PROXY }}\";" | sudo tee /etc/apt/apt.conf.d/99proxy
+          fi
+
+      - name: Install root certificate
+        run: |
+          mkdir -p /usr/share/ca-certificates/extra
+          echo "${{ vars.SCTB_ROOT_CERT }}" > /usr/share/ca-certificates/extra/sctb.crt
+          echo "extra/sctb.crt" >> /etc/ca-certificates.conf
+          update-ca-certificates  
+
       - name: Install x86_64-w64-mingw32-gcc
         run: |
           sudo apt update
