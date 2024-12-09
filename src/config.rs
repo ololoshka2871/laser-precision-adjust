@@ -154,6 +154,9 @@ pub struct Config {
 
     #[serde(rename = "I2CCommands")]
     pub i2c_commands: Vec<I2CCommand>,
+
+    #[serde(rename = "ReportDirectory")]
+    pub report_directory: Option<PathBuf>,
 }
 
 impl Config {
@@ -200,6 +203,12 @@ impl Config {
             Ok(f) => serde_json::to_writer_pretty(f, self).expect("Failed to save settings"),
             Err(e) => tracing::error!("Faled to save settings: {e}"),
         }
+    }
+
+    pub fn report_directory(&self) -> PathBuf {
+        self.report_directory
+            .clone()
+            .unwrap_or(Self::get_path().parent().unwrap().join("reports"))
     }
 }
 
