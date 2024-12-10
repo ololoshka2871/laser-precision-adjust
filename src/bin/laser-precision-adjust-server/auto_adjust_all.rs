@@ -1,8 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use chrono::{DateTime, Local};
 use laser_precision_adjust::{
-    box_plot::BoxPlot, AutoAdjustLimits, ForecastConfig, PrivStatusEvent, AdjustConfig,
+    box_plot::BoxPlot, AdjustConfig, AutoAdjustLimits, ForecastConfig, PrivStatusEvent,
 };
 
 use serde::Serialize;
@@ -20,7 +20,7 @@ enum MeasureResult {
     OutOfRange(f32, BoxPlot<f32>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum ChannelState {
     UnknownInit,
     Adjustig(String),
@@ -66,11 +66,11 @@ impl ChannelState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct Measure {
-    pub boxplt: BoxPlot<f32>,
-    pub burn: Option<u32>,
-    pub result: ChannelState,
+    pub current_boxplt: BoxPlot<f32>,
+    pub steps_burned: Option<u32>,
+    pub current_state: ChannelState,
 }
 
 #[derive(Clone)]
@@ -121,9 +121,9 @@ impl ChannelRef {
         );
 
         self.history.push(Measure {
-            boxplt: history_boxplot,
-            burn: None,
-            result: state.clone(),
+            current_boxplt: history_boxplot,
+            steps_burned: None,
+            current_state: state.clone(),
         });
 
         if self.initial_freq.is_none() && ok {
@@ -158,7 +158,7 @@ impl ChannelRef {
         self.current_step = step;
         self.history
             .last_mut()
-            .map(|l| l.burn.replace(steps_burned));
+            .map(|l| l.steps_burned.replace(steps_burned));
     }
 
     fn age_found(&self, offset: f32) -> bool {
@@ -182,8 +182,8 @@ impl ChannelRef {
         if let Some(last_success) = self
             .history
             .iter()
-            .filter_map(|hi| match hi.result {
-                ChannelState::Verify | ChannelState::Ok => Some(hi.boxplt.median()),
+            .filter_map(|hi| match hi.current_state {
+                ChannelState::Verify | ChannelState::Ok => Some(hi.current_boxplt.median()),
                 _ => None,
             })
             .last()
@@ -256,7 +256,7 @@ impl std::fmt::Display for ProgressStatus {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RezInfo {
     pub id: usize,
     pub current_step: u32,
@@ -330,6 +330,7 @@ pub struct AutoAdjustAllController {
     fast_forward_step_limit: u32,
     switch_channel_delay_ms: u32,
     freqmeter_config: Arc<Mutex<AdjustConfig>>,
+    report_directory: PathBuf,
 
     task: Option<tokio::task::JoinHandle<()>>,
     rx: Option<watch::Receiver<ProgressReport>>,
@@ -347,6 +348,7 @@ impl AutoAdjustAllController {
         fast_forward_step_limit: u32,
         switch_channel_delay_ms: u32,
         freqmeter_config: Arc<Mutex<AdjustConfig>>,
+        report_directory: PathBuf,
     ) -> Self {
         Self {
             channel_count,
@@ -359,6 +361,7 @@ impl AutoAdjustAllController {
             fast_forward_step_limit,
             switch_channel_delay_ms,
             freqmeter_config,
+            report_directory,
 
             task: None,
             rx: None,
@@ -414,6 +417,7 @@ impl AutoAdjustAllController {
             self.fast_forward_step_limit,
             self.precision_adjust.clone(),
             self.switch_channel_delay_ms,
+            self.report_directory.clone(),
         )));
 
         Ok(())
@@ -508,6 +512,7 @@ async fn adjust_task(
     fast_forward_step_limit: u32,
     precision_adjust: Arc<Mutex<laser_precision_adjust::PrecisionAdjust2>>,
     switch_channel_delay_ms: u32,
+    report_directory: PathBuf,
 ) {
     const WORK_TRYS: u32 = 3;
     const MEASURE_TRYS: usize = 2;
@@ -600,7 +605,7 @@ async fn adjust_task(
         .ok();
 
         let tc = &mut trys_counters[ch_id];
-        let current_freq = match measure(
+        let measure_result = measure(
             &mut rx,
             update_interval * (MEASRE_COUNT_NORMAL + 1),
             stable_range,
@@ -615,8 +620,9 @@ async fn adjust_task(
             wait_interval,
             MEASURE_TRYS,
         )
-        .await
-        {
+        .await;
+
+        let current_freq = match measure_result {
             Ok(MeasureResult::Stable(f, b)) => {
                 if ch.sutable(f) {
                     tc.mark_ok();
@@ -779,6 +785,17 @@ async fn adjust_task(
                 .await;
             }
         }
+    }
+
+    {
+        let rez_info = gen_rez_info(channel_iterator.iter(), AGE_DETECT_F_OFFSET);
+        let save_file_path = report_directory.join(format!(
+            "auto_adjust_all_{}.json",
+            Local::now().format("%Y-%m-%d_%H-%M-%S")
+        ));
+
+        let mut file = std::fs::File::create(&save_file_path).unwrap();
+        serde_json::to_writer_pretty(&mut file, &rez_info).unwrap();
     }
 
     // Готово
